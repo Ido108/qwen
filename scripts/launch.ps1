@@ -8,7 +8,7 @@ if (-not (Test-QwenSetup)) {
 function Test-Studio([string]$Address) {
     try {
         $health = Invoke-RestMethod -Uri "$Address/api/health" -TimeoutSec 2
-        return $health.app -eq 'image-studio-qwen21'
+        return $health.app -eq 'image-studio-qwen21' -and $health.app_dir -eq $appRoot -and $health.data_dir -eq $dataRoot
     } catch { return $false }
 }
 $studioPort = 47821

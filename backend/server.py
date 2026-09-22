@@ -122,7 +122,7 @@ async def local_only(request: Request, call_next):
 
 @app.get('/api/health')
 def health():
-    return {'app': 'image-studio-qwen21', 'version': '1.0.0'}
+    return {'app': 'image-studio-qwen21', 'version': '1.0.0', 'app_dir':str(APP_DIR), 'data_dir':str(DATA_DIR)}
 
 @app.get('/api/config')
 def config():
