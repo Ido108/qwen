@@ -175,7 +175,12 @@
         "bytes": 1350989512,
         "sha256": "a07a1b7c4ee2966a1b3bdc37de9b4f983d56937e46619f709a80b6e490675417"
       }
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 40,
+      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
+      "note": "Official Qwen 2.1 default; adjustable, not a required step count."
+    }
   },
   {
     "id": "pe-t2i",
@@ -362,7 +367,12 @@
     "dependencies": [
       "encoder-int8",
       "vae"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 40,
+      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
+      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+    }
   },
   {
     "id": "gguf-q6_k",
@@ -383,7 +393,12 @@
     "dependencies": [
       "encoder-int8",
       "vae"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 40,
+      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
+      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+    }
   },
   {
     "id": "gguf-q5_k_m",
@@ -404,7 +419,12 @@
     "dependencies": [
       "encoder-int8",
       "vae"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 40,
+      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
+      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+    }
   },
   {
     "id": "gguf-q4_k_m",
@@ -425,7 +445,12 @@
     "dependencies": [
       "encoder-int8",
       "vae"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 40,
+      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
+      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+    }
   },
   {
     "id": "gguf-q4_0",
@@ -446,7 +471,12 @@
     "dependencies": [
       "encoder-int8",
       "vae"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 40,
+      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
+      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+    }
   },
   {
     "id": "encoder-int8",

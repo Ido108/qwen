@@ -284,12 +284,15 @@ def generate(body: GenerationRequest):
         directory = JOBS_DIR / job_id
         directory.mkdir()
         data = body.model_dump()
+        default_steps = models.entry(body.model_id)['generation_defaults']['steps']
+        data['steps'] = body.steps if body.steps is not None else default_steps
+        data['steps_mode'] = 'custom' if body.steps is not None else 'model'
         # Store only a model selection. The worker resolves current tokens at execution.
         data['enhancement_model'] = antigravity.selected_model()
         data['output_dir'] = str(destination)
         if body.randomize_seed:
             data['seed'] = secrets.randbelow(2147483648)
-        job = {'id': job_id, 'status': 'queued', 'message': 'Starting…', 'stage': 'starting', 'created_at': time.time(), 'seed': data['seed'], 'request': data, 'rewritten_prompt': '', 'step': 0, 'total_steps': body.steps}
+        job = {'id': job_id, 'status': 'queued', 'message': 'Starting…', 'stage': 'starting', 'created_at': time.time(), 'seed': data['seed'], 'request': data, 'rewritten_prompt': '', 'step': 0, 'total_steps': data['steps']}
         write_json(directory / 'request.json', data)
         write_json(directory / 'status.json', job)
         active_job = job_id

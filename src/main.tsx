@@ -3,18 +3,18 @@ import {createRoot} from 'react-dom/client';
 import {UploadCloud, Image as ImageIcon, Download, X, ChevronDown, ChevronLeft, ChevronRight, Sparkles, FolderOpen, Expand, Copy, Check, RotateCcw, CircleHelp, Loader2, Plus, ArrowUpRight, Settings} from 'lucide-react';
 import {ModelSettings,type ModelState} from './ModelSettings';
 import {VideoTab} from './VideoTab';
+import {ImageSettings,type ImageOptions} from './ImageSettings';
 import {promptSettingsCopy,type EnhancementState} from './PromptSettings';
 import {en,type TextKey} from './i18n';
 import './style.css';
 
 type InputImage = {id:string; name:string; url:string};
-type Params = {model_id:string;text_encoder:string;prompt:string; images:string[]; enhance:boolean; custom_size:boolean; width:number; height:number; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string; steps:number};
+type Params = ImageOptions & {model_id:string;text_encoder:string;prompt:string; images:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string};
 type Job = {id:string; status:string; stage:TextKey; message:string; seed:number; step:number; total_steps:number; request:Params; rewritten_prompt:string; created_at:number; started_at?:number; finished_at?:number; elapsed_seconds?:number; image_url?:string; width?:number; height?:number; tokens?:number; has_transparency?:boolean};
 type Example = {id:string; title:string; title_en:string; prompt:string; prompt_extend:boolean; inputs:string[]; outputs:string[]; category:string};
 type Config = {token:string; models:Record<string,boolean>; output_dir:string; active_job:string|null; device:string};
-const defaults:Params = {model_id:'gguf-q8_0',text_encoder:'auto',prompt:'',images:[],enhance:true,custom_size:false,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:40};
-const presets = [[2688,1536,'16:9'],[1536,2688,'9:16'],[2048,2048,'1:1'],[2368,1728,'4:3'],[1728,2368,'3:4'],[1344,768,'16:9'],[768,1344,'9:16'],[1184,864,'4:3'],[864,1184,'3:4'],[1024,1024,'1:1']] as const;
-function loadDraft():Params {try {return {...defaults,...JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}'), images:[]};} catch {return defaults;}}
+const defaults:Params = {model_id:'gguf-q8_0',text_encoder:'auto',prompt:'',images:[],enhance:true,custom_size:false,auto_resolution:2048,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:null};
+function loadDraft():Params {try {const saved=JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}');return {...defaults,...saved,steps:saved.auto_resolution===undefined&&saved.steps===40?null:(saved.steps??null),images:[]};} catch {return defaults;}}
 function App(){
   const [tab,setTab]=useState<'image'|'video'>(()=>location.hash==='#video'?'video':'image');
   const [videoBusy,setVideoBusy]=useState(false);
@@ -35,17 +35,17 @@ function App(){
   const [error,setError]=useState(''); const [notice,setNotice]=useState('');
   const [submitting,setSubmitting]=useState(false); const [uploading,setUploading]=useState(false);
   const [allExamples,setAllExamples]=useState(false); const [activeExample,setActiveExample]=useState<Example|null>(null);
-  const [forceCustom,setForceCustom]=useState(false);
   const [lightbox,setLightbox]=useState<string|null>(null); const [showHelp,setShowHelp]=useState(false);
   const [copied,setCopied]=useState(false); const [dragging,setDragging]=useState(false); const [clock,setClock]=useState(Date.now());
   const uploadRef=useRef<HTMLInputElement>(null); const promptRef=useRef<HTMLTextAreaElement>(null);
   const token=useRef(''); const modal=useRef<HTMLDialogElement>(null);
   const busy=!!pollId||submitting; const locked=busy||videoBusy||uploading;
   const chosenModel=modelState?.models.find(m=>m.id===params.model_id);
+  const validSteps=params.steps===null||(Number.isInteger(params.steps)&&params.steps>=1&&params.steps<=80);
   const chosenEncoder=params.text_encoder==='auto'?(chosenModel?.format==='GGUF'?'encoder-int8':'encoder-bf16'):params.text_encoder;
   const requiredIds=[params.model_id,chosenEncoder,'vae'];
   const imageReady=requiredIds.every(id=>modelState?.models.find(m=>m.id===id)?.installed);
-  const ready=imageReady&&(!params.enhance||!!enhancement?.connected);
+  const ready=imageReady&&validSteps&&(!params.enhance||!!enhancement?.connected);
   const missingModels=requiredIds.map(id=>modelState?.models.find(m=>m.id===id)).filter(m=>m&&!m.installed);
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
   const api=useCallback(async (path:string,init:RequestInit={})=>{
@@ -89,6 +89,7 @@ function App(){
     catch(e){setError((e as Error).message);}finally{setUploading(false);if(uploadRef.current)uploadRef.current.value='';}
   }
   async function generate(){
+    if(!validSteps){setError('Enter a whole number of steps from 1 to 80.');return;}
     if(locked)return;if(!imageReady){setError(t('modelsMissing'));return;}if(params.enhance&&!enhancement?.connected){setShowSettings(true);return;}if(!params.prompt.trim()){setError(t('enterPrompt'));promptRef.current?.focus();return;}
     setSubmitting(true);setError('');setNotice('');setJob(null);
     try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,images:inputs.map(i=>i.id)})});setJob(created);setPollId(created.id);}
@@ -98,7 +99,6 @@ function App(){
   function applyExample(example:Example){setParams(p=>({...p,prompt:example.prompt,enhance:example.prompt_extend}));setInputs(example.inputs.map((name)=>({id:`example:${name}`,name,url:`/examples/${name}`})));setActiveExample(null);setJob(null);setNotice(t('promptLoaded'));promptRef.current?.focus();}
   function closeModal(){setLightbox(null);setActiveExample(null);setShowHelp(false);setShowSettings(false);}
   async function copyPrompt(text:string){try{await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1600);}catch(e){setError(String(e));}}
-  const presetValue=!forceCustom&&presets.find(([w,h])=>w===params.width&&h===params.height)?`${params.width}x${params.height}`:'custom';
   const elapsed=job?.started_at ? Math.max(0,Math.round(((job.finished_at?job.finished_at*1000:clock)-job.started_at*1000)/1000)):0;
   const featured=[examples.find(e=>e.title_en==='Transparent anime bride'),examples.find(e=>e.inputs.length>0),examples.find(e=>e.title_en==='Product photography')].filter(Boolean) as Example[];
   const displayed=allExamples?examples:(featured.length===3?featured:examples.slice(0,3));
@@ -126,21 +126,18 @@ function App(){
       <section className="panel controls-panel">
         <label htmlFor="prompt" className="prompt-label">{t('prompt')}<span className="mode-label">{inputs.length?t('editMode'):t('createMode')}</span></label>
         <textarea ref={promptRef} id="prompt" dir="auto" className="prompt-input" placeholder={t('placeholder')} value={params.prompt} disabled={locked} onChange={e=>change('prompt',e.target.value)} onPaste={e=>{const files=Array.from(e.clipboardData.files);if(files.length){e.preventDefault();upload(files);}}} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();generate();}}}/>
+        <ImageSettings value={params} model={chosenModel} disabled={locked} onChange={values=>setParams(p=>({...p,...values}))}/>
         <div className="generate-row"><label className="toggle-label"><input type="checkbox" role="switch" checked={params.enhance} disabled={locked} onChange={e=>{change('enhance',e.target.checked);setJob(null);}}/><span className="switch"/><span>{t('enhance')}</span></label><div className="generate-controls"><span className="keyboard-hint">{t('keyboard')}</span>{busy?<button className="button secondary cancel" onClick={async()=>{try{if(pollId)await api(`/api/jobs/${pollId}/cancel`,{method:'POST'});}catch(e){setError(String(e));}}}>{t('cancel')}</button>:null}<button className="button primary" disabled={locked||!ready} onClick={generate}>{busy?<Loader2 size={20} className="spin"/>:<Sparkles size={20}/>}<span>{busy?t('generating'):t('generate')}</span></button></div></div>
         {params.enhance&&!enhancement?.connected?<div className="connection-hint"><span>{promptSettingsCopy[lang].description}</span><button className="text-button" onClick={()=>setShowSettings(true)}>{promptSettingsCopy[lang].connect}<ArrowUpRight size={15}/></button></div>:null}
         {error?<div className="message error" role="alert"><span>{error}</span><button className="icon-button" aria-label={t('close')} onClick={()=>setError('')}><X size={16}/></button></div>:null}
         {notice?<div className="notice" role="status">{notice}</div>:null}
         {job?.status==='cancelled'?<div className="notice">{t('cancelled')}</div>:null}
         <details className="disclosure" key={`rewrite-${Boolean(job?.rewritten_prompt)}`} open={!!job?.rewritten_prompt}><summary><ChevronRight size={15}/>{t('rewritten')}</summary><div className="details-body"><p className="rewritten-text" dir="auto">{job?.rewritten_prompt||t('rewriteEmpty')}</p>{job?.rewritten_prompt?<button className="text-button" onClick={()=>copyPrompt(job.rewritten_prompt)}>{copied?<Check size={15}/>:<Copy size={15}/>} {copied?t('copied'):t('copy')}</button>:null}</div></details>
-        <details className="disclosure"><summary><ChevronRight size={15}/>{t('advanced')}<span className="summary-hint">{params.randomize_seed&&!params.custom_size?t('randomAuto'):`${t('seed')}: ${params.seed} · ${params.custom_size?`${params.width} × ${params.height}`:'Auto'}`}</span></summary>
+        <details className="disclosure"><summary><ChevronRight size={15}/>{t('advanced')}<span className="summary-hint">{params.randomize_seed?'Random seed':`${t('seed')}: ${params.seed}`} · {params.custom_size?`${params.width} × ${params.height}`:`Auto ${params.auto_resolution===1024?'1K':'2K'}`} · {params.steps??chosenModel?.generation_defaults?.steps??40} steps</span></summary>
           <fieldset className="details-body settings" disabled={locked}>
             <div className="field"><label htmlFor="seed">{t('seed')}</label><input id="seed" type="number" min="0" max="2147483647" step="1" value={params.seed} disabled={params.randomize_seed} onChange={e=>change('seed',Number(e.target.value))}/></div>
             <label className="checkbox-label align-field"><input type="checkbox" checked={params.randomize_seed} onChange={e=>change('randomize_seed',e.target.checked)}/>{t('randomize')}</label>
             <div className="field span-2"><label htmlFor="negative">{t('negative')}</label><textarea id="negative" dir="auto" rows={2} placeholder={t('negativeHint')} value={params.negative_prompt} onChange={e=>change('negative_prompt',e.target.value)}/>{params.negative_prompt.trim()?<small>{t('negativeHelp')}</small>:null}</div>
-            <div className="span-2 size-enable"><label className="checkbox-label"><input type="checkbox" checked={params.custom_size} onChange={e=>change('custom_size',e.target.checked)}/>{t('custom')}</label><small>{t('autoHelp')}</small></div>
-            <div className="field span-2"><label htmlFor="preset">{t('preset')}</label><select id="preset" value={presetValue} disabled={!params.custom_size} onChange={e=>{setForceCustom(e.target.value==='custom');if(e.target.value==='custom')return;const [width,height]=e.target.value.split('x').map(Number);setParams(p=>({...p,width,height}));}}><option value="custom">{t('customOption')}</option>{presets.map(([w,h,r],i)=><option key={`${w}x${h}`} value={`${w}x${h}`}>{i<5?'2K':'1K'} — {w} × {h} ({r})</option>)}</select></div>
-            {(['width','height'] as const).map(key=><div className="field" key={key}><label htmlFor={key}>{t(key)}</label><div className="dimension"><input id={key} type="number" min="256" max="2688" step="8" disabled={!params.custom_size} value={params[key]} onChange={e=>change(key,Number(e.target.value))}/><span>px</span></div><input aria-label={`${t(key)} slider`} type="range" min="256" max="2688" step="8" disabled={!params.custom_size} value={params[key]} onChange={e=>change(key,Number(e.target.value))}/></div>)}
-            {params.custom_size&&(params.width%32||params.height%32)?<small className="span-2">{t('precisionHint')}</small>:null}
             <div className="field span-2"><label htmlFor="folder">{t('folder')}</label><input id="folder" dir="ltr" value={params.output_dir} onChange={e=>change('output_dir',e.target.value)}/></div>
           </fieldset>
         </details>

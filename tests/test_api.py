@@ -7,7 +7,8 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 temporary = tempfile.TemporaryDirectory(prefix='image-studio-tests-')
 os.environ['QWEN_DATA_DIR'] = temporary.name
@@ -76,6 +77,28 @@ class AppTests(unittest.TestCase):
         for image_id in ('../secret.png', 'example:../../requirements.txt', str(Path(temporary.name)/'secret.png')):
             with self.assertRaises(ValueError):
                 resolve_image(image_id)
+
+    def test_image_steps_and_auto_resolution_validation(self):
+        for values in ({'steps':0},{'steps':81},{'steps':12.5},{'auto_resolution':1536}):
+            response=self.client.post('/api/generate',json={'prompt':'An apple',**values},headers=self.headers)
+            self.assertEqual(response.status_code,422,response.text)
+        self.assertIsNone(GenerationRequest(prompt='An apple').steps)
+
+    def test_generation_persists_model_default_or_custom_steps(self):
+        from backend import server
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(server,'JOBS_DIR',Path(folder)), \
+             patch.object(server,'active_job',None), \
+             patch.object(server.models,'required',return_value=[]), \
+             patch.object(server.models,'entry',return_value={'generation_defaults':{'steps':24}}), \
+             patch.object(server,'threading',SimpleNamespace(Thread=Mock())):
+            for steps,expected,mode in [(None,24,'model'),(12,12,'custom')]:
+                server.active_job=None
+                response=self.client.post('/api/generate',json={'prompt':'An apple','enhance':False,'steps':steps,'auto_resolution':1024,'output_dir':folder},headers=self.headers)
+                self.assertEqual(response.status_code,202,response.text)
+                job=response.json()
+                saved=json.loads((Path(folder)/job['id']/'request.json').read_text())
+                self.assertEqual((job['total_steps'],saved['steps'],saved['steps_mode'],saved['auto_resolution']),(expected,expected,mode,1024))
 
     def test_missing_model_does_not_start_job(self):
         response = self.client.post('/api/generate', json={'prompt':'A flower'}, headers=self.headers)

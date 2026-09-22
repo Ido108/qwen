@@ -4,7 +4,6 @@ import json
 import math
 import os
 from pathlib import Path
-import re
 import sys
 import time
 import traceback
@@ -40,6 +39,7 @@ def run():
     from PIL.PngImagePlugin import PngInfo
     from .comfy_engine import generate
     from .models import entry
+    from .image_settings import output_dimensions
     if not torch.cuda.is_available():
         raise RuntimeError('NVIDIA CUDA is unavailable. Restart after checking the graphics driver.')
     torch.set_float32_matmul_precision('high')
@@ -52,22 +52,7 @@ def run():
             images.append(image)
     rewrite = rewrite_prompt(images) if request['enhance'] else {}
     prompt = rewrite.get('positive_prompt') or request['prompt']
-    if request['custom_size']:
-        width, height = request['width'], request['height']
-    else:
-        ratio = rewrite.get('wh_ratio', '')
-        match = re.fullmatch(r'(\d+):(\d+)', ratio)
-        follow = re.fullmatch(r'<image(\d+)>', rewrite.get('ratio_follow', ''))
-        if match:
-            wh = int(match[1]) / max(1, int(match[2]))
-        elif images:
-            index = int(follow[1]) - 1 if follow and 0 < int(follow[1]) <= len(images) else len(images) - 1
-            wh = images[index].width / images[index].height
-        else:
-            wh = 1
-        wh = max(1 / 3, min(3, wh))
-        width = round(math.sqrt(2048 * 2048 * wh) / 32) * 32
-        height = round(math.sqrt(2048 * 2048 / wh) / 32) * 32
+    width, height = output_dimensions(request, images, rewrite)
     render_width = math.ceil(width / 32) * 32
     render_height = math.ceil(height / 32) * 32
     update(stage='loading_model', message='Loading Qwen-Image-2.1…', width=width, height=height)

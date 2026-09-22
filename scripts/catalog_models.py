@@ -31,6 +31,10 @@ for model_id,name,title,precision,kind in [
 ]:
     item=by_name[name]
     catalog.append({'id':model_id,'title':title,'kind':kind,'format':precision,'repo':repo,'revision':revision,'directory':'abenzerps-GGUF','files':[{'path':name,'bytes':item.size,'sha256':item.lfs.sha256}],'bytes':item.size,'dependencies':[]})
+for item in catalog:
+    if item['kind']=='image':
+        item['generation_defaults']={'steps':40,'source':'https://github.com/QwenLM/Qwen-Image-2.1#default-parameters',
+            'note':'Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published.' if item['format']=='GGUF' else 'Official Qwen 2.1 default; adjustable, not a required step count.'}
 (ROOT/'reference'/'model-catalog.json').write_text(json.dumps(catalog,indent=2),encoding='utf-8')
 installed={}
 original=json.loads((DATA/'model-manifest.json').read_text())

@@ -42,13 +42,15 @@ class GenerationRequest(BaseModel):
     images: list[str] = Field(default_factory=list, max_length=10)
     enhance: bool = True
     custom_size: bool = False
+    auto_resolution: Literal[1024, 2048] = 2048
     width: int = Field(default=2688, ge=256, le=2688)
     height: int = Field(default=1536, ge=256, le=2688)
     seed: int = Field(default=0, ge=0, le=2147483647)
     randomize_seed: bool = True
     negative_prompt: str = Field(default='', max_length=8000)
     output_dir: str = str(OUTPUTS_DIR)
-    steps: int = Field(default=40, ge=1, le=80)
+    # None follows the selected model's documented default; integers override it.
+    steps: int | None = Field(default=None, ge=1, le=80)
 
     @field_validator('prompt')
     @classmethod
