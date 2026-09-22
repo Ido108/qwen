@@ -1,0 +1,103 @@
+"""Validation and persistence contracts. Actual CUDA inference is verified separately."""
+import io
+import json
+import os
+from pathlib import Path
+import tempfile
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+temporary = tempfile.TemporaryDirectory(prefix='image-studio-tests-')
+os.environ['QWEN_DATA_DIR'] = temporary.name
+from fastapi.testclient import TestClient
+from PIL import Image
+from pydantic import ValidationError
+from backend.common import GenerationRequest, JOBS_DIR, UPLOADS_DIR, resolve_image, write_json
+from backend.server import app
+
+def png():
+    stream = io.BytesIO()
+    Image.new('RGBA', (32, 24), (255, 0, 0, 100)).save(stream, 'PNG')
+    return stream.getvalue()
+
+class AppTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.client = TestClient(app)
+        cls.headers = {'X-Studio-Token': cls.client.get('/api/config').json()['token']}
+
+    def test_local_access_and_session_guard(self):
+        self.assertEqual(self.client.post('/api/open-output').status_code, 403)
+        self.assertEqual(self.client.get('/api/config', headers={'host':'evil.example'}).status_code, 403)
+        self.assertEqual(self.client.post('/api/uploads', headers={**self.headers, 'Origin':'https://evil.example'}).status_code, 403)
+
+    def test_atomic_status_write_survives_a_windows_reader(self):
+        target=Path(temporary.name)/'status-retry.json'
+        write_json(target,{'step':1})
+        reader=target.open('rb')
+        timer=threading.Timer(.08,reader.close)
+        timer.start()
+        try:
+            write_json(target,{'step':2})
+            self.assertEqual(json.loads(target.read_text()),{'step':2})
+        finally:
+            timer.join();reader.close();target.unlink()
+
+    def test_image_upload_preserves_alpha(self):
+        response = self.client.post('/api/uploads', files=[('files', ('alpha.png', png(), 'image/png'))], headers=self.headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        image = response.json()[0]
+        loaded = Image.open(io.BytesIO(self.client.get(image['url']).content))
+        self.assertEqual(loaded.mode, 'RGBA')
+        self.assertEqual(loaded.getchannel('A').getextrema(), (100,100))
+
+    def test_invalid_batch_leaves_no_partial_files(self):
+        before = set(UPLOADS_DIR.iterdir())
+        response = self.client.post('/api/uploads', files=[('files',('a.png',png(),'image/png')),('files',('bad.png',b'not an image','image/png'))], headers=self.headers)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(before, set(UPLOADS_DIR.iterdir()))
+
+    def test_ten_image_boundary(self):
+        files = [('files',(f'{i}.png',png(),'image/png')) for i in range(10)]
+        self.assertEqual(self.client.post('/api/uploads',files=files,headers=self.headers).status_code,200)
+        self.assertEqual(self.client.post('/api/uploads',files=files+[files[0]],headers=self.headers).status_code,400)
+        with self.assertRaises(ValidationError):
+            GenerationRequest(prompt='image',images=['x']*11)
+
+    def test_seed_prompt_and_dimension_validation(self):
+        for kwargs in ({'prompt':'  '},{'prompt':'x','seed':-1},{'prompt':'x','seed':2147483648},{'prompt':'x','width':257},{'prompt':'x','width':3000}):
+            with self.assertRaises(ValidationError):
+                GenerationRequest(**kwargs)
+        self.assertEqual(GenerationRequest(prompt=' x ',width=1000).prompt,'x')
+
+    def test_path_traversal_cannot_read_files(self):
+        for image_id in ('../secret.png', 'example:../../requirements.txt', str(Path(temporary.name)/'secret.png')):
+            with self.assertRaises(ValueError):
+                resolve_image(image_id)
+
+    def test_missing_model_does_not_start_job(self):
+        response = self.client.post('/api/generate', json={'prompt':'A flower'}, headers=self.headers)
+        self.assertEqual(response.status_code,503)
+        self.assertFalse(list(JOBS_DIR.iterdir()))
+
+    def test_original_png_download_and_metadata(self):
+        job_id='a'*32
+        directory=JOBS_DIR/job_id
+        directory.mkdir(exist_ok=True)
+        output=Path(temporary.name)/'finished.png'
+        output.write_bytes(png())
+        job={'id':job_id,'status':'succeeded','output_path':str(output),'seed':42,'created_at':1}
+        write_json(directory/'status.json',job)
+        downloaded=self.client.get(f'/api/jobs/{job_id}/image?download=true')
+        self.assertEqual(downloaded.content,png())
+        self.assertIn('attachment',downloaded.headers['content-disposition'])
+        self.assertEqual(self.client.get(f'/api/jobs/{job_id}/metadata').json()['seed'],42)
+        reused=self.client.post(f'/api/jobs/{job_id}/reuse',headers=self.headers).json()
+        self.assertEqual(self.client.get(reused['url']).content,png())
+        (directory/'status.json').unlink()
+        directory.rmdir()
+
+if __name__=='__main__':
+    unittest.main(verbosity=2)

@@ -1,0 +1,26 @@
+# Dependencies of pinned ComfyUI, excluding its unused web frontend/docs/templates.
+torchsde
+numpy>=1.25.0
+einops
+sentencepiece
+safetensors>=0.4.2
+aiohttp>=3.11.8
+yarl>=1.18.0
+pyyaml
+scipy
+tqdm
+alembic
+SQLAlchemy>=2.0.0
+filelock
+av>=17.0.0
+comfy-kitchen==0.2.35
+comfy-aimdo==0.5.5
+requests
+simpleeval>=1.0.0
+blake3
+kornia>=0.7.1
+spandrel
+pydantic~=2.0
+pydantic-settings~=2.0
+PyOpenGL>=3.1.8
+comfy-angle

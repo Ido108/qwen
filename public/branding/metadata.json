@@ -1,0 +1,36 @@
+{
+  "source": "OpenAI Image Gen",
+  "source_file": "icon-source.png",
+  "source_sha256": "96d78e63ed12b21ee4950e84ef2e6e61a43858aa2496904bf9a7c71b05c90689",
+  "description": "Three interwoven violet ribbons forming a camera aperture on a transparent background.",
+  "ico_sizes": [
+    [
+      16,
+      16
+    ],
+    [
+      24,
+      24
+    ],
+    [
+      32,
+      32
+    ],
+    [
+      48,
+      48
+    ],
+    [
+      64,
+      64
+    ],
+    [
+      128,
+      128
+    ],
+    [
+      256,
+      256
+    ]
+  ]
+}
