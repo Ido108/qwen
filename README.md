@@ -113,9 +113,17 @@ See [video research and exact model contracts](reference/video-research.md) and 
 
 ## Queue and gallery
 
-Image and video requests share a persistent queue. The form stays editable while jobs are running or waiting; each click saves a separate snapshot of the prompt, input images, model, dimensions, steps, output folder and resolved seed. Only one worker uses the GPU at a time, and the next job starts after that process exits.
+Image and video requests share a persistent queue. The form stays editable while jobs are running or waiting; each click saves a separate snapshot of the prompt, input images, model, dimensions, steps, output folder and resolved seed. Only one worker uses the GPU at a time. Image jobs with the same model and encoder reuse that worker; video and model changes release it before starting the next worker.
 
 - **Queue** shows the active job, waiting order and recent results/errors. Waiting jobs can move up or be cancelled individually. **Pause queue** lets the active job finish while preserving waiting jobs; **Resume queue** continues processing. A failed or cancelled job does not stall the queue.
 - Waiting jobs, their order and the paused state survive server restarts. A job interrupted during inference is shown as failed with a retry action. Queued model files cannot be removed until the jobs finish or are cancelled.
 - **Gallery** combines existing and new images and videos, with type filters, prompt/model search, pagination, lightweight previews and full-size playback. **Use settings** loads the original prompt, input images, model, dimensions, steps and actual seed into the relevant form. **Run again** submits those settings directly to the queue with the seed fixed. Prompt enhancement, when enabled in the saved request, runs again and may produce a different rewrite.
 - The details view includes source images, parameters, the enhanced prompt, media download and full JSON settings. Image/video drafts, including uploaded input references, survive browser refresh. Original uploads and generated files stay on the local data drive.
+
+## Consecutive images
+
+The image model, conditioning encoder and VAE stay constructed between jobs. GPU weights remain resident when memory permits; ComfyUI can evict a component to its retained CPU weights when more working memory is needed. On Windows, this restores the original read-only CPU views instead of copying GPU data into mapped weights. Changing image model/encoder or starting video closes the image worker first. Cancellation and inference errors discard the worker; the next job starts fresh.
+
+The most recent prompt/input conditioning is also reused when the actual prompt, negative prompt and ordered image pixels are unchanged. Changing the seed, step count or output dimensions does not require repeating that processing. New text or images are processed normally. An empty negative prompt no longer incurs an unused negative encoding pass at CFG 1; nonempty negatives retain the official CFG 2 behavior. Prompt enhancement remains a separate optional cloud operation.
+
+Progress shows the current stage's time and the total job time separately. **Generation time** in the result/gallery details shows model setup, prompt/input processing, generation and decoding. **Settings → Release model memory** frees the idle image worker without deleting any files. It is disabled while jobs are running or waiting.

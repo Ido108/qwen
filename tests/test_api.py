@@ -15,7 +15,7 @@ os.environ['QWEN_DATA_DIR'] = temporary.name
 from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import ValidationError
-from backend.common import GenerationRequest, VideoRequest, JOBS_DIR, UPLOADS_DIR, resolve_image, write_json
+from backend.common import GenerationRequest, VideoRequest, JOBS_DIR, UPLOADS_DIR, resolve_image, read_json, write_json
 from backend.server import app
 
 def png():
@@ -53,6 +53,11 @@ class AppTests(unittest.TestCase):
         loaded = Image.open(io.BytesIO(self.client.get(image['url']).content))
         self.assertEqual(loaded.mode, 'RGBA')
         self.assertEqual(loaded.getchannel('A').getextrema(), (100,100))
+
+    def test_status_read_retries_windows_replacement_sharing_race(self):
+        with patch.object(Path, 'read_text', side_effect=[PermissionError(13, 'Sharing violation'), '{"step":2}']) as read:
+            self.assertEqual(read_json(Path('status.json')), {'step': 2})
+            self.assertEqual(read.call_count, 2)
 
     def test_invalid_batch_leaves_no_partial_files(self):
         before = set(UPLOADS_DIR.iterdir())

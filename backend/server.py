@@ -21,8 +21,9 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
-from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, GenerationRequest, VideoRequest, model_status, resolve_image, write_json
+from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, GenerationRequest, VideoRequest, model_status, resolve_image, read_json, write_json
 from . import models, antigravity
+from .resident_worker import ImageWorker
 
 SESSION_TOKEN = secrets.token_urlsafe(32)
 active_lock = threading.Lock()
@@ -33,10 +34,11 @@ pending_jobs: list[str] = []
 recent_jobs: deque[str] = deque(maxlen=20)
 queue_paused = False
 shutting_down = False
+image_worker = ImageWorker()
 
 
 def start_next_locked():
-    """Caller holds active_lock. Advance only after the previous worker exits."""
+    """Caller holds active_lock. Advance only after the previous job finishes."""
     global active_job
     if active_job or queue_paused or shutting_down:
         return
@@ -67,7 +69,7 @@ def all_jobs():
     result = []
     for path in JOBS_DIR.glob('*/status.json'):
         try:
-            result.append(json.loads(path.read_text(encoding='utf-8')))
+            result.append(read_json(path))
         except (ValueError, OSError):
             continue
     return result
@@ -86,7 +88,7 @@ def read_job(job_id):
     if not job_id or any(c not in '0123456789abcdef' for c in job_id) or len(job_id) != 32:
         raise HTTPException(404, 'Generation not found.')
     try:
-        return json.loads((JOBS_DIR / job_id / 'status.json').read_text(encoding='utf-8'))
+        return read_json(JOBS_DIR / job_id / 'status.json')
     except FileNotFoundError:
         raise HTTPException(404, 'Generation not found.')
 
@@ -100,20 +102,26 @@ def run_job(job_id):
     global active_job, active_process
     directory = JOBS_DIR / job_id
     try:
-        with (directory / 'worker.log').open('w', encoding='utf-8') as log:
+        request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
+        is_video = request.get('kind') == 'video'
+        with (directory / 'worker.log').open('a', encoding='utf-8') as log:
             with active_lock:
                 if job_id in cancelled_jobs:
                     job = read_job(job_id)
                     job.update(status='cancelled', message='Generation cancelled.', finished_at=time.time())
                     write_json(directory / 'status.json', job)
                     return
-                active_process = subprocess.Popen(
-                    [sys.executable, '-X', 'faulthandler', '-u', '-m', 'backend.worker', str(directory)],
-                    cwd=APP_DIR, stdout=log, stderr=subprocess.STDOUT,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-                )
+                if is_video:
+                    image_worker.close()
+                    active_process = subprocess.Popen(
+                        [sys.executable, '-X', 'faulthandler', '-u', '-m', 'backend.worker', str(directory)],
+                        cwd=APP_DIR, stdout=log, stderr=subprocess.STDOUT,
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+                    )
+                else:
+                    active_process = image_worker.start(directory, request)
                 process = active_process
-            return_code = process.wait()
+            return_code = process.wait() if is_video else image_worker.wait(directory, process)
         with active_lock:
             job = read_job(job_id)
             if job_id in cancelled_jobs:
@@ -166,6 +174,8 @@ async def lifespan(app):
         save_queue_locked()
         if active_process and active_process.poll() is None:
             stop_worker(active_process)
+            active_process.wait(timeout=30)
+        image_worker.close()
 
 app = FastAPI(title='Qwen', lifespan=lifespan)
 
@@ -254,7 +264,15 @@ def connection_test():
 
 @app.get('/api/models')
 def get_models():
-    return models.state()
+    return models.state() | {'resident': image_worker.status()}
+
+@app.post('/api/models/release')
+def release_models():
+    with active_lock:
+        if active_job or pending_jobs:
+            raise HTTPException(409, 'Finish or cancel queued jobs before releasing models.')
+        image_worker.close()
+        return image_worker.status()
 
 @app.post('/api/models/{model_id}/download')
 def download_model(model_id: str):
@@ -274,6 +292,7 @@ def remove_model(model_id: str):
         if active_job or pending_jobs:
             raise HTTPException(409, 'Finish or cancel queued jobs before removing models.')
         try:
+            image_worker.close()
             return models.remove(model_id)
         except (ValueError,OSError) as exc:
             raise HTTPException(409, str(exc))
@@ -478,7 +497,7 @@ def history(kind: str = 'image'):
     jobs = []
     for path in JOBS_DIR.glob('*/status.json'):
         try:
-            job = json.loads(path.read_text(encoding='utf-8'))
+            job = read_json(path)
             if job.get('status') == 'succeeded' and job.get('kind','image') == kind:
                 jobs.append(public_job(job))
         except (ValueError, OSError):

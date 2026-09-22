@@ -41,7 +41,7 @@ The first base-model I2V experiment incorrectly used CFG 6. It produced visible 
 
 ## Boundaries
 
-- 46 automated tests pass. They cover validation/security, upload safety, shared model dependencies/checksums, documented model defaults, dedicated GPU memory budgeting, conditioning encoder lifetime, image/video history separation, actual MP4 encoding with and without audio, OAuth PKCE/state/refresh/DPAPI and real local callback HTTP handling.
+- 54 automated tests pass. They cover validation/security, Windows status-read/write sharing races, upload safety, shared model dependencies/checksums, documented model defaults, dedicated GPU memory budgeting, conditioning encoder lifetime, retained CPU weight views, conditioning cache invalidation, resident process reuse/switch/crash recovery, image/video history separation, actual MP4 encoding with and without audio, OAuth PKCE/state/refresh/DPAPI and real local callback HTTP handling.
 - Google login itself is user-controlled. The normal local callback is `http://localhost:1455/auth/callback`; manual paste is only a fallback. The memory regression runs below have prompt enhancement disabled to isolate local model behavior.
 - Optional video INT8 and additional GGUF quantizations are offered with pinned hashes and compatible companion files. They were not all downloaded or benchmarked. The real video acceptance runs use the installed Q4 variants above.
 - Existing redundant image weights have not been deleted without approval. The proposed cleanup retains the installed image Q8/Q4 models and INT8 encoder/VAE. Temporary fresh-install environments also remain pending cleanup approval after automatic approval review rejected that directory cleanup.
@@ -68,3 +68,31 @@ The 124-frame video decodes at exactly 24 fps, has no black frames or timestamp 
 Six scheduler/API regression tests exercise mixed image/video FIFO execution with controlled worker processes (maximum concurrent workers: one), failure/cancel recovery, pause/resume, pending cancellation/reordering, restart persistence, fixed-seed reruns and pagination over 125 results. These tests replace GPU inference with controlled subprocesses; they do not claim an actual GPU benchmark.
 
 The real browser/API check on a separate paused queue accepted three mixed requests (HTTP 202 for each), kept prompt/settings/model controls editable, preserved independent request snapshots, reordered and cancelled waiting jobs, restored both input images and an unsent draft after refresh, searched/filtered the gallery, restored image/video settings, and re-enqueued saved settings with the original seed. Desktop 1440px and mobile 390px screenshots were reviewed; no overflow or browser errors occurred. The isolated server used copies of existing result metadata while the user's live long video continued separately. Artifacts: `validation/queue-gallery-ui.*`, `gallery-*.png` and `queue-*.png` on the data drive.
+
+## Resident image worker and conditioning reuse
+
+The old server started a new Python process for every image, and the engine explicitly discarded the encoder and diffusion model. The image worker now accepts successive jobs, retaining the matching encoder, diffusion model and VAE. A different model/encoder, a video job, cancellation or an inference error releases it. CPU fallback retains immutable tensor views, including independent GGUF wrappers, rather than copying GPU tensors back into read-only Windows mappings.
+
+An empty negative prompt skips the unused encoder pass at CFG 1. A single-entry conditioning cache keys on the actual positive/negative text and every ordered input image's mode, dimensions and pixels. The unchanged-input Q8 result at seed 66954407 is **pixel-for-pixel identical** to the accepted pre-change output `77242a5bf26048b6961e459144ddf6c8` (mean and maximum channel difference both zero).
+
+Measured on the existing RTX 4090 workstation, with cloud enhancement disabled. "New worker" means a new Python process; the OS file cache was not cleared. The first-step column measures when the first sampling step finishes, not a predicted start time. Other applications remained open.
+
+| Model / input | Size / steps | Worker | Processing inputs | First step completed | Total |
+|---|---|---|---:|---:|---:|
+| Q8, one portrait | 1024² / 25 | New | 4.284 s | 13.250 s | 28.1 s |
+| Q8, same input and prompt, different seed | 1024² / 25 | Reused | 0.055 s | 1.959 s | 17.3 s |
+| Q8, two different input images and a negative prompt | 1024² / 25, CFG 2 | Reused | 5.063 s | 9.933 s | 44.8 s |
+| Q4_K_M, one portrait | 2048² / 12 | New | 6.623 s | 24.475 s | 59.7 s |
+| Q4_K_M, same inputs, different seed | 2048² / 12 | Reused | 0.036 s | 4.917 s | 39.9 s |
+| Q8, one portrait | 2048² / 25 | New | 6.209 s | 21.071 s | 92.5 s |
+| Q8, same inputs, different seed | 2048² / 25 | Reused | 0.030 s | 3.271 s | 76.5 s |
+
+An additional Q8 single-input run with a changed positive prompt retained the same worker: input processing 3.581 s, first step 5.734 s, total 21.2 s. The mixed queue also released the image worker before an H3 Q4 Turbo first/last-frame video: 56 frames, 768², 24 fps, stereo audio, 126.6 s, no black frames or frame-clock errors, and 0.67 ms audio/video duration difference. During polling, an exFAT status-file sharing race exposed an HTTP 500; status reads now retry that temporary Windows error.
+
+The installed official BF16 model and its BF16 encoder also passed consecutive generation with a changed prompt: 55.8 s for a new worker and 7.4 s when reused (first step 54.885 s / 6.718 s; peak 16.53 GiB). This was a **512², four-step lifecycle smoke test**, not a quality or default-speed benchmark. Q8 2K and BF16 artifacts are under `validation/resident-large-1790088070/`.
+
+Local artifacts: `validation/resident/`, `validation/resident-api-1790087796/`, and the resident benchmark/QA scripts on the data drive. Private photos and outputs are not committed.
+
+The final mixed GPU queue (`validation/resident-api-1790088313/`) completed all five requests in FIFO order without overlapping inference: Q8 image 51.8 s, cached-input Q8 image 16.7 s, changed two-image/negative conditioning 43.2 s, H3 Turbo first/last-frame video 121.4 s, then Q8 text-to-image 43.5 s. The first three shared one worker PID; the video and subsequent image each had a new PID. The cached image's first step finished in 1.863 s, input processing took 0.042 s. Startup variability is visible across runs; warm reuse is the relevant comparison, not a promise of fixed generation times.
+
+The browser check confirmed an editable draft during the real queue and released the idle model with **Settings → Release model memory**. Dedicated GPU use returned to about 1.9 GiB. Gallery timing details, the reuse indicator, full images and desktop/mobile layout were verified with no browser errors or mobile overflow. The gallery check was replayed against the completed results after correcting a test locator that matched both the hidden image result and the gallery dialog; no GPU work was repeated for that selector correction.

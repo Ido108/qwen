@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {ArrowUp,Check,Clock,Film,Image,Loader2,Pause,Play,RotateCcw,X,ListOrdered} from 'lucide-react';
 import type {Api} from './ModelSettings';
 
-export type SavedJob={id:string;kind?:string;status:string;stage:string;message:string;request:Record<string,any>;seed:number;created_at:number;started_at?:number;finished_at?:number;elapsed_seconds?:number;step:number;total_steps:number;position?:number;width?:number;height?:number;frames?:number;duration_seconds?:number;image_url?:string;video_url?:string;poster_url?:string;rewritten_prompt?:string;actual_prompt?:string;[key:string]:any};
+export type SavedJob={id:string;kind?:string;status:string;stage:string;message:string;request:Record<string,any>;seed:number;created_at:number;started_at?:number;finished_at?:number;elapsed_seconds?:number;stage_seconds?:Record<string,number>;step:number;total_steps:number;position?:number;width?:number;height?:number;frames?:number;duration_seconds?:number;image_url?:string;video_url?:string;poster_url?:string;rewritten_prompt?:string;actual_prompt?:string;[key:string]:any};
 export type QueueState={paused:boolean;active:SavedJob|null;pending:SavedJob[];recent:SavedJob[]};
 export function useQueue(api:Api,enabled:boolean){
   const [state,setState]=useState<QueueState>({paused:false,active:null,pending:[],recent:[]});

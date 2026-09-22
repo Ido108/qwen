@@ -18,6 +18,17 @@ EXAMPLES_DIR = APP_DIR / 'public' / 'examples'
 for directory in (JOBS_DIR, UPLOADS_DIR, OUTPUTS_DIR, VIDEOS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
+def read_json(path: Path):
+    # Atomic replacement on Windows/exFAT can briefly deny a reader's open.
+    # Retry that sharing race instead of returning an HTTP 500 during polling.
+    for attempt in range(25):
+        try:
+            return json.loads(path.read_text(encoding='utf-8'))
+        except PermissionError:
+            if attempt == 24:
+                raise
+            time.sleep(min(.005 * (attempt + 1), .05))
+
 def write_json(path: Path, data: dict) -> None:
     temp = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
     temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')

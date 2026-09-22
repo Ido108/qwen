@@ -1,4 +1,4 @@
-"""One owned process per generation: cancellation releases all GPU and RAM allocations."""
+"""Resident image worker; video jobs retain an isolated, single-use process."""
 from __future__ import annotations
 import json
 import math
@@ -15,11 +15,20 @@ os.environ['HF_HUB_OFFLINE'] = '1'
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
-directory = Path(sys.argv[1])
-job = json.loads((directory / 'status.json').read_text(encoding='utf-8'))
-request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
+directory = None
+job = {}
+request = {}
 
 def update(**values):
+    now = time.time()
+    if values.get('stage') and values['stage'] != job.get('stage'):
+        if job.get('stage_started_at'):
+            timings = job.setdefault('stage_seconds', {})
+            stage = job['stage']
+            timings[stage] = round(timings.get(stage, 0) + now - job['stage_started_at'], 3)
+        values['stage_started_at'] = now
+    if values.get('stage') == 'generating' and values.get('step') == 1:
+        values['time_to_first_step_seconds'] = round(now - job['started_at'], 3)
     job.update(values)
     write_json(directory / 'status.json', job)
     print(json.dumps({k: v for k, v in values.items() if k != 'request'}, ensure_ascii=False), flush=True)
@@ -80,20 +89,55 @@ def run():
         actual_prompt=prompt,model_revision=selected['revision'])
     write_json(destination.with_suffix('.json'), job)
 
-try:
-    run()
-except Exception as exc:
-    traceback.print_exc()
-    message = str(exc)
-    if 'out of memory' in message.lower():
-        if request.get('kind') == 'video':
-            message = ('Not enough free GPU memory while reading the prompt and input images. '
-                       'Close unused AI apps and retry.' if job.get('stage') == 'encoding' else
-                       'Not enough free GPU memory while generating video. '
-                       'Close unused AI apps, choose a smaller size or shorter duration, and retry.')
-        else:
-            message = 'Not enough free GPU memory. Close unused AI apps, choose a 1K size, and retry.'
-    elif '1455' in message or 'paging file is too small' in message.lower():
-        message = 'Windows ran out of available system memory. Close unused AI apps and retry. If this persists, increase the Windows paging file.'
-    update(status='failed', stage='failed', message=message, finished_at=time.time())
-    sys.exit(1)
+def execute(folder):
+    global directory, job, request
+    directory = Path(folder)
+    job = json.loads((directory / 'status.json').read_text(encoding='utf-8'))
+    request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
+    try:
+        update(worker_pid=os.getpid())
+        run()
+        return 0
+    except Exception as exc:
+        traceback.print_exc()
+        message = str(exc)
+        if 'out of memory' in message.lower():
+            if request.get('kind') == 'video':
+                message = ('Not enough free GPU memory while processing the prompt and input images. '
+                           'Close unused AI apps and retry.' if job.get('stage') == 'encoding' else
+                           'Not enough free GPU memory while generating video. '
+                           'Close unused AI apps, choose a smaller size or shorter duration, and retry.')
+            else:
+                message = 'Not enough free GPU memory. Close unused AI apps, choose a 1K size, and retry.'
+        elif '1455' in message or 'paging file is too small' in message.lower():
+            message = 'Windows ran out of available system memory. Close unused AI apps and retry. If this persists, increase the Windows paging file.'
+        update(status='failed', stage='failed', message=message, finished_at=time.time())
+        return 1
+
+
+def main():
+    if sys.argv[1] != '--persistent':
+        return execute(sys.argv[1])
+    # EOF also ends the worker if its owning server closes or crashes.
+    for line in sys.stdin:
+        command = json.loads(line)
+        if command.get('stop'):
+            return 0
+        folder = Path(command['directory'])
+        with (folder / 'worker.log').open('w', encoding='utf-8') as log:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os.dup2(log.fileno(), 1)
+            os.dup2(log.fileno(), 2)
+            code = execute(folder)
+            sys.stdout.flush()
+            sys.stderr.flush()
+            write_json(folder / 'worker.done.json', {'returncode': code, 'pid': os.getpid()})
+        if code:
+            # Discard any partially loaded models after an exception.
+            return code
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

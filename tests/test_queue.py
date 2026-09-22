@@ -62,11 +62,25 @@ class QueueTests(unittest.TestCase):
             def poll(self):
                 return self.code if self.done else None
 
+        class ImageWorker:
+            def start(self, directory, request):
+                return Process([str(directory)])
+
+            def wait(self, directory, process):
+                return process.wait()
+
+            def close(self):
+                pass
+
+            def status(self):
+                return {'loaded': False}
+
         self.patches = [
             patch.multiple(server, DATA_DIR=self.root, JOBS_DIR=self.jobs, active_job=None,
                            active_process=None, pending_jobs=[], recent_jobs=deque(maxlen=20),
                            cancelled_jobs=set(), queue_paused=False, shutting_down=False),
             patch.object(server.subprocess, 'Popen', Process),
+            patch.object(server, 'image_worker', ImageWorker()),
             patch.object(server, 'stop_worker', lambda process: process.gate.set()),
             patch.object(server.models, 'is_installed', return_value=True),
         ]
@@ -131,6 +145,7 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(self.started, [])
         self.assertEqual(server.read_job(second['id'])['status'], 'cancelled')
         self.assertEqual(self.client.delete('/api/models/gguf-q8_0', headers=self.headers).status_code, 409)
+        self.assertEqual(self.client.post('/api/models/release', headers=self.headers).status_code, 409)
         self.post('/api/queue/control', {'paused': False})
         eventually(lambda: third['id'] in self.started)
         self.post('/api/queue/control', {'paused': True})

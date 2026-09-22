@@ -19,7 +19,7 @@ export const en = {
   steps:'Steps', precisionHint:'Sizes that are not multiples of 32 are rendered at the next compatible size, then resized to your exact dimensions.',
   promptLoaded:'Example loaded', noHistory:'Your completed images are saved here.', language:'Language', copied:'Copied', copy:'Copy prompt',
   loading:'Loading image tools…', loading_rewriter:'Loading prompt enhancement…', rewriting:'Enhancing prompt…', loading_model:'Loading Qwen-Image-2.1…',
-  encoding:'Reading prompt and input images…', generating:'Generating image…', saving:'Saving PNG…', starting:'Starting…', complete:'Image saved.',
+  encoding:'Processing prompt and input images…', generating:'Generating image…', saving:'Saving PNG…', starting:'Starting…', complete:'Image saved.',
   cancelled:'Generation cancelled.', failed:'Generation failed.', offline:'Connection lost. Reconnecting…', seconds:'s', tokens:'tokens',
   newResult:'New image', originalPrompt:'Original prompt', reuseSettings:'Use these settings', sourceCount:'input images', waiting:'Loading…',
 };
