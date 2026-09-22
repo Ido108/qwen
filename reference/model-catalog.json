@@ -1,515 +1,765 @@
 [
-    {
-        "id":  "official-bf16",
-        "title":  "Qwen-Image-2.1 ? BF16",
-        "kind":  "image",
-        "format":  "BF16",
-        "repo":  "Qwen/Qwen-Image-2.1",
-        "revision":  "790c92633540aa0cb11d9abf19eb46d861714758",
-        "directory":  "Qwen-Image-2.1",
-        "files":  [
-                      {
-                          "path":  "LICENSE",
-                          "bytes":  7831,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "README.md",
-                          "bytes":  5358,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "transformer/config.json",
-                          "bytes":  370,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
-                          "bytes":  9968332504,
-                          "sha256":  "9e6bc2d641e67bf277895ea8777141044a38f3edb7101bc469b2961dd7c36b4b"
-                      },
-                      {
-                          "path":  "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
-                          "bytes":  4261951904,
-                          "sha256":  "3aaf234dcbe128530479735854a346b5e3e66283b7c11db56f836bbd1c13ebaa"
-                      },
-                      {
-                          "path":  "transformer/diffusion_pytorch_model.safetensors.index.json",
-                          "bytes":  30283,
-                          "sha256":  null
-                      }
-                  ],
-        "bytes":  14230328250,
-        "dependencies":  [
-                             "encoder-bf16",
-                             "vae"
-                         ],
-        "removal_files":  [
-                              {
-                                  "path":  "LICENSE",
-                                  "bytes":  7831,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "README.md",
-                                  "bytes":  5358,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "model_index.json",
-                                  "bytes":  447,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "processor/added_tokens.json",
-                                  "bytes":  707,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "processor/chat_template.jinja",
-                                  "bytes":  5292,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "processor/merges.txt",
-                                  "bytes":  1671853,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "processor/preprocessor_config.json",
-                                  "bytes":  782,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "processor/special_tokens_map.json",
-                                  "bytes":  613,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "processor/tokenizer.json",
-                                  "bytes":  11422654,
-                                  "sha256":  "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
-                              },
-                              {
-                                  "path":  "processor/tokenizer_config.json",
-                                  "bytes":  5445,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "processor/video_preprocessor_config.json",
-                                  "bytes":  817,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "processor/vocab.json",
-                                  "bytes":  2776833,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "scheduler/scheduler_config.json",
-                                  "bytes":  485,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "text_encoder/config.json",
-                                  "bytes":  1517,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "text_encoder/generation_config.json",
-                                  "bytes":  213,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "text_encoder/model-00001-of-00004.safetensors",
-                                  "bytes":  4998056552,
-                                  "sha256":  "dde00291b5f7fb92013895310a3da0ddba78674df9f10d505d375243dc01fc6f"
-                              },
-                              {
-                                  "path":  "text_encoder/model-00002-of-00004.safetensors",
-                                  "bytes":  4915962464,
-                                  "sha256":  "9047faccc0a6d98496a52d55f27be1c94a9c259d1e283fbea0128d054a948d42"
-                              },
-                              {
-                                  "path":  "text_encoder/model-00003-of-00004.safetensors",
-                                  "bytes":  4915962496,
-                                  "sha256":  "8c54187654c0176b73ae73785bf791dc9a14c9df7fb4310083a09d42048cb57e"
-                              },
-                              {
-                                  "path":  "text_encoder/model-00004-of-00004.safetensors",
-                                  "bytes":  2704357976,
-                                  "sha256":  "5311532aaaeae3259eb6a7b2c600636be1159adf7ded35f53579f7d0e7d43cdd"
-                              },
-                              {
-                                  "path":  "text_encoder/model.safetensors.index.json",
-                                  "bytes":  67795,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "transformer/config.json",
-                                  "bytes":  370,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
-                                  "bytes":  9968332504,
-                                  "sha256":  "9e6bc2d641e67bf277895ea8777141044a38f3edb7101bc469b2961dd7c36b4b"
-                              },
-                              {
-                                  "path":  "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
-                                  "bytes":  4261951904,
-                                  "sha256":  "3aaf234dcbe128530479735854a346b5e3e66283b7c11db56f836bbd1c13ebaa"
-                              },
-                              {
-                                  "path":  "transformer/diffusion_pytorch_model.safetensors.index.json",
-                                  "bytes":  30283,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "vae/config.json",
-                                  "bytes":  2079,
-                                  "sha256":  null
-                              },
-                              {
-                                  "path":  "vae/diffusion_pytorch_model.safetensors",
-                                  "bytes":  1350989512,
-                                  "sha256":  "a07a1b7c4ee2966a1b3bdc37de9b4f983d56937e46619f709a80b6e490675417"
-                              }
-                          ]
-    },
-    {
-        "id":  "pe-t2i",
-        "title":  "Prompt enhancement ? Text to image",
-        "kind":  "enhancer",
-        "format":  "BF16",
-        "repo":  "Qwen/Qwen-Image-2.1-PE-T2I",
-        "revision":  "f3ed7985c788ad75b3ab7223e0c4c51e2a43545b",
-        "directory":  "Qwen-Image-2.1-PE-T2I",
-        "files":  [
-                      {
-                          "path":  "LICENSE",
-                          "bytes":  7831,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "README.md",
-                          "bytes":  5001,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "chat_template.jinja",
-                          "bytes":  7756,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "config.json",
-                          "bytes":  2856,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "generation_config.json",
-                          "bytes":  204,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "model-00001.safetensors",
-                          "bytes":  5074583064,
-                          "sha256":  "4f4e6abd06ea053b2abbeab961d6846350d9f0ab815622ab38a47f3122a5936e"
-                      },
-                      {
-                          "path":  "model-00002.safetensors",
-                          "bytes":  5089028664,
-                          "sha256":  "578965d7a6bcd407cdddf3fdefd6803a3758a6d56c7af34b0b2bb2e7a225a762"
-                      },
-                      {
-                          "path":  "model-00003.safetensors",
-                          "bytes":  5089028760,
-                          "sha256":  "e72bcce3e14dff2a409f54fada37fc5268e989a976e665f2148d10406026ee71"
-                      },
-                      {
-                          "path":  "model-00004.safetensors",
-                          "bytes":  3567080680,
-                          "sha256":  "08dd9ac9418e12fb1cbe807cdbde678da1b921acab80843be9017a05c5fff186"
-                      },
-                      {
-                          "path":  "model.safetensors.index.json",
-                          "bytes":  62376,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "processor_config.json",
-                          "bytes":  1298,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "system_prompt.txt",
-                          "bytes":  10045,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "tokenizer.json",
-                          "bytes":  19989343,
-                          "sha256":  "87a7830d63fcf43bf241c3c5242e96e62dd3fdc29224ca26fed8ea333db72de4"
-                      },
-                      {
-                          "path":  "tokenizer_config.json",
-                          "bytes":  1166,
-                          "sha256":  null
-                      }
-                  ],
-        "bytes":  18839809044,
-        "dependencies":  [
-
-                         ]
-    },
-    {
-        "id":  "pe-i2i",
-        "title":  "Prompt enhancement ? Image editing",
-        "kind":  "enhancer",
-        "format":  "BF16",
-        "repo":  "Qwen/Qwen-Image-2.1-PE-I2I",
-        "revision":  "72927bc08afc99b7888ceb7d7d51a12db3700bbd",
-        "directory":  "Qwen-Image-2.1-PE-I2I",
-        "files":  [
-                      {
-                          "path":  "LICENSE",
-                          "bytes":  7831,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "README.md",
-                          "bytes":  5800,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "chat_template.jinja",
-                          "bytes":  7756,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "config.json",
-                          "bytes":  2808,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "generation_config.json",
-                          "bytes":  178,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "model-00001.safetensors",
-                          "bytes":  5074583064,
-                          "sha256":  "e8af5c5a8df58bbd30f01e61d555f03a937e1083dcd1fd8fdedfe7adea8b2245"
-                      },
-                      {
-                          "path":  "model-00002.safetensors",
-                          "bytes":  5089028664,
-                          "sha256":  "1e9d25e9548c226eee3ea259eb3716ed48229dab41fda1676881d34a8ab94dac"
-                      },
-                      {
-                          "path":  "model-00003.safetensors",
-                          "bytes":  5089028760,
-                          "sha256":  "01937bc79db056bcb277f9524fcc853e1757a199cd4fa604b342f9a6c8601470"
-                      },
-                      {
-                          "path":  "model-00004.safetensors",
-                          "bytes":  3567080680,
-                          "sha256":  "4354c647339ab93206b9891f16056d7557637013074f4ed021a26beab869fbc3"
-                      },
-                      {
-                          "path":  "model.safetensors.index.json",
-                          "bytes":  62376,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "processor_config.json",
-                          "bytes":  1298,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "system_prompt.txt",
-                          "bytes":  18344,
-                          "sha256":  null
-                      },
-                      {
-                          "path":  "tokenizer.json",
-                          "bytes":  19989343,
-                          "sha256":  "87a7830d63fcf43bf241c3c5242e96e62dd3fdc29224ca26fed8ea333db72de4"
-                      },
-                      {
-                          "path":  "tokenizer_config.json",
-                          "bytes":  1166,
-                          "sha256":  null
-                      }
-                  ],
-        "bytes":  18839818068,
-        "dependencies":  [
-
-                         ]
-    },
-    {
-        "id":  "gguf-q8_0",
-        "title":  "Qwen-Image-2.1 Uncensored ? Q8_0",
-        "kind":  "image",
-        "format":  "GGUF",
-        "repo":  "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-        "revision":  "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
-        "directory":  "abenzerps-GGUF",
-        "files":  [
-                      {
-                          "path":  "qwen-image-2.1-Q8_0.gguf",
-                          "bytes":  7591551648,
-                          "sha256":  "763ee46b76069d9c54ab26719a0b9222575751560c8bf3a48275736c44351c0e"
-                      }
-                  ],
-        "bytes":  7591551648,
-        "dependencies":  [
-                             "encoder-int8",
-                             "vae"
-                         ]
-    },
-    {
-        "id":  "gguf-q6_k",
-        "title":  "Qwen-Image-2.1 Uncensored ? Q6_K",
-        "kind":  "image",
-        "format":  "GGUF",
-        "repo":  "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-        "revision":  "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
-        "directory":  "abenzerps-GGUF",
-        "files":  [
-                      {
-                          "path":  "qwen-image-2.1-Q6_K.gguf",
-                          "bytes":  5876556448,
-                          "sha256":  "a3a0d39bb03cda26302fc048b49d019baaea1c381cbda3994f6f2a7826344fb9"
-                      }
-                  ],
-        "bytes":  5876556448,
-        "dependencies":  [
-                             "encoder-int8",
-                             "vae"
-                         ]
-    },
-    {
-        "id":  "gguf-q5_k_m",
-        "title":  "Qwen-Image-2.1 Uncensored ? Q5_K_M",
-        "kind":  "image",
-        "format":  "GGUF",
-        "repo":  "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-        "revision":  "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
-        "directory":  "abenzerps-GGUF",
-        "files":  [
-                      {
-                          "path":  "qwen-image-2.1-Q5_K_M.gguf",
-                          "bytes":  5221284512,
-                          "sha256":  "88ce8e90e5b959cce5e248f697d7f6c9c7ca5696c1eac64a10dadb041dd7fd07"
-                      }
-                  ],
-        "bytes":  5221284512,
-        "dependencies":  [
-                             "encoder-int8",
-                             "vae"
-                         ]
-    },
-    {
-        "id":  "gguf-q4_k_m",
-        "title":  "Qwen-Image-2.1 Uncensored ? Q4_K_M",
-        "kind":  "image",
-        "format":  "GGUF",
-        "repo":  "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-        "revision":  "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
-        "directory":  "abenzerps-GGUF",
-        "files":  [
-                      {
-                          "path":  "qwen-image-2.1-Q4_K_M.gguf",
-                          "bytes":  4604557984,
-                          "sha256":  "833439e91bc1152d28f37aa198c7f6f4218b7de95754c2f7a318a2422ab4b2f8"
-                      }
-                  ],
-        "bytes":  4604557984,
-        "dependencies":  [
-                             "encoder-int8",
-                             "vae"
-                         ]
-    },
-    {
-        "id":  "gguf-q4_0",
-        "title":  "Qwen-Image-2.1 Uncensored ? Q4_0",
-        "kind":  "image",
-        "format":  "GGUF",
-        "repo":  "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-        "revision":  "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
-        "directory":  "abenzerps-GGUF",
-        "files":  [
-                      {
-                          "path":  "qwen-image-2.1-Q4_0.gguf",
-                          "bytes":  4050899616,
-                          "sha256":  "8efd261419f4d60bf0eda8ae86a656e229ed440a248a22e20bf1f1f9606f6124"
-                      }
-                  ],
-        "bytes":  4050899616,
-        "dependencies":  [
-                             "encoder-int8",
-                             "vae"
-                         ]
-    },
-    {
-        "id":  "encoder-int8",
-        "title":  "Qwen3-VL 8B ? INT8",
-        "kind":  "encoder",
-        "format":  "INT8",
-        "repo":  "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-        "revision":  "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
-        "directory":  "abenzerps-GGUF",
-        "files":  [
-                      {
-                          "path":  "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
-                          "bytes":  9350798360,
-                          "sha256":  "8bfd0f6e12abf2d2d697ecc888e5e90b0d6741d6708f05799f53afa560452e8f"
-                      }
-                  ],
-        "bytes":  9350798360,
-        "dependencies":  [
-
-                         ]
-    },
-    {
-        "id":  "encoder-bf16",
-        "title":  "Qwen3-VL 8B ? BF16",
-        "kind":  "encoder",
-        "format":  "BF16",
-        "repo":  "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-        "revision":  "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
-        "directory":  "abenzerps-GGUF",
-        "files":  [
-                      {
-                          "path":  "text_encoders/qwen3vl_8b_bf16.safetensors",
-                          "bytes":  17534334616,
-                          "sha256":  "68bdc82bc1b66851162ae656225e7e2068166b603db19bd5d5a3b90eb12669a9"
-                      }
-                  ],
-        "bytes":  17534334616,
-        "dependencies":  [
-
-                         ]
-    },
-    {
-        "id":  "vae",
-        "title":  "Qwen-Image-2.1 VAE",
-        "kind":  "vae",
-        "format":  "BF16",
-        "repo":  "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
-        "revision":  "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
-        "directory":  "abenzerps-GGUF",
-        "files":  [
-                      {
-                          "path":  "vae/qwen_image_2.1_vae_bf16.safetensors",
-                          "bytes":  675509688,
-                          "sha256":  "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9"
-                      }
-                  ],
-        "bytes":  675509688,
-        "dependencies":  [
-
-                         ]
-    }
+  {
+    "id": "official-bf16",
+    "title": "Qwen-Image-2.1 · BF16",
+    "kind": "image",
+    "format": "BF16",
+    "repo": "Qwen/Qwen-Image-2.1",
+    "revision": "790c92633540aa0cb11d9abf19eb46d861714758",
+    "directory": "Qwen-Image-2.1",
+    "files": [
+      {
+        "path": "LICENSE",
+        "bytes": 7831,
+        "sha256": null
+      },
+      {
+        "path": "README.md",
+        "bytes": 5358,
+        "sha256": null
+      },
+      {
+        "path": "transformer/config.json",
+        "bytes": 370,
+        "sha256": null
+      },
+      {
+        "path": "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
+        "bytes": 9968332504,
+        "sha256": "9e6bc2d641e67bf277895ea8777141044a38f3edb7101bc469b2961dd7c36b4b"
+      },
+      {
+        "path": "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
+        "bytes": 4261951904,
+        "sha256": "3aaf234dcbe128530479735854a346b5e3e66283b7c11db56f836bbd1c13ebaa"
+      },
+      {
+        "path": "transformer/diffusion_pytorch_model.safetensors.index.json",
+        "bytes": 30283,
+        "sha256": null
+      }
+    ],
+    "bytes": 14230328250,
+    "dependencies": [
+      "encoder-bf16",
+      "vae"
+    ],
+    "removal_files": [
+      {
+        "path": "LICENSE",
+        "bytes": 7831,
+        "sha256": null
+      },
+      {
+        "path": "README.md",
+        "bytes": 5358,
+        "sha256": null
+      },
+      {
+        "path": "model_index.json",
+        "bytes": 447,
+        "sha256": null
+      },
+      {
+        "path": "processor/added_tokens.json",
+        "bytes": 707,
+        "sha256": null
+      },
+      {
+        "path": "processor/chat_template.jinja",
+        "bytes": 5292,
+        "sha256": null
+      },
+      {
+        "path": "processor/merges.txt",
+        "bytes": 1671853,
+        "sha256": null
+      },
+      {
+        "path": "processor/preprocessor_config.json",
+        "bytes": 782,
+        "sha256": null
+      },
+      {
+        "path": "processor/special_tokens_map.json",
+        "bytes": 613,
+        "sha256": null
+      },
+      {
+        "path": "processor/tokenizer.json",
+        "bytes": 11422654,
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"
+      },
+      {
+        "path": "processor/tokenizer_config.json",
+        "bytes": 5445,
+        "sha256": null
+      },
+      {
+        "path": "processor/video_preprocessor_config.json",
+        "bytes": 817,
+        "sha256": null
+      },
+      {
+        "path": "processor/vocab.json",
+        "bytes": 2776833,
+        "sha256": null
+      },
+      {
+        "path": "scheduler/scheduler_config.json",
+        "bytes": 485,
+        "sha256": null
+      },
+      {
+        "path": "text_encoder/config.json",
+        "bytes": 1517,
+        "sha256": null
+      },
+      {
+        "path": "text_encoder/generation_config.json",
+        "bytes": 213,
+        "sha256": null
+      },
+      {
+        "path": "text_encoder/model-00001-of-00004.safetensors",
+        "bytes": 4998056552,
+        "sha256": "dde00291b5f7fb92013895310a3da0ddba78674df9f10d505d375243dc01fc6f"
+      },
+      {
+        "path": "text_encoder/model-00002-of-00004.safetensors",
+        "bytes": 4915962464,
+        "sha256": "9047faccc0a6d98496a52d55f27be1c94a9c259d1e283fbea0128d054a948d42"
+      },
+      {
+        "path": "text_encoder/model-00003-of-00004.safetensors",
+        "bytes": 4915962496,
+        "sha256": "8c54187654c0176b73ae73785bf791dc9a14c9df7fb4310083a09d42048cb57e"
+      },
+      {
+        "path": "text_encoder/model-00004-of-00004.safetensors",
+        "bytes": 2704357976,
+        "sha256": "5311532aaaeae3259eb6a7b2c600636be1159adf7ded35f53579f7d0e7d43cdd"
+      },
+      {
+        "path": "text_encoder/model.safetensors.index.json",
+        "bytes": 67795,
+        "sha256": null
+      },
+      {
+        "path": "transformer/config.json",
+        "bytes": 370,
+        "sha256": null
+      },
+      {
+        "path": "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
+        "bytes": 9968332504,
+        "sha256": "9e6bc2d641e67bf277895ea8777141044a38f3edb7101bc469b2961dd7c36b4b"
+      },
+      {
+        "path": "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
+        "bytes": 4261951904,
+        "sha256": "3aaf234dcbe128530479735854a346b5e3e66283b7c11db56f836bbd1c13ebaa"
+      },
+      {
+        "path": "transformer/diffusion_pytorch_model.safetensors.index.json",
+        "bytes": 30283,
+        "sha256": null
+      },
+      {
+        "path": "vae/config.json",
+        "bytes": 2079,
+        "sha256": null
+      },
+      {
+        "path": "vae/diffusion_pytorch_model.safetensors",
+        "bytes": 1350989512,
+        "sha256": "a07a1b7c4ee2966a1b3bdc37de9b4f983d56937e46619f709a80b6e490675417"
+      }
+    ]
+  },
+  {
+    "id": "pe-t2i",
+    "title": "Prompt enhancement · Text to image",
+    "kind": "enhancer",
+    "format": "BF16",
+    "repo": "Qwen/Qwen-Image-2.1-PE-T2I",
+    "revision": "f3ed7985c788ad75b3ab7223e0c4c51e2a43545b",
+    "directory": "Qwen-Image-2.1-PE-T2I",
+    "files": [
+      {
+        "path": "LICENSE",
+        "bytes": 7831,
+        "sha256": null
+      },
+      {
+        "path": "README.md",
+        "bytes": 5001,
+        "sha256": null
+      },
+      {
+        "path": "chat_template.jinja",
+        "bytes": 7756,
+        "sha256": null
+      },
+      {
+        "path": "config.json",
+        "bytes": 2856,
+        "sha256": null
+      },
+      {
+        "path": "generation_config.json",
+        "bytes": 204,
+        "sha256": null
+      },
+      {
+        "path": "model-00001.safetensors",
+        "bytes": 5074583064,
+        "sha256": "4f4e6abd06ea053b2abbeab961d6846350d9f0ab815622ab38a47f3122a5936e"
+      },
+      {
+        "path": "model-00002.safetensors",
+        "bytes": 5089028664,
+        "sha256": "578965d7a6bcd407cdddf3fdefd6803a3758a6d56c7af34b0b2bb2e7a225a762"
+      },
+      {
+        "path": "model-00003.safetensors",
+        "bytes": 5089028760,
+        "sha256": "e72bcce3e14dff2a409f54fada37fc5268e989a976e665f2148d10406026ee71"
+      },
+      {
+        "path": "model-00004.safetensors",
+        "bytes": 3567080680,
+        "sha256": "08dd9ac9418e12fb1cbe807cdbde678da1b921acab80843be9017a05c5fff186"
+      },
+      {
+        "path": "model.safetensors.index.json",
+        "bytes": 62376,
+        "sha256": null
+      },
+      {
+        "path": "processor_config.json",
+        "bytes": 1298,
+        "sha256": null
+      },
+      {
+        "path": "system_prompt.txt",
+        "bytes": 10045,
+        "sha256": null
+      },
+      {
+        "path": "tokenizer.json",
+        "bytes": 19989343,
+        "sha256": "87a7830d63fcf43bf241c3c5242e96e62dd3fdc29224ca26fed8ea333db72de4"
+      },
+      {
+        "path": "tokenizer_config.json",
+        "bytes": 1166,
+        "sha256": null
+      }
+    ],
+    "bytes": 18839809044,
+    "dependencies": []
+  },
+  {
+    "id": "pe-i2i",
+    "title": "Prompt enhancement · Image editing",
+    "kind": "enhancer",
+    "format": "BF16",
+    "repo": "Qwen/Qwen-Image-2.1-PE-I2I",
+    "revision": "72927bc08afc99b7888ceb7d7d51a12db3700bbd",
+    "directory": "Qwen-Image-2.1-PE-I2I",
+    "files": [
+      {
+        "path": "LICENSE",
+        "bytes": 7831,
+        "sha256": null
+      },
+      {
+        "path": "README.md",
+        "bytes": 5800,
+        "sha256": null
+      },
+      {
+        "path": "chat_template.jinja",
+        "bytes": 7756,
+        "sha256": null
+      },
+      {
+        "path": "config.json",
+        "bytes": 2808,
+        "sha256": null
+      },
+      {
+        "path": "generation_config.json",
+        "bytes": 178,
+        "sha256": null
+      },
+      {
+        "path": "model-00001.safetensors",
+        "bytes": 5074583064,
+        "sha256": "e8af5c5a8df58bbd30f01e61d555f03a937e1083dcd1fd8fdedfe7adea8b2245"
+      },
+      {
+        "path": "model-00002.safetensors",
+        "bytes": 5089028664,
+        "sha256": "1e9d25e9548c226eee3ea259eb3716ed48229dab41fda1676881d34a8ab94dac"
+      },
+      {
+        "path": "model-00003.safetensors",
+        "bytes": 5089028760,
+        "sha256": "01937bc79db056bcb277f9524fcc853e1757a199cd4fa604b342f9a6c8601470"
+      },
+      {
+        "path": "model-00004.safetensors",
+        "bytes": 3567080680,
+        "sha256": "4354c647339ab93206b9891f16056d7557637013074f4ed021a26beab869fbc3"
+      },
+      {
+        "path": "model.safetensors.index.json",
+        "bytes": 62376,
+        "sha256": null
+      },
+      {
+        "path": "processor_config.json",
+        "bytes": 1298,
+        "sha256": null
+      },
+      {
+        "path": "system_prompt.txt",
+        "bytes": 18344,
+        "sha256": null
+      },
+      {
+        "path": "tokenizer.json",
+        "bytes": 19989343,
+        "sha256": "87a7830d63fcf43bf241c3c5242e96e62dd3fdc29224ca26fed8ea333db72de4"
+      },
+      {
+        "path": "tokenizer_config.json",
+        "bytes": 1166,
+        "sha256": null
+      }
+    ],
+    "bytes": 18839818068,
+    "dependencies": []
+  },
+  {
+    "id": "gguf-q8_0",
+    "title": "Qwen-Image-2.1 Uncensored · Q8_0",
+    "kind": "image",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "revision": "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
+    "directory": "abenzerps-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-Q8_0.gguf",
+        "bytes": 7591551648,
+        "sha256": "763ee46b76069d9c54ab26719a0b9222575751560c8bf3a48275736c44351c0e"
+      }
+    ],
+    "bytes": 7591551648,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ]
+  },
+  {
+    "id": "gguf-q6_k",
+    "title": "Qwen-Image-2.1 Uncensored · Q6_K",
+    "kind": "image",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "revision": "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
+    "directory": "abenzerps-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-Q6_K.gguf",
+        "bytes": 5876556448,
+        "sha256": "a3a0d39bb03cda26302fc048b49d019baaea1c381cbda3994f6f2a7826344fb9"
+      }
+    ],
+    "bytes": 5876556448,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ]
+  },
+  {
+    "id": "gguf-q5_k_m",
+    "title": "Qwen-Image-2.1 Uncensored · Q5_K_M",
+    "kind": "image",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "revision": "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
+    "directory": "abenzerps-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-Q5_K_M.gguf",
+        "bytes": 5221284512,
+        "sha256": "88ce8e90e5b959cce5e248f697d7f6c9c7ca5696c1eac64a10dadb041dd7fd07"
+      }
+    ],
+    "bytes": 5221284512,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ]
+  },
+  {
+    "id": "gguf-q4_k_m",
+    "title": "Qwen-Image-2.1 Uncensored · Q4_K_M",
+    "kind": "image",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "revision": "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
+    "directory": "abenzerps-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-Q4_K_M.gguf",
+        "bytes": 4604557984,
+        "sha256": "833439e91bc1152d28f37aa198c7f6f4218b7de95754c2f7a318a2422ab4b2f8"
+      }
+    ],
+    "bytes": 4604557984,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ]
+  },
+  {
+    "id": "gguf-q4_0",
+    "title": "Qwen-Image-2.1 Uncensored · Q4_0",
+    "kind": "image",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "revision": "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
+    "directory": "abenzerps-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-Q4_0.gguf",
+        "bytes": 4050899616,
+        "sha256": "8efd261419f4d60bf0eda8ae86a656e229ed440a248a22e20bf1f1f9606f6124"
+      }
+    ],
+    "bytes": 4050899616,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ]
+  },
+  {
+    "id": "encoder-int8",
+    "title": "Qwen3-VL 8B · INT8",
+    "kind": "encoder",
+    "format": "INT8",
+    "repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "revision": "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
+    "directory": "abenzerps-GGUF",
+    "files": [
+      {
+        "path": "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+        "bytes": 9350798360,
+        "sha256": "8bfd0f6e12abf2d2d697ecc888e5e90b0d6741d6708f05799f53afa560452e8f"
+      }
+    ],
+    "bytes": 9350798360,
+    "dependencies": []
+  },
+  {
+    "id": "encoder-bf16",
+    "title": "Qwen3-VL 8B · BF16",
+    "kind": "encoder",
+    "format": "BF16",
+    "repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "revision": "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
+    "directory": "abenzerps-GGUF",
+    "files": [
+      {
+        "path": "text_encoders/qwen3vl_8b_bf16.safetensors",
+        "bytes": 17534334616,
+        "sha256": "68bdc82bc1b66851162ae656225e7e2068166b603db19bd5d5a3b90eb12669a9"
+      }
+    ],
+    "bytes": 17534334616,
+    "dependencies": []
+  },
+  {
+    "id": "vae",
+    "title": "Qwen-Image-2.1 VAE",
+    "kind": "vae",
+    "format": "BF16",
+    "repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "revision": "e92386d3b86fd77ae1650534815ab3f6b85d46ba",
+    "directory": "abenzerps-GGUF",
+    "files": [
+      {
+        "path": "vae/qwen_image_2.1_vae_bf16.safetensors",
+        "bytes": 675509688,
+        "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9"
+      }
+    ],
+    "bytes": 675509688,
+    "dependencies": []
+  },
+  {
+    "id": "h3-encoder",
+    "title": "MiniMax H3 text encoder · NVFP4",
+    "repo": "Comfy-Org/MiniMax-H3",
+    "revision": "7e75982b97cd5a41d2dcfa1904ee88d0686d6fd1",
+    "directory": "video/Comfy-Org-MiniMax-H3",
+    "files": [
+      {
+        "path": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "bytes": 15687142551,
+        "sha256": "35a88d51044231fe332301d7a62aa81e3f2cba62febeb446e2c1e3e0ef76f2c6"
+      }
+    ],
+    "bytes": 15687142551,
+    "kind": "video-support",
+    "format": "NVFP4",
+    "dependencies": []
+  },
+  {
+    "id": "h3-video-vae",
+    "title": "MiniMax H3 video VAE",
+    "repo": "Comfy-Org/MiniMax-H3",
+    "revision": "7e75982b97cd5a41d2dcfa1904ee88d0686d6fd1",
+    "directory": "video/Comfy-Org-MiniMax-H3",
+    "files": [
+      {
+        "path": "vae/minimax_h3_video_vae_fp16.safetensors",
+        "bytes": 5207808496,
+        "sha256": "7c1f131492e7eddacaac9069a61b81bdd39de5cc96561e677c5eab1cdce5e522"
+      }
+    ],
+    "bytes": 5207808496,
+    "kind": "video-support",
+    "format": "FP16",
+    "dependencies": []
+  },
+  {
+    "id": "h3-audio-vae",
+    "title": "MiniMax H3 audio VAE",
+    "repo": "Comfy-Org/MiniMax-H3",
+    "revision": "7e75982b97cd5a41d2dcfa1904ee88d0686d6fd1",
+    "directory": "video/Comfy-Org-MiniMax-H3",
+    "files": [
+      {
+        "path": "vae/minimax_h3_audio_vae_fp32.safetensors",
+        "bytes": 605254808,
+        "sha256": "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48"
+      }
+    ],
+    "bytes": 605254808,
+    "kind": "video-support",
+    "format": "FP32",
+    "dependencies": []
+  },
+  {
+    "id": "h3-turbo",
+    "title": "MiniMax H3 Turbo · 8 steps",
+    "repo": "Comfy-Org/MiniMax-H3",
+    "revision": "7e75982b97cd5a41d2dcfa1904ee88d0686d6fd1",
+    "directory": "video/Comfy-Org-MiniMax-H3",
+    "files": [
+      {
+        "path": "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        "bytes": 1956193000,
+        "sha256": "2339acdf19bfe123f46b971ea35d367a84adb85de43627e1eceafa5a5b2b111e"
+      }
+    ],
+    "bytes": 1956193000,
+    "kind": "video-support",
+    "format": "LoRA",
+    "dependencies": []
+  },
+  {
+    "id": "h3-gguf-q4",
+    "title": "MiniMax H3 · Q4_0",
+    "repo": "molbal/MiniMax-H3-GGUF",
+    "revision": "b45874371c61c49bf04096602f5527aac71b360b",
+    "directory": "video/molbal-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "minimax_h3_fl2va_pruned_fp8_Q4_0.gguf",
+        "bytes": 11377542880,
+        "sha256": "50891b806d6d700f4f20931791ca42a083dd9148609838268ccdc782bf899c1c"
+      }
+    ],
+    "bytes": 11377542880,
+    "kind": "video",
+    "format": "GGUF",
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "family": "minimax-h3",
+    "modes": [
+      "text",
+      "image"
+    ]
+  },
+  {
+    "id": "h3-gguf-q8",
+    "title": "MiniMax H3 · Q8_0",
+    "repo": "molbal/MiniMax-H3-GGUF",
+    "revision": "b45874371c61c49bf04096602f5527aac71b360b",
+    "directory": "video/molbal-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "minimax_h3_fl2va_pruned_fp8_Q8_0.gguf",
+        "bytes": 21411137248,
+        "sha256": "93a64471b7cb6f5f910f8a44acf564a3e12328bc022081dd76f6b1f08c92d9e8"
+      }
+    ],
+    "bytes": 21411137248,
+    "kind": "video",
+    "format": "GGUF",
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "family": "minimax-h3",
+    "modes": [
+      "text",
+      "image"
+    ]
+  },
+  {
+    "id": "h3-int8",
+    "title": "MiniMax H3 · INT8",
+    "repo": "Comfy-Org/MiniMax-H3",
+    "revision": "7e75982b97cd5a41d2dcfa1904ee88d0686d6fd1",
+    "directory": "video/Comfy-Org-MiniMax-H3",
+    "files": [
+      {
+        "path": "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "bytes": 20970379616,
+        "sha256": "e889202c41dafb67b10d67b97f0d8541508036a6090af23425a5c2615d03c47a"
+      }
+    ],
+    "bytes": 20970379616,
+    "kind": "video",
+    "format": "INT8",
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "family": "minimax-h3",
+    "modes": [
+      "text",
+      "image"
+    ]
+  },
+  {
+    "id": "fasth3-q4_k_m",
+    "title": "FastH3 8-Step V2 · Q4_K_M",
+    "repo": "vantagewithai/FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+    "revision": "448ffec4210efe431a6b4a945672d88aea5f25f4",
+    "directory": "video/vantagewithai-FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+    "files": [
+      {
+        "path": "fastvideo_fasth3_8step_v2_pruned-Q4_K_M.gguf",
+        "bytes": 13613532704,
+        "sha256": "2f2bb5b1c3e55782ceeda1cf4620cae97c748620001c6e35e85f5e71e5a478cc"
+      }
+    ],
+    "bytes": 13613532704,
+    "kind": "video",
+    "format": "GGUF",
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "family": "fasth3",
+    "modes": [
+      "text"
+    ],
+    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs."
+  },
+  {
+    "id": "fasth3-q5_k_m",
+    "title": "FastH3 8-Step V2 · Q5_K_M",
+    "repo": "vantagewithai/FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+    "revision": "448ffec4210efe431a6b4a945672d88aea5f25f4",
+    "directory": "video/vantagewithai-FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+    "files": [
+      {
+        "path": "fastvideo_fasth3_8step_v2_pruned-Q5_K_M.gguf",
+        "bytes": 16262825504,
+        "sha256": "0010b3cee097cdc0df7a0bbb01a3cca025c55f743816b0504de71933ce9e18aa"
+      }
+    ],
+    "bytes": 16262825504,
+    "kind": "video",
+    "format": "GGUF",
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "family": "fasth3",
+    "modes": [
+      "text"
+    ],
+    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs."
+  },
+  {
+    "id": "fasth3-q6_k",
+    "title": "FastH3 8-Step V2 · Q6_K",
+    "repo": "vantagewithai/FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+    "revision": "448ffec4210efe431a6b4a945672d88aea5f25f4",
+    "directory": "video/vantagewithai-FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+    "files": [
+      {
+        "path": "fastvideo_fasth3_8step_v2_pruned-Q6_K.gguf",
+        "bytes": 19077699104,
+        "sha256": "a924fdef8dd82e7a4b41981b1d5874c1766bbb5daaffa2eedbc5ddc37a1f3ec5"
+      }
+    ],
+    "bytes": 19077699104,
+    "kind": "video",
+    "format": "GGUF",
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "family": "fasth3",
+    "modes": [
+      "text"
+    ],
+    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs."
+  },
+  {
+    "id": "fasth3-int8",
+    "title": "FastH3 8-Step V2 · INT8",
+    "repo": "FastVideo/FastVideo-FastH3-Comfy",
+    "revision": "ec1e3aa374a91c57b0b94a1623b7e657c0498cf2",
+    "directory": "video/FastVideo-FastVideo-FastH3-Comfy",
+    "files": [
+      {
+        "path": "diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors",
+        "bytes": 22128378696,
+        "sha256": "0922785978dc9bfe1adf27d8b291b0ca763f9f165f882e6cb297c72fbb6deda8"
+      }
+    ],
+    "bytes": 22128378696,
+    "kind": "video",
+    "format": "INT8",
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "family": "fasth3",
+    "modes": [
+      "text"
+    ]
+  }
 ]

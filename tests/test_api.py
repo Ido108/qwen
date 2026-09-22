@@ -14,7 +14,7 @@ os.environ['QWEN_DATA_DIR'] = temporary.name
 from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import ValidationError
-from backend.common import GenerationRequest, JOBS_DIR, UPLOADS_DIR, resolve_image, write_json
+from backend.common import GenerationRequest, VideoRequest, JOBS_DIR, UPLOADS_DIR, resolve_image, write_json
 from backend.server import app
 
 def png():
@@ -81,6 +81,40 @@ class AppTests(unittest.TestCase):
         response = self.client.post('/api/generate', json={'prompt':'A flower'}, headers=self.headers)
         self.assertEqual(response.status_code,503)
         self.assertFalse(list(JOBS_DIR.iterdir()))
+
+    def test_video_duration_and_canvas_constraints(self):
+        from backend.models import required_video
+        for values in ({'frames':120},{'width':769},{'frames':379},{'prompt':' '}):
+            with self.assertRaises(ValidationError):
+                VideoRequest(**({'prompt':'A beach'}|values))
+        with self.assertRaises(ValueError):
+            required_video(VideoRequest(prompt='A beach',width=1344,height=1344))
+        self.assertIn('h3-turbo',required_video(VideoRequest(prompt='A beach',model_id='h3-gguf-q4',quality='turbo')))
+        self.assertNotIn('h3-turbo',required_video(VideoRequest(prompt='A beach')))
+
+    def test_video_input_mode_and_missing_weights(self):
+        for values in ({'model_id':'fasth3-q4_k_m','mode':'image','first_frame':'missing.png'},
+                       {'model_id':'h3-gguf-q4','mode':'image'},
+                       {'model_id':'h3-gguf-q4','first_frame':'../private.png'}):
+            response=self.client.post('/api/video/generate',json={'prompt':'A beach',**values},headers=self.headers)
+            self.assertEqual(response.status_code,400,response.text)
+        response=self.client.post('/api/video/generate',json={'prompt':'A beach'},headers=self.headers)
+        self.assertEqual(response.status_code,503,response.text)
+
+    def test_video_history_and_download_are_separate_from_images(self):
+        job_id='b'*32;directory=JOBS_DIR/job_id;directory.mkdir(exist_ok=True)
+        output=Path(temporary.name)/'finished.mp4';output.write_bytes(b'test-video-container')
+        write_json(directory/'status.json',{'id':job_id,'kind':'video','status':'succeeded','created_at':2,'output_path':str(output)})
+        try:
+            self.assertNotIn(job_id,[j['id'] for j in self.client.get('/api/history').json()])
+            self.assertIn(job_id,[j['id'] for j in self.client.get('/api/history?kind=video').json()])
+            response=self.client.get(f'/api/jobs/{job_id}/video?download=true')
+            self.assertEqual(response.content,b'test-video-container')
+            self.assertIn('attachment',response.headers['content-disposition'])
+            self.assertEqual(self.client.get(f'/api/jobs/{job_id}/image').status_code,404)
+            self.assertEqual(self.client.post(f'/api/jobs/{job_id}/reuse',headers=self.headers).status_code,404)
+        finally:
+            (directory/'status.json').unlink();directory.rmdir();output.unlink()
 
     def test_original_png_download_and_metadata(self):
         job_id='a'*32

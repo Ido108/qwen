@@ -31,7 +31,10 @@ def rewrite_prompt(images):
     return enhance(request['prompt'], images, request.get('enhancement_model') or selected_model(), update)
 
 def run():
-    update(status='running', stage='loading', message='Loading image tools…', started_at=time.time())
+    update(status='running', stage='loading', message='Loading generation tools…', started_at=time.time())
+    if request.get('kind') == 'video':
+        from .video_worker import run as run_video
+        return run_video(request, job, directory, update)
     import torch
     from PIL import Image
     from PIL.PngImagePlugin import PngInfo
@@ -98,7 +101,8 @@ except Exception as exc:
     traceback.print_exc()
     message = str(exc)
     if 'out of memory' in message.lower():
-        message = 'Not enough free GPU memory. Close other AI apps, choose a 1K size, and retry.'
+        message = ('Not enough free GPU memory. Close other AI apps, choose a smaller video size or shorter duration, and retry.'
+                   if request.get('kind')=='video' else 'Not enough free GPU memory. Close other AI apps, choose a 1K size, and retry.')
     elif '1455' in message or 'paging file is too small' in message.lower():
         message = 'Windows ran out of available system memory. Close unused AI apps and retry. If this persists, increase the Windows paging file.'
     update(status='failed', stage='failed', message=message, finished_at=time.time())

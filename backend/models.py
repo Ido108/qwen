@@ -54,6 +54,24 @@ def required(model_id,encoder='auto'):
     default_encoder='encoder-int8' if item['format']=='GGUF' else 'encoder-bf16'
     return [model_id,encoder if encoder!='auto' else default_encoder,'vae']
 
+def required_video(request):
+    item=entry(request.model_id)
+    if item['kind']!='video':
+        raise ValueError('Select a video model.')
+    if request.mode not in item['modes']:
+        raise ValueError('Choose MiniMax H3 for image-to-video. FastH3 V2 is distilled for text-to-video.')
+    if request.mode=='image' and not request.first_frame:
+        raise ValueError('Add a first frame for image-to-video.')
+    if request.mode=='text' and (request.first_frame or request.last_frame):
+        raise ValueError('Choose image-to-video to use input images.')
+    if request.width*request.height>1344*768:
+        raise ValueError('The video size must not exceed 1344 × 768 pixels.')
+    ids=[item['id'],*item['dependencies']]
+    if request.quality=='turbo' and item['family']=='minimax-h3':
+        ids.append('h3-turbo')
+    return ids
+
+
 def state():
     with lock:
         items=[]

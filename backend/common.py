@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import time
 import uuid
+from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -12,8 +13,9 @@ MODELS_DIR = DATA_DIR / 'models'
 JOBS_DIR = DATA_DIR / 'jobs'
 UPLOADS_DIR = DATA_DIR / 'uploads'
 OUTPUTS_DIR = DATA_DIR / 'images'
+VIDEOS_DIR = DATA_DIR / 'videos'
 EXAMPLES_DIR = APP_DIR / 'public' / 'examples'
-for directory in (JOBS_DIR, UPLOADS_DIR, OUTPUTS_DIR):
+for directory in (JOBS_DIR, UPLOADS_DIR, OUTPUTS_DIR, VIDEOS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 def write_json(path: Path, data: dict) -> None:
@@ -61,6 +63,45 @@ class GenerationRequest(BaseModel):
         if value % 8:
             raise ValueError('Dimensions must be multiples of 8.')
         return value
+
+class VideoRequest(BaseModel):
+    model_id: str = 'fasth3-q4_k_m'
+    prompt: str = Field(min_length=1, max_length=16000)
+    mode: Literal['text', 'image'] = 'text'
+    first_frame: str | None = None
+    last_frame: str | None = None
+    width: int = Field(default=1344, ge=256, le=1344)
+    height: int = Field(default=768, ge=256, le=1344)
+    frames: int = Field(default=124, ge=22, le=362)
+    seed: int = Field(default=0, ge=0, le=2147483647)
+    randomize_seed: bool = True
+    quality: Literal['standard', 'turbo'] = 'standard'
+    steps: int = Field(default=20, ge=10, le=60)
+    audio: bool = True
+    enhance: bool = False
+    output_dir: str = str(VIDEOS_DIR)
+
+    @field_validator('prompt')
+    @classmethod
+    def not_blank(cls, value):
+        if not value.strip():
+            raise ValueError('Enter a prompt first.')
+        return value.strip()
+
+    @field_validator('width', 'height')
+    @classmethod
+    def valid_size(cls, value):
+        if value % 32:
+            raise ValueError('Video dimensions must be multiples of 32.')
+        return value
+
+    @field_validator('frames')
+    @classmethod
+    def valid_frames(cls, value):
+        if value % 17 != 5:
+            raise ValueError('Choose a supported video duration.')
+        return value
+
 
 def resolve_image(image_id: str) -> Path:
     if image_id.startswith('example:'):

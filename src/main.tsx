@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {UploadCloud, Image as ImageIcon, Download, X, ChevronDown, ChevronLeft, ChevronRight, Sparkles, FolderOpen, Expand, Copy, Check, RotateCcw, CircleHelp, Loader2, Plus, ArrowUpRight, Settings} from 'lucide-react';
 import {ModelSettings,type ModelState} from './ModelSettings';
+import {VideoTab} from './VideoTab';
 import {promptSettingsCopy,type EnhancementState} from './PromptSettings';
 import {en,type TextKey} from './i18n';
 import './style.css';
@@ -15,6 +16,9 @@ const defaults:Params = {model_id:'gguf-q8_0',text_encoder:'auto',prompt:'',imag
 const presets = [[2688,1536,'16:9'],[1536,2688,'9:16'],[2048,2048,'1:1'],[2368,1728,'4:3'],[1728,2368,'3:4'],[1344,768,'16:9'],[768,1344,'9:16'],[1184,864,'4:3'],[864,1184,'3:4'],[1024,1024,'1:1']] as const;
 function loadDraft():Params {try {return {...defaults,...JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}'), images:[]};} catch {return defaults;}}
 function App(){
+  const [tab,setTab]=useState<'image'|'video'>(()=>location.hash==='#video'?'video':'image');
+  const [videoBusy,setVideoBusy]=useState(false);
+  const [videoModel,setVideoModel]=useState(()=>{try{return JSON.parse(localStorage.getItem('qwen-video-draft')||'{}').model_id||'fasth3-q4_k_m';}catch{return 'fasth3-q4_k_m';}});
   const lang='en';
   const t=(key:TextKey)=>en[key];
   const [params,setParams]=useState<Params>(loadDraft);
@@ -36,7 +40,7 @@ function App(){
   const [copied,setCopied]=useState(false); const [dragging,setDragging]=useState(false); const [clock,setClock]=useState(Date.now());
   const uploadRef=useRef<HTMLInputElement>(null); const promptRef=useRef<HTMLTextAreaElement>(null);
   const token=useRef(''); const modal=useRef<HTMLDialogElement>(null);
-  const busy=!!pollId||submitting; const locked=busy||uploading;
+  const busy=!!pollId||submitting; const locked=busy||videoBusy||uploading;
   const chosenModel=modelState?.models.find(m=>m.id===params.model_id);
   const chosenEncoder=params.text_encoder==='auto'?(chosenModel?.format==='GGUF'?'encoder-int8':'encoder-bf16'):params.text_encoder;
   const requiredIds=[params.model_id,chosenEncoder,'vae'];
@@ -56,6 +60,7 @@ function App(){
     if(!cfg.catalog.models.some((model:{kind:string;ready:boolean})=>model.kind==='image'&&model.ready))setShowSettings(true);
     if(cfg.active_job){
       const active:Job=await api(`/api/jobs/${cfg.active_job}`);if(!alive)return;
+      if((active as Job&{kind?:string}).kind==='video'){setTab('video');return;}
       setParams({...defaults,...active.request});
       setInputs(active.request.images.map(id=>({id,name:id,url:id.startsWith('example:')?`/examples/${id.slice(8)}`:`/api/uploads/${id}`})));
       setJob(active);setPollId(active.id);
@@ -98,10 +103,11 @@ function App(){
   const featured=[examples.find(e=>e.title_en==='Transparent anime bride'),examples.find(e=>e.inputs.length>0),examples.find(e=>e.title_en==='Product photography')].filter(Boolean) as Example[];
   const displayed=allExamples?examples:(featured.length===3?featured:examples.slice(0,3));
   return <>
-    <header className="header"><div className="brand"><img src="/branding/icon-64.png" alt=""/><strong>Qwen</strong><span className="brand-divider"/><button className="model-name model-choice" dir="ltr" onClick={()=>setShowSettings(true)} aria-label={t('chooseModel')}>Qwen-Image-2.1 <span>{chosenModel?.title.split(' · ').at(-1)||'Q8_0'}</span><ChevronDown size={13}/></button></div>
+    <header className="header"><div className="brand"><img src="/branding/icon-64.png" alt=""/><strong>Qwen</strong><span className="brand-divider"/><nav className="app-tabs" aria-label="Generation type"><button aria-current={tab==='image'?'page':undefined} onClick={()=>{setTab('image');window.history.replaceState(null,'','#images');}}><ImageIcon size={17}/>Images</button><button aria-current={tab==='video'?'page':undefined} onClick={()=>{setTab('video');window.history.replaceState(null,'','#video');}}><span className="video-tab-icon" aria-hidden="true">▷</span>Video{videoBusy?<Loader2 className="spin" size={13}/>:null}</button></nav><span className="brand-divider model-divider"/>{tab==='image'?<button className="model-name model-choice" dir="ltr" onClick={()=>setShowSettings(true)} aria-label={t('chooseModel')}>Qwen-Image-2.1 <span>{chosenModel?.title.split(' · ').at(-1)||'Q8_0'}</span><ChevronDown size={13}/></button>:<select className="video-model-choice" aria-label="Video model" value={videoModel} disabled={busy||videoBusy} onChange={e=>setVideoModel(e.target.value)}>{modelState?.models.filter(m=>m.kind==='video').map(m=><option key={m.id} value={m.id}>{m.title}{m.ready?'':' · Download needed'}</option>)}</select>}</div>
       <div className="header-tools"><button className="icon-button" onClick={()=>setShowSettings(true)} title={t('settings')} aria-label={t('settings')}><Settings size={19}/></button><button className="icon-button" onClick={()=>setShowHelp(true)} title={t('help')} aria-label={t('help')}><CircleHelp size={19}/></button></div>
     </header>
-    <main>
+    <main hidden={tab!=='image'}>
+      {videoBusy?<div className="notice">A video is being generated. <button className="text-button" onClick={()=>setTab('video')}>View progress</button></div>:null}
       {config&&!imageReady?<div className="message warning"><span>{t('modelsMissing')}<small className="missing-models" dir="auto">{missingModels.map(m=>m!.title).join(' · ')}</small></span><button className="text-button" onClick={()=>setShowSettings(true)}>{t('settings')}</button></div>:null}
       <div className="image-panels">
         <section className="panel input-panel"><div className="section-heading"><h2>{t('input')}</h2>{inputs.length>0?<><span className="count">{inputs.length}/10</span><button className="text-button" disabled={locked} onClick={()=>setInputs([])}>{t('clear')}</button></>:null}</div>
@@ -143,10 +149,12 @@ function App(){
       </section>
       <footer><span className="local-status"><i/>{t('local')}</span><span>{config?.device||''}</span></footer>
     </main>
+    <VideoTab visible={tab==='video'} api={api} models={modelState} enhancement={enhancement} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} imageBusy={busy} openSettings={()=>setShowSettings(true)}/>
     <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':'content-dialog'}><button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>
-      {showSettings?<ModelSettings enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{change('model_id',id);setError('');}} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={busy}/>:null}
+      {showSettings?<ModelSettings enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{change('model_id',id);setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={busy||videoBusy}/>:null}
       {lightbox?<img className="lightbox-image checker" src={lightbox} alt={t('preview')}/>:null}
-      {showHelp?<div className="help-content"><h2>{t('help')}</h2><p>{t('helpText')}</p><blockquote dir="auto">{t('transparent')}</blockquote><button className="button primary" disabled={locked} onClick={()=>{change('prompt',t('transparent'));setShowHelp(false);promptRef.current?.focus();}}>{t('applyTransparent')}</button><a href="https://huggingface.co/spaces/Qwen/Qwen-Image-2.1" target="_blank" rel="noreferrer">Qwen-Image-2.1 · Hugging Face</a></div>:null}
+      {showHelp&&tab==='video'?<div className="help-content"><h2>Video help</h2><p>Describe the scene, movement, camera and sounds. FastH3 creates video from text. Choose MiniMax H3 to animate an image or move between a first and last frame.</p><p>Use Standard for more detail or Turbo for faster results. Duration follows the supported model frame grid at 24 fps. You can change the seed, size and output folder in Advanced settings.</p><p>Download models in Settings. Required encoders and VAEs are selected automatically. Enhance prompt uses your Antigravity connection.</p><a href="https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2" target="_blank" rel="noreferrer">FastH3 model details</a><a href="https://huggingface.co/MiniMaxAI/MiniMax-H3" target="_blank" rel="noreferrer">MiniMax H3 model details</a></div>:null}
+      {showHelp&&tab==='image'?<div className="help-content"><h2>{t('help')}</h2><p>{t('helpText')}</p><blockquote dir="auto">{t('transparent')}</blockquote><button className="button primary" disabled={locked} onClick={()=>{change('prompt',t('transparent'));setShowHelp(false);promptRef.current?.focus();}}>{t('applyTransparent')}</button><a href="https://huggingface.co/spaces/Qwen/Qwen-Image-2.1" target="_blank" rel="noreferrer">Qwen-Image-2.1 · Hugging Face</a></div>:null}
       {activeExample?<div className="example-dialog"><h2>{activeExample.title_en}</h2><p className="muted">{t('exampleSource')}</p>{activeExample.inputs.length?<><h3>{t('input')}</h3><div className="example-inputs">{activeExample.inputs.map((name,i)=><figure key={name}><img src={`/examples/${name}`} alt={`${i+1}`}/><figcaption>{i+1}</figcaption></figure>)}</div></>:null}<h3>{t('reference')}</h3><div className="example-outputs">{activeExample.outputs.map(name=><img key={name} src={`/examples/${name}`} alt={t('reference')} className="checker"/>)}</div><h3>{t('fullPrompt')}</h3><p className="example-prompt" dir="auto">{activeExample.prompt}</p><button className="button primary" disabled={locked} onClick={()=>applyExample(activeExample)}>{t('useExample')}</button></div>:null}
     </dialog>
   </>;

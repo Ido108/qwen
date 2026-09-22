@@ -1,4 +1,4 @@
-# Qwen · Qwen-Image-2.1
+# Qwen - Images & Video
 
 אפליקציה מקומית ליצירה ועריכת תמונות, עם Qwen-Image-2.1 ב־BF16 וב־GGUF, ובחירת מודלים דרך חלון ההגדרות.
 
@@ -91,3 +91,17 @@ D:\AI\qwen-image-studio\venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
 השרת מקשיב רק ב־`127.0.0.1`, ונפתח בפורט 47821 או בפורט פנוי עד 47840. פעולות כתיבה דורשות אסימון מקומי. אי אפשר לקבל דרך נתיבי התמונות קובץ שרירותי מהמחשב.
+
+
+## Video
+
+Open the **Video** tab in the same app. Choose **Text to video** or **Image to video**, write a prompt, choose duration and size, and click **Generate video**. Image mode accepts a first frame and an optional last frame; its size initially follows the first image. The player supports playback and MP4 download. History restores previous settings and keeps video outputs separate from images.
+
+- **FastH3 8-Step V2 Q4_K_M**: fast text-to-video with native audio. Uses the real VSA-H3 CUDA kernels. Eight sampling steps are fixed to the distilled model's schedule.
+- **MiniMax H3 Q4_0**: text-to-video and first/last-frame image-to-video. Standard mode uses 20 steps; **Turbo** uses the official 8-step LoRA. Both follow the official CFG 1 workflow.
+- Settings also offers FastH3 Q5_K_M / Q6_K / INT8 and MiniMax H3 Q8_0 / INT8. Required H3 text encoder and video/audio VAEs are selected automatically and shared across the models.
+- Video models and shared files occupy about 48.45 GB for both installed Q4 models plus Turbo. No duplicate text encoder or VAE is downloaded for each video model. Model weights are downloaded, resumed and verified from **Settings**.
+- Output is H.264 MP4 at 24 fps, with optional AAC stereo audio. Durations follow the model's supported frame grid; the exact duration is shown in the interface. Smaller Draft sizes are available. The models jointly generate audio/video even when audio is excluded from the saved MP4.
+- Video prompt enhancement uses the same Antigravity connection. The required H3 conditioning encoder is not a prompt-enhancement LLM.
+
+See [video research and exact model contracts](reference/video-research.md) and [validation results](reference/validation.md). FastH3 is limited to the upstream distilled text-to-video task; image inputs use MiniMax H3. The separate H3 reference-to-video checkpoint is not included in the first/last-frame model.

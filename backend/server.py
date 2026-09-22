@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
-from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, UPLOADS_DIR, GenerationRequest, model_status, resolve_image, write_json
+from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, GenerationRequest, VideoRequest, model_status, resolve_image, write_json
 from . import models, antigravity
 
 SESSION_TOKEN = secrets.token_urlsafe(32)
@@ -40,11 +40,11 @@ def stop_worker(process):
 
 def read_job(job_id):
     if not job_id or any(c not in '0123456789abcdef' for c in job_id) or len(job_id) != 32:
-        raise HTTPException(404, 'Image job not found.')
+        raise HTTPException(404, 'Generation not found.')
     try:
         return json.loads((JOBS_DIR / job_id / 'status.json').read_text(encoding='utf-8'))
     except FileNotFoundError:
-        raise HTTPException(404, 'Image job not found.')
+        raise HTTPException(404, 'Generation not found.')
 
 def public_job(job):
     return {k: v for k, v in job.items() if k not in ('output_path',)}
@@ -73,7 +73,7 @@ def run_job(job_id):
                 job.update(status='cancelled', message='Generation cancelled.', finished_at=time.time())
                 write_json(directory / 'status.json', job)
             elif job.get('status') not in ('succeeded', 'failed'):
-                job.update(status='failed', message=f'The image process stopped (code {return_code}). Retry, or use a smaller image size.', finished_at=time.time())
+                job.update(status='failed', message=f'The generation process stopped (code {return_code}). Retry with a smaller size or duration.', finished_at=time.time())
                 write_json(directory / 'status.json', job)
     except Exception as exc:
         job = read_job(job_id)
@@ -91,7 +91,7 @@ async def lifespan(app):
         try:
             job = json.loads(path.read_text(encoding='utf-8'))
             if job.get('status') in ('queued', 'running'):
-                job.update(status='failed', message='The app closed before this image finished. You can retry.', finished_at=time.time())
+                job.update(status='failed', message='The app closed before generation finished. You can retry.', finished_at=time.time())
                 write_json(path, job)
         except (ValueError, OSError):
             pass
@@ -126,7 +126,7 @@ def health():
 
 @app.get('/api/config')
 def config():
-    return {'token': SESSION_TOKEN, 'models': model_status(), 'catalog': models.state(), 'enhancement': antigravity.status(), 'output_dir': str(OUTPUTS_DIR), 'active_job': active_job, 'model': 'Qwen-Image-2.1', 'device': 'NVIDIA GeForce RTX 4090', 'data_dir': str(DATA_DIR)}
+    return {'token': SESSION_TOKEN, 'models': model_status(), 'catalog': models.state(), 'enhancement': antigravity.status(), 'output_dir': str(OUTPUTS_DIR), 'video_output_dir':str(VIDEOS_DIR), 'active_job': active_job, 'model': 'Qwen-Image-2.1', 'device': 'NVIDIA GeForce RTX 4090', 'data_dir': str(DATA_DIR)}
 
 class CallbackInput(BaseModel):
     callbackInput: str = Field(min_length=1, max_length=16000)
@@ -300,23 +300,61 @@ def generate(body: GenerationRequest):
 def get_job(job_id: str):
     return public_job(read_job(job_id))
 
+@app.post('/api/video/generate', status_code=202)
+def generate_video(body: VideoRequest):
+    global active_job
+    try:
+        needed=models.required_video(body)
+        for image_id in (body.first_frame,body.last_frame):
+            if image_id:
+                resolve_image(image_id)
+        destination=Path(body.output_dir).expanduser().resolve()
+        destination.mkdir(parents=True,exist_ok=True)
+        probe=destination/f'.write-test-{uuid.uuid4().hex}'
+        probe.write_bytes(b'');probe.unlink()
+        if shutil.disk_usage(destination).free<1024**3:
+            raise ValueError('The output drive needs at least 1 GB of free space.')
+    except (ValueError,OSError) as exc:
+        raise HTTPException(400,str(exc))
+    if body.enhance and not antigravity.status()['connected']:
+        raise HTTPException(409,'Connect Google Account in Settings, or turn off Enhance prompt.')
+    with active_lock:
+        if active_job:
+            raise HTTPException(409,'A generation is already running. Wait or cancel it first.')
+        if not all(models.is_installed(name) for name in needed):
+            raise HTTPException(503,'A required video model is not installed. Open Settings to download it.')
+        data=body.model_dump()
+        data.update(kind='video',output_dir=str(destination),enhancement_model=antigravity.selected_model())
+        if body.randomize_seed:
+            data['seed']=secrets.randbelow(2147483648)
+        fast=models.entry(body.model_id)['family']=='fasth3'
+        steps=8 if fast or body.quality=='turbo' else body.steps
+        job_id=uuid.uuid4().hex
+        directory=JOBS_DIR/job_id;directory.mkdir()
+        job={'id':job_id,'kind':'video','status':'queued','message':'Starting…','stage':'starting',
+             'created_at':time.time(),'seed':data['seed'],'request':data,'rewritten_prompt':'','step':0,'total_steps':steps}
+        write_json(directory/'request.json',data);write_json(directory/'status.json',job)
+        active_job=job_id
+        threading.Thread(target=run_job,args=(job_id,),daemon=True).start()
+    return public_job(job)
+
 @app.post('/api/jobs/{job_id}/cancel')
 def cancel(job_id: str):
     with active_lock:
         if active_job != job_id:
-            raise HTTPException(409, 'This image is no longer running.')
+            raise HTTPException(409, 'This generation is no longer running.')
         cancelled_jobs.add(job_id)
         if active_process and active_process.poll() is None:
             stop_worker(active_process)
     return {'ok': True}
 
 @app.get('/api/history')
-def history():
+def history(kind: str = 'image'):
     jobs = []
     for path in JOBS_DIR.glob('*/status.json'):
         try:
             job = json.loads(path.read_text(encoding='utf-8'))
-            if job.get('status') == 'succeeded':
+            if job.get('status') == 'succeeded' and job.get('kind','image') == kind:
                 jobs.append(public_job(job))
         except (ValueError, OSError):
             pass
@@ -325,10 +363,26 @@ def history():
 @app.get('/api/jobs/{job_id}/image')
 def result(job_id: str, download: bool = False):
     job = read_job(job_id)
-    if job['status'] != 'succeeded' or not Path(job.get('output_path', '')).is_file():
+    if job.get('kind','image') != 'image' or job['status'] != 'succeeded' or not Path(job.get('output_path', '')).is_file():
         raise HTTPException(404, 'Saved image not found.')
     path = Path(job['output_path'])
     return FileResponse(path, media_type='image/png', filename=path.name if download else None)
+
+@app.get('/api/jobs/{job_id}/video')
+def video_result(job_id: str, download: bool = False):
+    job=read_job(job_id)
+    path=Path(job.get('output_path',''))
+    if job.get('kind')!='video' or job['status']!='succeeded' or not path.is_file():
+        raise HTTPException(404,'Saved video not found.')
+    return FileResponse(path,media_type='video/mp4',filename=path.name if download else None)
+
+@app.get('/api/jobs/{job_id}/poster')
+def video_poster(job_id: str):
+    job=read_job(job_id)
+    path=JOBS_DIR/job_id/'poster.png'
+    if job.get('kind')!='video' or job['status']!='succeeded' or not path.is_file():
+        raise HTTPException(404,'Video preview not found.')
+    return FileResponse(path,media_type='image/png')
 
 @app.get('/api/jobs/{job_id}/metadata')
 def metadata(job_id: str):
@@ -339,16 +393,16 @@ def metadata(job_id: str):
 def reuse(job_id: str):
     job = read_job(job_id)
     path = Path(job.get('output_path', ''))
-    if job['status'] != 'succeeded' or not path.is_file():
+    if job.get('kind','image') != 'image' or job['status'] != 'succeeded' or not path.is_file():
         raise HTTPException(404, 'Saved image not found.')
     image_id = uuid.uuid4().hex + '.png'
     shutil.copy2(path, UPLOADS_DIR / image_id)
     return {'id': image_id, 'name': path.name, 'url': f'/api/uploads/{image_id}'}
 
 @app.post('/api/open-output')
-def open_output():
+def open_output(kind: str = 'image'):
     if os.name == 'nt':
-        os.startfile(OUTPUTS_DIR)
+        os.startfile(VIDEOS_DIR if kind=='video' else OUTPUTS_DIR)
     return {'ok': True}
 
 if EXAMPLES_DIR.exists():

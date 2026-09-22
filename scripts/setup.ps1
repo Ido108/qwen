@@ -1,4 +1,4 @@
-param([switch]$Force)
+﻿param([switch]$Force)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'paths.ps1')
 if ((Test-QwenSetup) -and -not $Force) { Write-Host 'Qwen is already installed.'; return }
@@ -12,7 +12,7 @@ try {
     Write-Host 'Qwen setup - installing the app. Models are downloaded from Settings in the app.'
     Write-Host "App files: $appRoot"
     Write-Host "Python environment: $runtimeRoot"
-    Write-Host "Models and images: $dataRoot"
+    Write-Host "Models and generated files: $dataRoot"
     function Get-VerifiedArchive([string]$Url,[string]$Name,[string]$Sha256) {
         $archive = Join-Path $toolsRoot $Name
         if (-not (Test-Path -LiteralPath $archive) -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $Sha256) { Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $archive }
@@ -33,7 +33,7 @@ try {
         & $uvPath venv --python 3.12.10 (Join-Path $runtimeRoot 'venv')
         if ($LASTEXITCODE -ne 0) { throw 'Could not create the Python environment. Check the connection and free disk space, then run Setup.bat again.' }
     }
-    Write-Host '[3/5] Installing the image tools...'
+    Write-Host '[3/5] Installing the generation tools...'
     Push-Location $appRoot
     try {
         & $uvPath pip install --python $pythonPath -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match
@@ -62,7 +62,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Could not build the interface. See the error above.' }
         Write-Host '[5/5] Checking the graphics card and creating the shortcut...'
         & $pythonPath (Join-Path $PSScriptRoot 'check_runtime.py')
-        if ($LASTEXITCODE -ne 0) { throw 'The graphics check failed. See the message above before generating images.' }
+        if ($LASTEXITCODE -ne 0) { throw 'The graphics check failed. See the message above before generating images or videos.' }
         & (Join-Path $PSScriptRoot 'create_shortcut.ps1')
         @{ data_dir=$dataRoot; runtime_dir=$runtimeRoot } | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8
         @{ fingerprint=(Get-QwenSetupFingerprint); completed_at=(Get-Date -Format o) } | ConvertTo-Json | Set-Content -LiteralPath $setupStamp -Encoding UTF8

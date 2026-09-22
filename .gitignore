@@ -17,6 +17,7 @@ venv/
 /uploads/
 /jobs/
 /images/
+/videos/
 *.gguf
 *.safetensors
 reference/space/examples/
