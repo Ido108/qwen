@@ -30,7 +30,14 @@ $env:QWEN_DATA_DIR = $dataRoot
 $env:QWEN_RUNTIME_DIR = $runtimeRoot
 $env:PYTHONUTF8 = '1'
 $env:UV_CACHE_DIR = Join-Path $dataRoot 'uv-cache'
-$env:UV_PYTHON_INSTALL_DIR = Join-Path $dataRoot 'python'
+$pythonInstallRoot = Join-Path $runtimeRoot 'python'
+# uv creates version-directory links, which exFAT does not support. Keep only
+# the small Python interpreter on NTFS; model files and caches can stay on E:.
+if (([IO.DriveInfo]::new([IO.Path]::GetPathRoot($runtimeRoot))).DriveFormat -ne 'NTFS') {
+    if ((Test-Path -LiteralPath 'D:\') -and ([IO.DriveInfo]::new('D:\')).DriveFormat -eq 'NTFS') { $pythonInstallRoot = 'D:\AI\qwen-image-studio\python' }
+    else { $pythonInstallRoot = Join-Path $env:LOCALAPPDATA 'Qwen\python' }
+}
+$env:UV_PYTHON_INSTALL_DIR = $pythonInstallRoot
 $env:UV_PYTHON_PREFERENCE = 'only-managed'
 $env:HF_HOME = Join-Path $dataRoot 'hf-cache'
 $env:HF_XET_CACHE = Join-Path $dataRoot 'hf-cache\xet'
