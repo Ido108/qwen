@@ -64,6 +64,7 @@ try {
         & $pythonPath (Join-Path $PSScriptRoot 'check_runtime.py')
         if ($LASTEXITCODE -ne 0) { throw 'The graphics check failed. See the message above before generating images.' }
         & (Join-Path $PSScriptRoot 'create_shortcut.ps1')
+        @{ data_dir=$dataRoot; runtime_dir=$runtimeRoot } | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8
         @{ fingerprint=(Get-QwenSetupFingerprint); completed_at=(Get-Date -Format o) } | ConvertTo-Json | Set-Content -LiteralPath $setupStamp -Encoding UTF8
     } finally { Pop-Location }
     Write-Host 'Setup complete. Choose and download models in Settings.'

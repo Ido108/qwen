@@ -50,7 +50,6 @@ $env:TMP = $tempRoot
 $pythonPath = Join-Path $runtimeRoot 'venv\Scripts\python.exe'
 $toolsRoot = Join-Path $runtimeRoot 'tools'
 $setupStamp = Join-Path $runtimeRoot 'setup-complete.json'
-@{ data_dir=$dataRoot; runtime_dir=$runtimeRoot } | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8
 
 function Get-QwenSetupFingerprint {
     $files = @('requirements-lock.txt','package-lock.json','scripts\setup.ps1','scripts\paths.ps1','scripts\download_examples.py','scripts\check_runtime.py','reference\example-assets.json','index.html') | ForEach-Object { Join-Path $appRoot $_ }
