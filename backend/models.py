@@ -59,8 +59,10 @@ def state():
         items=[]
         for item in catalog():
             installed=bool(is_installed(item['id']))
-            items.append({k:v for k,v in item.items() if k not in ('files','directory','revision')}|{
+            disk_bytes=sum(local_path(item,file).stat().st_size for file in item.get('removal_files',item['files']) if local_path(item,file).is_file())
+            items.append({k:v for k,v in item.items() if k not in ('files','removal_files','directory','revision')}|{
                 'installed':installed,
+                'disk_bytes':disk_bytes,
                 'ready':installed and all(is_installed(d) for d in item['dependencies'])})
         return {'models':items,'transfer':dict(transfer),'free_bytes':shutil.disk_usage(DATA_DIR).free}
 
@@ -153,7 +155,7 @@ def remove(model_id):
         if transfer.get('status')=='running':
             raise ValueError('Wait for the download to finish before removing a model.')
         # Only the pinned, allowlisted files can be removed. Generated images never live here.
-        for file in item['files']:
+        for file in item.get('removal_files',item['files']):
             path=local_path(item,file)
             if path.is_file():
                 path.unlink()

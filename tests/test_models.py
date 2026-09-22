@@ -7,6 +7,24 @@ from unittest.mock import patch
 from backend import models
 
 class ModelTests(unittest.TestCase):
+    def test_official_download_omits_duplicate_encoder_and_vae(self):
+        item=models.entry('official-bf16')
+        self.assertLess(item['bytes'],15_000_000_000)
+        self.assertTrue(all(f['path'].startswith('transformer/') or f['path'] in ('LICENSE','README.md') for f in item['files']))
+        self.assertTrue(any(f['path'].startswith('text_encoder/') for f in item['removal_files']))
+
+    def test_removal_cleans_allowlisted_legacy_files_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            item={'id':'legacy-test','directory':'model','files':[{'path':'current.bin'}],
+                  'removal_files':[{'path':'current.bin'},{'path':'old-encoder/weights.bin'}]}
+            current=root/'model/current.bin'; legacy=root/'model/old-encoder/weights.bin'
+            legacy.parent.mkdir(parents=True); current.write_bytes(b'current'); legacy.write_bytes(b'old')
+            unrelated=root/'model/keep.txt'; unrelated.write_text('keep')
+            with patch.multiple(models,MODELS_DIR=root,INSTALL_PATH=root/'installed.json'),patch.object(models,'entry',return_value=item),patch.object(models,'transfer',{'status':'idle'}):
+                models.remove('legacy-test')
+            self.assertFalse(current.exists()); self.assertFalse(legacy.exists()); self.assertTrue(unrelated.exists())
+
     def test_companions_follow_image_format(self):
         self.assertEqual(models.required('gguf-q8_0'),['gguf-q8_0','encoder-int8','vae'])
         self.assertEqual(models.required('gguf-q4_k_m'),['gguf-q4_k_m','encoder-int8','vae'])
