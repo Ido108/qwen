@@ -19,7 +19,8 @@ def generate(request, prompt, images, progress):
     args.disable_async_offload = True
     args.disable_pinned_memory = True
     args.disable_dynamic_vram = True
-    args.reserve_vram = 2.0
+    from .gpu_memory import configure_video_memory, GIB
+    configure_video_memory(torch, args, progress)
     import comfy_aimdo.control
     if not comfy_aimdo.control.init():
         raise RuntimeError('Could not initialize the model file reader.')
@@ -61,6 +62,12 @@ def generate(request, prompt, images, progress):
     clip = comfy.sd.load_text_encoder_state_dicts([weights], clip_type=comfy.sd.CLIPType.MINIMAX,
         model_options={'initial_device': torch.device('cpu')}, disable_dynamic=True)
     del weights, metadata
+    # The 32B conditioning encoder has no activation estimate upstream. Reserve
+    # its working space so ComfyUI streams some weights from RAM when needed.
+    # This preserves the prompt, reference image resolution and video settings.
+    encoding_scratch = (4 if images else 2) * GIB
+    clip.cond_stage_model.memory_estimation_function = lambda tokens, device=None: encoding_scratch
+    progress(encoder_working_memory_gb=encoding_scratch/GIB)
     vae = None
     if images:
         weights, _ = read_weights('h3-video-vae')
@@ -68,12 +75,15 @@ def generate(request, prompt, images, progress):
         del weights
     tensors = {name: torch.from_numpy(np.asarray(image.convert('RGB'), dtype=np.float32) / 255).unsqueeze(0)
                for name, image in images.items()}
+    from .video_conditioning import SingleUseEncoder
+    encoder = SingleUseEncoder(clip, release)
+    del clip
     progress(stage='encoding', message='Reading the prompt and video inputs…')
     with torch.inference_mode():
-        positive, latent = MiniMaxH3ImageToVideo.execute(clip, vae, prompt,
+        positive, latent = MiniMaxH3ImageToVideo.execute(encoder, vae, prompt,
             request['width'], request['height'], request['frames'], **tensors)
         negative = []
-    del clip, tensors, vae
+    del encoder, tensors, vae
     release()
     progress(stage='loading_model', message='Loading the video model…')
     if selected['format'] == 'GGUF':

@@ -177,9 +177,12 @@
       }
     ],
     "generation_defaults": {
-      "steps": 40,
-      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
-      "note": "Official Qwen 2.1 default; adjustable, not a required step count."
+      "steps": 25,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json",
+      "edit_source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json",
+      "model_card": "https://huggingface.co/Qwen/Qwen-Image-2.1",
+      "reviewed_on": "2026-09-22",
+      "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
     }
   },
   {
@@ -369,9 +372,12 @@
       "vae"
     ],
     "generation_defaults": {
-      "steps": 40,
-      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
-      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+      "steps": 25,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json",
+      "edit_source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json",
+      "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
     }
   },
   {
@@ -395,9 +401,12 @@
       "vae"
     ],
     "generation_defaults": {
-      "steps": 40,
-      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
-      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+      "steps": 25,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json",
+      "edit_source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json",
+      "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
     }
   },
   {
@@ -421,9 +430,12 @@
       "vae"
     ],
     "generation_defaults": {
-      "steps": 40,
-      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
-      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+      "steps": 25,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json",
+      "edit_source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json",
+      "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
     }
   },
   {
@@ -447,9 +459,12 @@
       "vae"
     ],
     "generation_defaults": {
-      "steps": 40,
-      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
-      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+      "steps": 25,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json",
+      "edit_source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json",
+      "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
     }
   },
   {
@@ -473,9 +488,12 @@
       "vae"
     ],
     "generation_defaults": {
-      "steps": 40,
-      "source": "https://github.com/QwenLM/Qwen-Image-2.1#default-parameters",
-      "note": "Qwen 2.1 upstream default. GGUF quantization uses the same sampling workflow; no separate step recommendation is published."
+      "steps": 25,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json",
+      "edit_source": "https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json",
+      "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
     }
   },
   {
@@ -602,7 +620,13 @@
     "bytes": 1956193000,
     "kind": "video-support",
     "format": "LoRA",
-    "dependencies": []
+    "dependencies": [],
+    "generation_defaults": {
+      "steps": 8,
+      "source": "https://docs.comfy.org/tutorials/video/minimax/minimax-h3-native",
+      "reviewed_on": "2026-09-22",
+      "note": "Eight steps when the official Turbo LoRA is applied."
+    }
   },
   {
     "id": "h3-gguf-q4",
@@ -629,7 +653,15 @@
     "modes": [
       "text",
       "image"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "source": "https://docs.comfy.org/tutorials/video/minimax/minimax-h3-native",
+      "model_card": "https://huggingface.co/molbal/MiniMax-H3-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "Official ComfyUI FL2VA text/image workflow: 20 standard steps, 8 with the Turbo LoRA.",
+      "turbo_steps": 8
+    }
   },
   {
     "id": "h3-gguf-q8",
@@ -656,7 +688,15 @@
     "modes": [
       "text",
       "image"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "source": "https://docs.comfy.org/tutorials/video/minimax/minimax-h3-native",
+      "model_card": "https://huggingface.co/molbal/MiniMax-H3-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "Official ComfyUI FL2VA text/image workflow: 20 standard steps, 8 with the Turbo LoRA.",
+      "turbo_steps": 8
+    }
   },
   {
     "id": "h3-int8",
@@ -683,7 +723,15 @@
     "modes": [
       "text",
       "image"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "source": "https://docs.comfy.org/tutorials/video/minimax/minimax-h3-native",
+      "model_card": "https://huggingface.co/Comfy-Org/MiniMax-H3",
+      "reviewed_on": "2026-09-22",
+      "note": "Official ComfyUI FL2VA text/image workflow: 20 standard steps, 8 with the Turbo LoRA.",
+      "turbo_steps": 8
+    }
   },
   {
     "id": "fasth3-q4_k_m",
@@ -710,7 +758,14 @@
     "modes": [
       "text"
     ],
-    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs."
+    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs.",
+    "generation_defaults": {
+      "steps": 8,
+      "source": "https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2",
+      "model_card": "https://huggingface.co/vantagewithai/FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "Trained eight-forward schedule; shared by the GGUF and INT8 conversions."
+    }
   },
   {
     "id": "fasth3-q5_k_m",
@@ -737,7 +792,14 @@
     "modes": [
       "text"
     ],
-    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs."
+    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs.",
+    "generation_defaults": {
+      "steps": 8,
+      "source": "https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2",
+      "model_card": "https://huggingface.co/vantagewithai/FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "Trained eight-forward schedule; shared by the GGUF and INT8 conversions."
+    }
   },
   {
     "id": "fasth3-q6_k",
@@ -764,7 +826,14 @@
     "modes": [
       "text"
     ],
-    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs."
+    "note": "8-step text-to-video with audio. Use MiniMax H3 for image inputs.",
+    "generation_defaults": {
+      "steps": 8,
+      "source": "https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2",
+      "model_card": "https://huggingface.co/vantagewithai/FastVideo-FastH3-8-Step-V2-ComfyUI-GGUF",
+      "reviewed_on": "2026-09-22",
+      "note": "Trained eight-forward schedule; shared by the GGUF and INT8 conversions."
+    }
   },
   {
     "id": "fasth3-int8",
@@ -790,6 +859,13 @@
     "family": "fasth3",
     "modes": [
       "text"
-    ]
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "source": "https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2",
+      "model_card": "https://huggingface.co/FastVideo/FastVideo-FastH3-Comfy",
+      "reviewed_on": "2026-09-22",
+      "note": "Trained eight-forward schedule; shared by the GGUF and INT8 conversions."
+    }
   }
 ]

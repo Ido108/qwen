@@ -33,18 +33,38 @@ The first base-model I2V experiment incorrectly used CFG 6. It produced visible 
 ## Browser and installer
 
 - Actual browser workflows cover image upload/reorder/preview, 37 examples, model selection, model remove confirmation, generation, PNG/MP4 download, cancellation, history, and restoring a running job after refresh.
-- Video workflows cover automatic MiniMax selection for image inputs, first/last-frame upload, preview, swap, Standard/Turbo selection, aspect-ratio sizing, native playback, and restoring input images after refresh. Desktop 1536 px and mobile 390 px have no horizontal overflow or JavaScript errors. The final screen was compared against the generated video concept.
-- Cross-tab cancellation was exercised through the UI. A concurrent image request returned HTTP 409; cancelling the owned video worker released the GPU. A subsequent Q4 image generation completed in 47.6 seconds (`dfecbda02ebd40daaad17cafa7a9f9f6`) with no browser errors.
+- Video workflows cover explicit MiniMax selection for image inputs, first/last-frame upload, preview, swap, Standard/Turbo selection, aspect-ratio sizing, native playback, and restoring input images after refresh. Desktop and mobile 390 px have no horizontal overflow or JavaScript errors. The model selector identifies text-only and image-capable variants without silently changing modes or dropping the uploaded image.
+- The original release exercised cross-tab cancellation and GPU release. Its rejection of concurrent submissions (HTTP 409) has been replaced by the shared persistent queue. Cancelling still stops only the owned worker before advancing the queue.
 - Model download/checksum/select/confirmed removal was exercised through the UI using a small isolated Hugging Face fixture. The same model-manager transport installs video weights and their shared dependencies. Existing user model files were not deleted during testing.
 - A fresh checkout with Python, Node and uv absent from PATH completed automated setup, fetched the pinned runtimes/dependencies and 77 sample assets, built the interface, checked CUDA, created the shortcut and launched on a free local port. The latest runtime check additionally verifies H.264, AAC and the CUDA sparse-attention kernel.
 - The app starts from `Setup.bat` or `Start Qwen.bat`; the branded `Qwen.lnk` shortcut lives in the REPOS folder. Repeated launch reuses the same app/data server. A separate checkout cannot accidentally reuse a different checkout's server.
 
 ## Boundaries
 
-- 29 automated tests pass. They cover validation/security, upload safety, shared model dependencies/checksums, image/video history separation, actual MP4 encoding with and without audio, OAuth PKCE/state/refresh/DPAPI and real local callback HTTP handling.
-- Google login itself is user-controlled. Live Antigravity enhancement remains unverified until the user connects their account. The normal local callback is `http://localhost:1455/auth/callback`; manual paste is only a fallback.
+- 46 automated tests pass. They cover validation/security, upload safety, shared model dependencies/checksums, documented model defaults, dedicated GPU memory budgeting, conditioning encoder lifetime, image/video history separation, actual MP4 encoding with and without audio, OAuth PKCE/state/refresh/DPAPI and real local callback HTTP handling.
+- Google login itself is user-controlled. The normal local callback is `http://localhost:1455/auth/callback`; manual paste is only a fallback. The memory regression runs below have prompt enhancement disabled to isolate local model behavior.
 - Optional video INT8 and additional GGUF quantizations are offered with pinned hashes and compatible companion files. They were not all downloaded or benchmarked. The real video acceptance runs use the installed Q4 variants above.
 - Existing redundant image weights have not been deleted without approval. The proposed cleanup retains the installed image Q8/Q4 models and INT8 encoder/VAE. Temporary fresh-install environments also remain pending cleanup approval after automatic approval review rejected that directory cleanup.
 - This certifies the tested Windows/RTX 4090 workflows, not every possible prompt, duration, GPU or operating system.
 
 Private input photos, generated outputs, local account tokens and full QA artifacts stay outside Git under the local data directory.
+
+## Follow-up: documented defaults and Windows video memory
+
+The image catalog now uses **25 steps**, matching both pinned official ComfyUI workflows (`371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4`). The former 40-step default came from the Diffusers example. Historical 40-step measurements above remain accurate for those runs. MiniMax H3 Standard remains 20; H3 Turbo and FastH3 V2 use 8.
+
+The user's failed H3 job `81a8175cf65c43e497e7d6c3c79d843b` exhausted GPU memory in Qwen3-VL image/text conditioning before diffusion. On this WDDM installation, CUDA reported 22.5 GiB free while NVIDIA reported about 17.2 GiB of free dedicated VRAM. The video engine now reserves that gap plus working memory and streams some weights from RAM. Releasing the single-use encoder before keyframe VAE encoding also avoids the observed Windows native crash in partial GPU-to-CPU unloading. Other applications were left running, and the original video settings were preserved.
+
+| Accepted regression | Output | Time | Torch peak VRAM | Job |
+|---|---|---:|---:|---|
+| Exact failed H3 Q4 I2V request, same prompt/input/seed, Standard 20 | 768 × 1024, 124 frames, stereo audio | 291.7 s | 12.71 GiB | `d3cd0503a6d84a5a9b6f46a3b613341f` |
+| Q8 image edit submitted through browser with `steps: null` | 1024², resolved 25 steps | 42.9 s | — | `77242a5bf26048b6961e459144ddf6c8` |
+
+The 124-frame video decodes at exactly 24 fps, has no black frames or timestamp errors, and its audio/video duration difference is 0.33 ms. The contact sheet shows the supplied person raising his arms and moving within the portrait framing. Image output and desktop/mobile UI were visually reviewed. Browser checks covered all seven video catalog choices, preserved image mode and upload on model changes, missing-download restrictions, image default reset on model change, and persisted 25-step defaults. Artifacts: `validation/model-defaults-video-memory.*` and `validation/memory-fix/` on the data drive.
+
+
+## Persistent queue and gallery
+
+Six scheduler/API regression tests exercise mixed image/video FIFO execution with controlled worker processes (maximum concurrent workers: one), failure/cancel recovery, pause/resume, pending cancellation/reordering, restart persistence, fixed-seed reruns and pagination over 125 results. These tests replace GPU inference with controlled subprocesses; they do not claim an actual GPU benchmark.
+
+The real browser/API check on a separate paused queue accepted three mixed requests (HTTP 202 for each), kept prompt/settings/model controls editable, preserved independent request snapshots, reordered and cancelled waiting jobs, restored both input images and an unsent draft after refresh, searched/filtered the gallery, restored image/video settings, and re-enqueued saved settings with the original seed. Desktop 1440px and mobile 390px screenshots were reviewed; no overflow or browser errors occurred. The isolated server used copies of existing result metadata while the user's live long video continued separately. Artifacts: `validation/queue-gallery-ui.*`, `gallery-*.png` and `queue-*.png` on the data drive.

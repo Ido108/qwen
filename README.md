@@ -16,7 +16,7 @@
 
 הממשק כולו באנגלית. אפשר לכתוב פרומפטים בשפות שונות ולשמור טקסט מדויק בשפת המקור. הגודל והצעדים גלויים ליד הפרומפט; גודל מותאם כולל את כל 10 גדלי 1K/2K של הספייס. ההגדרות המתקדמות כוללות Seed, Seed אקראי, פרומפט שלילי ותיקיית שמירה. כל 37 הדוגמאות המקוריות זמינות עם תמונות הקלט והתוצאה והפרומפט המלא. טעינת דוגמה שומרת על סדר התמונות ועל הגדרת שיפור הפרומפט המקורית.
 
-40 צעדים הם [ברירת המחדל הרשמית של Qwen 2.1](https://github.com/QwenLM/Qwen-Image-2.1#default-parameters), ולא דרישה קשיחה. [גרסאות GGUF](https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF) משתמשות באותו workflow; אין המלצה נפרדת לפחות צעדים ל־Q8 או ל־Q4. לכל מודל רשומה ברירת מחדל בקטלוג. בחירת מספר צעדים ידני נשמרת גם כשמחליפים מודל; Reset to model default מחזיר למצב אוטומטי. פחות צעדים יכולים לפגוע בפרטים או בנאמנות לפרומפט. Auto 1K מכוון לכמיליון פיקסלים ו־Auto 2K לכארבעה מיליון, עם עיגול לממדים הנתמכים. הגדרות ישנות נשארות ב־Auto 2K.
+ברירת המחדל לתמונות היא **25 צעדים**, לפי קובצי ComfyUI הרשמיים ל[יצירה](https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json) ול[עריכה](https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json), שאליהם מפנה גם [מאגר GGUF](https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF). דוגמאות Diffusers משתמשות ב־40, אבל האפליקציה משתמשת ב־ComfyUI עם Euler/simple. לכל מודל רשומה ברירת מחדל ומקור בקטלוג, עם קישור ליד Steps. בחירת מודל אחר מחזירה לברירת המחדל שלו; אפשר לשנות ידנית. בווידאו: MiniMax H3 רגיל 20, Turbo עם LoRA שמונה, ו־FastH3 V2 שמונה. פחות צעדים יכולים לפגוע בפרטים או בנאמנות לפרומפט. Auto 1K מכוון לכמיליון פיקסלים ו־Auto 2K לכארבעה מיליון, עם עיגול לממדים הנתמכים. הגדרות ישנות נשארות ב־Auto 2K.
 
 ## קבצים במחשב
 
@@ -64,7 +64,7 @@
 - הגודל האוטומטי נקבע לפי פלט שיפור הפרומפט, או לפי תמונת קלט; ברירת המחדל ללא אלה היא 2048×2048.
 - גדלים מותאמים שאינם כפולה של 32 נוצרים בגודל הנתמך הקרוב כלפי מעלה ומותאמים לגודל המדויק. הפעולה מתועדת בפרטי התמונה.
 - פרומפט שלילי מפעיל CFG=2; ללא פרומפט שלילי נשמרת ברירת המחדל הרשמית CFG=1. פרומפט שלילי מוסיף חישוב.
-- מספר צעדי היצירה הרגיל: 40. ההתקדמות מציגה את שלבי המודל בפועל.
+- ברירת המחדל לתמונות: 25 צעדים, לפי תהליכי ComfyUI הרשמיים שבהם האפליקציה משתמשת. אפשר לשנות את מספר הצעדים בממשק.
 - ליצירת רקע שקוף יש להשתמש בנוסח המופיע בעזרה: `This is an RGBA image with transparency. [Description]. The image has alpha channel and the background is transparent.` עצם שמירת PNG ב־RGBA אינה מבטיחה שהמודל ייצור רקע שקוף.
 - אין הבטחה שכל גודל וכל שילוב של 10 תמונות ייכנסו בזיכרון הפנוי בכל רגע. כשל מדווח במסך, עם אפשרות להקטין את הגודל ולנסות שוב. תמונות שכבר הושלמו נשמרות.
 
@@ -103,8 +103,19 @@ Open the **Video** tab in the same app. Choose **Text to video** or **Image to v
 - **FastH3 8-Step V2 Q4_K_M**: fast text-to-video with native audio. Uses the real VSA-H3 CUDA kernels. Eight sampling steps are fixed to the distilled model's schedule.
 - **MiniMax H3 Q4_0**: text-to-video and first/last-frame image-to-video. Standard mode uses 20 steps; **Turbo** uses the official 8-step LoRA. Both follow the official CFG 1 workflow.
 - Settings also offers FastH3 Q5_K_M / Q6_K / INT8 and MiniMax H3 Q8_0 / INT8. Required H3 text encoder and video/audio VAEs are selected automatically and shared across the models.
+- Every MiniMax H3 variant supports first/last-frame images. FastH3 V2 variants support text only, as documented by their authors. The model selector labels these capabilities; choosing image mode keeps the selected model and offers an explicit switch to MiniMax H3 when needed.
+- On Windows, video inference checks NVIDIA dedicated VRAM as well as the CUDA budget, accounts for other applications, and streams weights from RAM when necessary. The conditioning encoder is released before keyframe VAE encoding. This preserves the requested frame count and resolution.
 - Video models and shared files occupy about 48.45 GB for both installed Q4 models plus Turbo. No duplicate text encoder or VAE is downloaded for each video model. Model weights are downloaded, resumed and verified from **Settings**.
 - Output is H.264 MP4 at 24 fps, with optional AAC stereo audio. Durations follow the model's supported frame grid; the exact duration is shown in the interface. Smaller Draft sizes are available. The models jointly generate audio/video even when audio is excluded from the saved MP4.
 - Video prompt enhancement uses the same Antigravity connection. The required H3 conditioning encoder is not a prompt-enhancement LLM.
 
 See [video research and exact model contracts](reference/video-research.md) and [validation results](reference/validation.md). FastH3 is limited to the upstream distilled text-to-video task; image inputs use MiniMax H3. The separate H3 reference-to-video checkpoint is not included in the first/last-frame model.
+
+## Queue and gallery
+
+Image and video requests share a persistent queue. The form stays editable while jobs are running or waiting; each click saves a separate snapshot of the prompt, input images, model, dimensions, steps, output folder and resolved seed. Only one worker uses the GPU at a time, and the next job starts after that process exits.
+
+- **Queue** shows the active job, waiting order and recent results/errors. Waiting jobs can move up or be cancelled individually. **Pause queue** lets the active job finish while preserving waiting jobs; **Resume queue** continues processing. A failed or cancelled job does not stall the queue.
+- Waiting jobs, their order and the paused state survive server restarts. A job interrupted during inference is shown as failed with a retry action. Queued model files cannot be removed until the jobs finish or are cancelled.
+- **Gallery** combines existing and new images and videos, with type filters, prompt/model search, pagination, lightweight previews and full-size playback. **Use settings** loads the original prompt, input images, model, dimensions, steps and actual seed into the relevant form. **Run again** submits those settings directly to the queue with the seed fixed. Prompt enhancement, when enabled in the saved request, runs again and may produce a different rewrite.
+- The details view includes source images, parameters, the enhanced prompt, media download and full JSON settings. Image/video drafts, including uploaded input references, survive browser refresh. Original uploads and generated files stay on the local data drive.

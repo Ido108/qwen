@@ -7,6 +7,33 @@ from unittest.mock import patch
 from backend import models
 
 class ModelTests(unittest.TestCase):
+    def test_image_defaults_match_both_official_comfy_workflows(self):
+        import json
+        def samplers(value):
+            if isinstance(value,dict):
+                if value.get('type')=='KSampler':
+                    yield value['widgets_values'][2]
+                for child in value.values():
+                    yield from samplers(child)
+            elif isinstance(value,list):
+                for child in value:
+                    yield from samplers(child)
+        for filename in ('comfy_t2i.json','comfy_edit.json'):
+            workflow=json.loads((models.APP_DIR/'reference'/filename).read_text(encoding='utf-8'))
+            self.assertEqual(set(samplers(workflow)),{25})
+        for item in models.catalog():
+            if item['kind']=='image':
+                self.assertEqual(item['generation_defaults']['steps'],25,item['id'])
+                self.assertIn('workflow_templates',item['generation_defaults']['source'])
+
+    def test_video_defaults_match_the_documented_model_families(self):
+        for item in models.catalog():
+            if item['kind']=='video':
+                defaults=item['generation_defaults']
+                self.assertEqual(defaults['steps'],8 if item['family']=='fasth3' else 20,item['id'])
+                if item['family']=='minimax-h3':
+                    self.assertEqual(defaults['turbo_steps'],8)
+
     def test_official_download_omits_duplicate_encoder_and_vae(self):
         item=models.entry('official-bf16')
         self.assertLess(item['bytes'],15_000_000_000)

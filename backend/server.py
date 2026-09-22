@@ -1,10 +1,12 @@
 from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
+from collections import deque
 import io
 import json
 import os
 from pathlib import Path
+from typing import Literal
 import secrets
 import shutil
 import subprocess
@@ -13,7 +15,7 @@ import threading
 import time
 import uuid
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -27,6 +29,48 @@ active_lock = threading.Lock()
 active_job: str | None = None
 active_process: subprocess.Popen | None = None
 cancelled_jobs: set[str] = set()
+pending_jobs: list[str] = []
+recent_jobs: deque[str] = deque(maxlen=20)
+queue_paused = False
+shutting_down = False
+
+
+def start_next_locked():
+    """Caller holds active_lock. Advance only after the previous worker exits."""
+    global active_job
+    if active_job or queue_paused or shutting_down:
+        return
+    while pending_jobs:
+        job_id = pending_jobs.pop(0)
+        if read_job(job_id)['status'] != 'queued':
+            continue
+        active_job = job_id
+        threading.Thread(target=run_job, args=(job_id,), daemon=True).start()
+        return
+
+
+def save_queue_locked():
+    write_json(DATA_DIR / 'queue-state.json', {'paused': queue_paused, 'pending': pending_jobs})
+
+
+def enqueue_locked(job, data):
+    directory = JOBS_DIR / job['id']
+    directory.mkdir()
+    write_json(directory / 'request.json', data)
+    write_json(directory / 'status.json', job)
+    pending_jobs.append(job['id'])
+    save_queue_locked()
+    start_next_locked()
+
+
+def all_jobs():
+    result = []
+    for path in JOBS_DIR.glob('*/status.json'):
+        try:
+            result.append(json.loads(path.read_text(encoding='utf-8')))
+        except (ValueError, OSError):
+            continue
+    return result
 
 def stop_worker(process):
     """Windows venv launchers spawn a child interpreter; stop the owned tree."""
@@ -47,7 +91,10 @@ def read_job(job_id):
         raise HTTPException(404, 'Generation not found.')
 
 def public_job(job):
-    return {k: v for k, v in job.items() if k not in ('output_path',)}
+    public = {k: v for k, v in job.items() if k not in ('output_path',)}
+    if job.get('status') == 'succeeded':
+        public['thumbnail_url'] = f'/api/jobs/{job["id"]}/thumbnail'
+    return public
 
 def run_job(job_id):
     global active_job, active_process
@@ -73,7 +120,7 @@ def run_job(job_id):
                 job.update(status='cancelled', message='Generation cancelled.', finished_at=time.time())
                 write_json(directory / 'status.json', job)
             elif job.get('status') not in ('succeeded', 'failed'):
-                job.update(status='failed', message=f'The generation process stopped (code {return_code}). Retry with a smaller size or duration.', finished_at=time.time())
+                job.update(status='failed', message=f'The generation process stopped (code {return_code}). You can retry this job from the queue.', finished_at=time.time())
                 write_json(directory / 'status.json', job)
     except Exception as exc:
         job = read_job(job_id)
@@ -84,19 +131,39 @@ def run_job(job_id):
             active_job = None
             active_process = None
             cancelled_jobs.discard(job_id)
+            recent_jobs.appendleft(job_id)
+            save_queue_locked()
+            start_next_locked()
 
 @asynccontextmanager
 async def lifespan(app):
-    for path in JOBS_DIR.glob('*/status.json'):
+    global queue_paused, shutting_down, active_job, active_process
+    with active_lock:
+        shutting_down = False
+        active_job = None
+        active_process = None
+        pending_jobs.clear()
+        recent_jobs.clear()
         try:
-            job = json.loads(path.read_text(encoding='utf-8'))
-            if job.get('status') in ('queued', 'running'):
-                job.update(status='failed', message='The app closed before generation finished. You can retry.', finished_at=time.time())
-                write_json(path, job)
-        except (ValueError, OSError):
-            pass
+            saved = json.loads((DATA_DIR / 'queue-state.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            saved = {}
+        queue_paused = bool(saved.get('paused', False))
+        for job in sorted(all_jobs(), key=lambda j: j['created_at']):
+            if job.get('status') == 'running':
+                job.update(status='failed', message='The app closed before this generation finished. Use Retry to run it again.', finished_at=time.time())
+                write_json(JOBS_DIR / job['id'] / 'status.json', job)
+            if job.get('status') == 'queued':
+                pending_jobs.append(job['id'])
+            else:
+                recent_jobs.appendleft(job['id'])
+        order = saved.get('pending', [])
+        pending_jobs.sort(key=lambda job_id: order.index(job_id) if job_id in order else len(order))
+        start_next_locked()
     yield
     with active_lock:
+        shutting_down = True
+        save_queue_locked()
         if active_process and active_process.poll() is None:
             stop_worker(active_process)
 
@@ -164,8 +231,8 @@ def connection_refresh():
 @app.post('/api/oauth/antigravity/disconnect')
 def connection_disconnect():
     with active_lock:
-        if active_job:
-            raise HTTPException(409, 'Wait for generation to finish before disconnecting.')
+        if active_job or pending_jobs:
+            raise HTTPException(409, 'Finish or cancel queued jobs before disconnecting.')
         return antigravity.disconnect()
 
 @app.post('/api/enhancement/model')
@@ -204,8 +271,8 @@ def cancel_download():
 @app.delete('/api/models/{model_id}')
 def remove_model(model_id: str):
     with active_lock:
-        if active_job:
-            raise HTTPException(409, 'Wait for generation to finish before removing models.')
+        if active_job or pending_jobs:
+            raise HTTPException(409, 'Finish or cancel queued jobs before removing models.')
         try:
             return models.remove(model_id)
         except (ValueError,OSError) as exc:
@@ -252,7 +319,6 @@ def uploaded_image(image_id: str):
 
 @app.post('/api/generate', status_code=202)
 def generate(body: GenerationRequest):
-    global active_job
     try:
         needed = models.required(body.model_id, body.text_encoder)
     except ValueError as exc:
@@ -274,15 +340,11 @@ def generate(body: GenerationRequest):
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc))
     with active_lock:
-        if active_job:
-            raise HTTPException(409, 'An image is already being generated. Wait or cancel it first.')
         # Removal uses the same lock; recheck after acquiring it so another tab
         # cannot remove a dependency between validation and starting the worker.
         if not all(models.is_installed(name) for name in needed):
             raise HTTPException(503, 'A required model is not installed. Open Settings to download it.')
         job_id = uuid.uuid4().hex
-        directory = JOBS_DIR / job_id
-        directory.mkdir()
         data = body.model_dump()
         default_steps = models.entry(body.model_id)['generation_defaults']['steps']
         data['steps'] = body.steps if body.steps is not None else default_steps
@@ -292,11 +354,8 @@ def generate(body: GenerationRequest):
         data['output_dir'] = str(destination)
         if body.randomize_seed:
             data['seed'] = secrets.randbelow(2147483648)
-        job = {'id': job_id, 'status': 'queued', 'message': 'Starting…', 'stage': 'starting', 'created_at': time.time(), 'seed': data['seed'], 'request': data, 'rewritten_prompt': '', 'step': 0, 'total_steps': data['steps']}
-        write_json(directory / 'request.json', data)
-        write_json(directory / 'status.json', job)
-        active_job = job_id
-        threading.Thread(target=run_job, args=(job_id,), daemon=True).start()
+        job = {'id': job_id, 'kind': 'image', 'status': 'queued', 'message': 'Waiting in queue', 'stage': 'queued', 'created_at': time.time(), 'seed': data['seed'], 'request': data, 'rewritten_prompt': '', 'step': 0, 'total_steps': data['steps']}
+        enqueue_locked(job, data)
     return public_job(job)
 
 @app.get('/api/jobs/{job_id}')
@@ -305,7 +364,6 @@ def get_job(job_id: str):
 
 @app.post('/api/video/generate', status_code=202)
 def generate_video(body: VideoRequest):
-    global active_job
     try:
         needed=models.required_video(body)
         for image_id in (body.first_frame,body.last_frame):
@@ -322,8 +380,6 @@ def generate_video(body: VideoRequest):
     if body.enhance and not antigravity.status()['connected']:
         raise HTTPException(409,'Connect Google Account in Settings, or turn off Enhance prompt.')
     with active_lock:
-        if active_job:
-            raise HTTPException(409,'A generation is already running. Wait or cancel it first.')
         if not all(models.is_installed(name) for name in needed):
             raise HTTPException(503,'A required video model is not installed. Open Settings to download it.')
         data=body.model_dump()
@@ -333,23 +389,89 @@ def generate_video(body: VideoRequest):
         fast=models.entry(body.model_id)['family']=='fasth3'
         steps=8 if fast or body.quality=='turbo' else body.steps
         job_id=uuid.uuid4().hex
-        directory=JOBS_DIR/job_id;directory.mkdir()
-        job={'id':job_id,'kind':'video','status':'queued','message':'Starting…','stage':'starting',
+        job={'id':job_id,'kind':'video','status':'queued','message':'Waiting in queue','stage':'queued',
              'created_at':time.time(),'seed':data['seed'],'request':data,'rewritten_prompt':'','step':0,'total_steps':steps}
-        write_json(directory/'request.json',data);write_json(directory/'status.json',job)
-        active_job=job_id
-        threading.Thread(target=run_job,args=(job_id,),daemon=True).start()
+        enqueue_locked(job, data)
     return public_job(job)
 
 @app.post('/api/jobs/{job_id}/cancel')
 def cancel(job_id: str):
     with active_lock:
+        if job_id in pending_jobs:
+            pending_jobs.remove(job_id)
+            job = read_job(job_id)
+            job.update(status='cancelled', stage='cancelled', message='Removed from queue.', finished_at=time.time())
+            write_json(JOBS_DIR / job_id / 'status.json', job)
+            recent_jobs.appendleft(job_id)
+            save_queue_locked()
+            return {'ok': True}
         if active_job != job_id:
             raise HTTPException(409, 'This generation is no longer running.')
+        if read_job(job_id)['status'] in ('succeeded', 'failed', 'cancelled'):
+            return {'ok': True}
         cancelled_jobs.add(job_id)
         if active_process and active_process.poll() is None:
             stop_worker(active_process)
     return {'ok': True}
+
+@app.get('/api/queue')
+def get_queue():
+    with active_lock:
+        return {'paused': queue_paused,
+                'active': public_job(read_job(active_job)) if active_job else None,
+                'pending': [public_job(read_job(job_id)) | {'position': i + 1} for i, job_id in enumerate(pending_jobs)],
+                'recent': [public_job(read_job(job_id)) for job_id in recent_jobs]}
+
+
+class QueueControl(BaseModel):
+    paused: bool
+
+
+@app.post('/api/queue/control')
+def control_queue(body: QueueControl):
+    global queue_paused
+    with active_lock:
+        queue_paused = body.paused
+        save_queue_locked()
+        start_next_locked()
+    return get_queue()
+
+
+class QueuePosition(BaseModel):
+    position: int = Field(ge=1)
+
+
+@app.post('/api/jobs/{job_id}/move')
+def move_job(job_id: str, body: QueuePosition):
+    with active_lock:
+        if job_id not in pending_jobs:
+            raise HTTPException(409, 'Only waiting jobs can be moved.')
+        pending_jobs.remove(job_id)
+        pending_jobs.insert(min(body.position - 1, len(pending_jobs)), job_id)
+        save_queue_locked()
+    return get_queue()
+
+
+@app.post('/api/jobs/{job_id}/retry', status_code=202)
+def retry_job(job_id: str):
+    previous = read_job(job_id)
+    data = dict(previous['request'])
+    data.update(seed=previous['seed'], randomize_seed=False)
+    return generate_video(VideoRequest(**data)) if previous.get('kind') == 'video' else generate(GenerationRequest(**data))
+
+
+@app.get('/api/library')
+def library(kind: Literal['all', 'image', 'video'] = 'all', search: str = '',
+            offset: int = Query(0, ge=0), limit: int = Query(48, ge=1, le=100)):
+    query = search.casefold().strip()
+    titles = {item['id']: item['title'] for item in models.catalog()}
+    jobs = [j for j in all_jobs() if j.get('status') == 'succeeded'
+            and (kind == 'all' or j.get('kind', 'image') == kind)
+            and (not query or query in (j.get('request', {}).get('prompt', '') + ' ' + j.get('request', {}).get('model_id', '')
+                 + ' ' + titles.get(j.get('request', {}).get('model_id', ''), '')).casefold())]
+    jobs.sort(key=lambda j: j['created_at'], reverse=True)
+    return {'items': [public_job(j) for j in jobs[offset:offset + limit]], 'total': len(jobs)}
+
 
 @app.get('/api/history')
 def history(kind: str = 'image'):
@@ -386,6 +508,28 @@ def video_poster(job_id: str):
     if job.get('kind')!='video' or job['status']!='succeeded' or not path.is_file():
         raise HTTPException(404,'Video preview not found.')
     return FileResponse(path,media_type='image/png')
+
+
+@app.get('/api/jobs/{job_id}/thumbnail')
+def thumbnail(job_id: str):
+    job = read_job(job_id)
+    if job['status'] != 'succeeded':
+        raise HTTPException(404, 'Preview not found.')
+    directory = JOBS_DIR / job_id
+    cached = directory / 'thumbnail.webp'
+    if not cached.exists():
+        source = directory / 'poster.png' if job.get('kind') == 'video' else Path(job.get('output_path', ''))
+        if not source.is_file():
+            raise HTTPException(404, 'Saved result not found.')
+        temporary = directory / f'thumbnail-{uuid.uuid4().hex}.tmp'
+        try:
+            with Image.open(source) as picture:
+                picture.thumbnail((480, 360), Image.Resampling.LANCZOS)
+                picture.save(temporary, format='WEBP', quality=85)
+            temporary.replace(cached)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return FileResponse(cached, media_type='image/webp')
 
 @app.get('/api/jobs/{job_id}/metadata')
 def metadata(job_id: str):

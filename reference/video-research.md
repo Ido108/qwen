@@ -20,7 +20,8 @@ Reviewed 2026-09-22 for the local RTX 4090 24 GB / 64 GB RAM installation.
 - Base H3 uses shift 12/3 and 20 steps by default. Optional official Turbo LoRA uses 8 steps at strength 1. Sampling guidance stays at 1 for both families.
 - Duration follows the actual 17k+5 frame grid at 24 fps. Native landscape size is 1344 × 768. The first uploaded image determines the initial aspect ratio; users may adjust dimensions in multiples of 32. Lower-resolution presets are labeled Draft.
 - MP4 contains H.264 video and optionally AAC stereo audio at 32 kHz. Audio can be omitted from the export; the model still denoises its joint audio/video latent. Poster and JSON provenance are saved alongside the job. Image and video histories and output folders are separate.
-- A single shared GPU job lock prevents image and video inference running concurrently. Cancel stops only the owned worker process tree and releases its allocations.
+- A persistent shared queue accepts image and video requests at any time and runs one GPU worker at a time. Pending jobs preserve their submitted settings, can be reordered/cancelled, and survive restart. Cancel stops only the owned active worker process tree and releases its allocations before the next job starts.
+- On Windows, the worker compares CUDA free memory to NVIDIA dedicated VRAM before loading models. It reserves the virtual-budget gap, a 2 GiB safety margin, and encoder activation space (4 GiB with images, 2 GiB for text). The one-use conditioning encoder is destroyed before the upstream node loads the keyframe VAE, avoiding the observed native crash while copying quantized weights back to CPU. Requested resolution, duration, and sampling steps are preserved.
 - MiniMax H3 and derived weights retain their upstream community license; see the linked model repositories for the exact terms. Source licenses remain with the vendored inference code.
 
 ## Validation

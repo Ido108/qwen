@@ -86,8 +86,13 @@ except Exception as exc:
     traceback.print_exc()
     message = str(exc)
     if 'out of memory' in message.lower():
-        message = ('Not enough free GPU memory. Close other AI apps, choose a smaller video size or shorter duration, and retry.'
-                   if request.get('kind')=='video' else 'Not enough free GPU memory. Close other AI apps, choose a 1K size, and retry.')
+        if request.get('kind') == 'video':
+            message = ('Not enough free GPU memory while reading the prompt and input images. '
+                       'Close unused AI apps and retry.' if job.get('stage') == 'encoding' else
+                       'Not enough free GPU memory while generating video. '
+                       'Close unused AI apps, choose a smaller size or shorter duration, and retry.')
+        else:
+            message = 'Not enough free GPU memory. Close unused AI apps, choose a 1K size, and retry.'
     elif '1455' in message or 'paging file is too small' in message.lower():
         message = 'Windows ran out of available system memory. Close unused AI apps and retry. If this persists, increase the Windows paging file.'
     update(status='failed', stage='failed', message=message, finished_at=time.time())

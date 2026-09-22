@@ -44,6 +44,12 @@ def main():
     for model in catalog:
         if model['kind'] == 'video':
             model['dependencies'] = ['h3-encoder', 'h3-video-vae', 'h3-audio-vae']
+            fast=model['family']=='fasth3'
+            model['generation_defaults']={'steps':8 if fast else 20,
+                'source':'https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2' if fast else 'https://docs.comfy.org/tutorials/video/minimax/minimax-h3-native',
+                'note':'Trained eight-forward schedule.' if fast else 'Official ComfyUI FL2VA workflow.'}
+            if not fast:
+                model['generation_defaults']['turbo_steps']=8
     path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + '\n', 'utf-8')
 
 if __name__ == '__main__':

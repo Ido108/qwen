@@ -151,9 +151,15 @@ class AppTests(unittest.TestCase):
         self.assertEqual(downloaded.content,png())
         self.assertIn('attachment',downloaded.headers['content-disposition'])
         self.assertEqual(self.client.get(f'/api/jobs/{job_id}/metadata').json()['seed'],42)
+        preview = self.client.get(f'/api/jobs/{job_id}/thumbnail')
+        self.assertEqual(preview.status_code, 200)
+        with Image.open(io.BytesIO(preview.content)) as picture:
+            self.assertEqual(picture.size, (32, 24))
+            self.assertEqual(picture.getchannel('A').getextrema(), (100, 100))
         reused=self.client.post(f'/api/jobs/{job_id}/reuse',headers=self.headers).json()
         self.assertEqual(self.client.get(reused['url']).content,png())
         (directory/'status.json').unlink()
+        (directory/'thumbnail.webp').unlink()
         directory.rmdir()
 
 if __name__=='__main__':
