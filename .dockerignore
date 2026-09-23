@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+node_modules
+dist
+tests
+__pycache__
+*.pyc
+*.log
+*.dpapi
+.env*
+local-settings.json
+runtime.json
+public/examples
+qa/screenshots

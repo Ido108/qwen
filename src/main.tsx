@@ -51,9 +51,9 @@ function App(){
   const validSteps=params.steps===null||(Number.isInteger(params.steps)&&params.steps>=1&&params.steps<=80);
   const chosenEncoder=params.text_encoder==='auto'?(chosenModel?.format==='GGUF'?'encoder-int8':'encoder-bf16'):params.text_encoder;
   const requiredIds=[params.model_id,chosenEncoder,'vae'];
-  const imageReady=requiredIds.every(id=>modelState?.models.find(m=>m.id===id)?.installed);
+  const imageReady=modelState?.remote?!!chosenModel?.ready:requiredIds.every(id=>modelState?.models.find(m=>m.id===id)?.installed);
   const ready=imageReady&&!!chosenModel?.generation_defaults&&validSteps&&(!params.enhance||!!enhancement?.connected);
-  const missingModels=requiredIds.map(id=>modelState?.models.find(m=>m.id===id)).filter(m=>m&&!m.installed);
+  const missingModels=modelState?.remote?[]:requiredIds.map(id=>modelState?.models.find(m=>m.id===id)).filter(m=>m&&!m.installed);
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
   const api=useCallback(async (path:string,init:RequestInit={})=>{
     const response=await fetch(path,{...init,headers:{...init.headers,'X-Studio-Token':token.current}});
@@ -157,7 +157,7 @@ function App(){
         <section className="examples"><div className="section-heading"><h3>{t('examples')}</h3><button className="text-button" onClick={()=>setAllExamples(!allExamples)}>{allExamples?t('fewerExamples'):t('allExamples')}<ChevronDown className={allExamples?'rotate':''} size={15}/></button></div><div className="examples-grid">{displayed.map(example=><button key={example.id} className="example-card" onClick={()=>setActiveExample(example)}><div className="example-thumbnail checker"><img loading="lazy" src={`/examples/${example.outputs[0]||example.inputs[0]}`} alt=""/></div><span>{example.title_en}<small>{example.inputs.length?`${example.inputs.length} ${t('sourceCount')}`:t('createMode')}</small></span><ChevronRight size={16}/></button>)}</div></section>
         <details className="history disclosure"><summary><ChevronRight size={15}/>{t('history')}<span className="summary-hint">{history.length}</span><button className="text-button folder-button" onClick={e=>{e.preventDefault();api('/api/open-output',{method:'POST'}).catch(err=>setError(String(err)));}}><FolderOpen size={15}/>{t('openFolder')}</button></summary><div className="details-body"><div className="history-grid">{history.map(item=><button className={`history-item ${result?.id===item.id?'selected':''}`} key={item.id} onClick={()=>{setResult(item);if(!busy)setJob(item);}}><img src={item.image_url} alt={item.request.prompt} loading="lazy"/><span>{item.request.prompt}</span></button>)}</div>{!history.length?<p>{t('noHistory')}</p>:null}{result?<button disabled={locked} className="text-button reuse-settings" onClick={()=>{setParams({...defaults,...result.request,randomize_seed:false});setInputs(result.request.images.map(id=>({id,name:id,url:id.startsWith('example:')?`/examples/${id.slice(8)}`:`/api/uploads/${id}`})));setNotice(t('reuseSettings'));}}><RotateCcw size={15}/>{t('reuseSettings')}</button>:null}</div></details>
       </section>
-      <footer><span className="local-status"><i/>{t('local')}</span><span>{config?.device||''}</span></footer>
+      <footer><span className="local-status"><i/>{modelState?.remote?'Runs on RunPod GPU':t('local')}</span><span>{modelState?.remote?'Results saved on this computer':config?.device||''}</span></footer>
     </main>
     <VideoTab visible={tab==='video'} api={api} models={modelState} enhancement={enhancement} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)}/>
     <Gallery api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>

@@ -22,13 +22,14 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, GenerationRequest, VideoRequest, model_status, resolve_image, read_json, write_json
-from . import models, antigravity
+from . import models, antigravity, cloud
 from .resident_worker import ImageWorker
 
 SESSION_TOKEN = secrets.token_urlsafe(32)
 active_lock = threading.Lock()
 active_job: str | None = None
 active_process: subprocess.Popen | None = None
+active_remote: tuple[str, str] | None = None
 cancelled_jobs: set[str] = set()
 pending_jobs: list[str] = []
 recent_jobs: deque[str] = deque(maxlen=20)
@@ -98,12 +99,122 @@ def public_job(job):
         public['thumbnail_url'] = f'/api/jobs/{job["id"]}/thumbnail'
     return public
 
+
+def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
+    """Keep queue, gallery and output files local while the GPU runs on RunPod."""
+    global active_remote
+    directory = JOBS_DIR / job_id
+    job = read_job(job_id)
+    remote_id = job.get('remote_id')
+    work = dict(request)
+    if not remote_id:
+        job.update(status='running', stage='uploading', message='Sending inputs to RunPod', started_at=time.time())
+        write_json(directory / 'status.json', job)
+        input_ids = request.get('images', []) if kind == 'image' else [request.get('first_frame'), request.get('last_frame')]
+        source_paths = [resolve_image(value) for value in input_ids if value]
+        if request.get('enhance'):
+            from PIL import Image
+            pictures = []
+            for path in source_paths:
+                with Image.open(path) as opened:
+                    pictures.append(opened.convert('RGBA' if kind == 'image' else 'RGB'))
+            def enhancement_progress(**values):
+                current = read_job(job_id)
+                current.update(values)
+                write_json(directory / 'status.json', current)
+            if kind == 'image':
+                from .prompt_enhancer import enhance
+                rewrite = enhance(request['prompt'], pictures, request.get('enhancement_model') or antigravity.selected_model(), enhancement_progress)
+                work['prompt'] = rewrite.get('positive_prompt') or request['prompt']
+                work['enhancement_result'] = rewrite
+            else:
+                from .prompt_enhancer import enhance_video
+                named = {}
+                if request.get('first_frame'):
+                    named['first_frame'] = pictures[0]
+                if request.get('last_frame'):
+                    named['last_frame'] = pictures[-1]
+                work['prompt'] = enhance_video(request['prompt'], named, request, enhancement_progress)
+            work['enhance'] = False
+        keys = []
+        for index, path in enumerate(source_paths):
+            key = f'qwen-transfer/{job_id}/input-{index}{path.suffix.lower()}'
+            cloud.upload(path, key)
+            keys.append(key)
+        if kind == 'image':
+            work['images'] = [f'cloud-{index}.png' for index in range(len(keys))]
+        else:
+            iterator = iter(f'cloud-{index}.png' for index in range(len(keys)))
+            work['first_frame'] = next(iterator) if request.get('first_frame') else None
+            work['last_frame'] = next(iterator) if request.get('last_frame') else None
+        work['output_dir'] = '/runpod-volume/qwen-transfer/' + job_id
+        payload = {'job_id': job_id, 'kind': kind, 'request': work, 'input_keys': keys,
+                   'output_prefix': f'qwen-transfer/{job_id}/'}
+        if job_id in cancelled_jobs:
+            current = read_job(job_id)
+            current.update(status='cancelled', stage='cancelled', message='Generation cancelled.', finished_at=time.time())
+            write_json(directory / 'status.json', current)
+            return
+        remote_id = cloud.submit(kind, payload)
+    with active_lock:
+        active_remote = (job_id, remote_id)
+    job = read_job(job_id)
+    job.update(status='running', stage='waiting', message='Waiting for RunPod GPU', remote_id=remote_id)
+    write_json(directory / 'status.json', job)
+    def update_remote(state, result):
+        current = read_job(job_id)
+        if current.get('status') == 'cancelled':
+            return
+        current.update(stage='processing' if state == 'IN_PROGRESS' else 'waiting',
+                       message=cloud.progress_message(result) or ('Generating on RunPod' if state == 'IN_PROGRESS' else 'Waiting for RunPod GPU'))
+        write_json(directory / 'status.json', current)
+    try:
+        result = cloud.poll(kind, remote_id, update_remote, lambda: job_id in cancelled_jobs)
+    except RuntimeError as exc:
+        if '(404)' not in str(exc):
+            raise
+        result = {'output_key': f'qwen-transfer/{job_id}/result.' + ('mp4' if kind == 'video' else 'png')}
+    output_key = result.get('output_key', '')
+    expected_prefix = f'qwen-transfer/{job_id}/'
+    if not output_key.startswith(expected_prefix) or '/' in output_key[len(expected_prefix):]:
+        raise RuntimeError('RunPod returned an unexpected output file.')
+    suffix = '.mp4' if kind == 'video' else '.png'
+    if not output_key.endswith(suffix):
+        raise RuntimeError('RunPod returned the wrong media format.')
+    destination = Path(request['output_dir']) / (time.strftime('%Y-%m-%d_%H-%M-%S') + '_' + job_id[:8] + suffix)
+    current = read_job(job_id)
+    current.update(stage='downloading', message='Saving result on this computer')
+    write_json(directory / 'status.json', current)
+    cloud.download(output_key, destination)
+    if kind == 'video' and result.get('poster_key'):
+        poster_key = result['poster_key']
+        if not poster_key.startswith(expected_prefix):
+            raise RuntimeError('RunPod returned an unexpected poster file.')
+        cloud.download(poster_key, directory / 'poster.png')
+    current = read_job(job_id)
+    metadata = result.get('metadata', {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    safe = {k: v for k, v in metadata.items() if k not in ('id', 'request', 'output_path', 'status', 'remote_id')}
+    current.update(safe)
+    current.update(status='succeeded', stage='complete', message='Video saved.' if kind == 'video' else 'Image saved.',
+                   output_path=str(destination), finished_at=time.time(),
+                   elapsed_seconds=round(time.time() - current['started_at'], 1),
+                   video_url=f'/api/jobs/{job_id}/video' if kind == 'video' else None,
+                   poster_url=f'/api/jobs/{job_id}/poster' if kind == 'video' else None,
+                   image_url=f'/api/jobs/{job_id}/image' if kind == 'image' else None,
+                   rewritten_prompt=current.get('rewritten_prompt') or (work['prompt'] if work['prompt'] != request['prompt'] else ''))
+    write_json(directory / 'status.json', current)
+
 def run_job(job_id):
-    global active_job, active_process
+    global active_job, active_process, active_remote
     directory = JOBS_DIR / job_id
     try:
         request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
         is_video = request.get('kind') == 'video'
+        if request.get('execution') == 'runpod':
+            run_cloud_job(job_id, request, 'video' if is_video else 'image')
+            return
         with (directory / 'worker.log').open('a', encoding='utf-8') as log:
             with active_lock:
                 if job_id in cancelled_jobs:
@@ -132,12 +243,14 @@ def run_job(job_id):
                 write_json(directory / 'status.json', job)
     except Exception as exc:
         job = read_job(job_id)
-        job.update(status='failed', message=str(exc), finished_at=time.time())
-        write_json(directory / 'status.json', job)
+        if job.get('status') != 'cancelled' and job_id not in cancelled_jobs:
+            job.update(status='failed', message=str(exc), finished_at=time.time())
+            write_json(directory / 'status.json', job)
     finally:
         with active_lock:
             active_job = None
             active_process = None
+            active_remote = None
             cancelled_jobs.discard(job_id)
             recent_jobs.appendleft(job_id)
             save_queue_locked()
@@ -159,7 +272,10 @@ async def lifespan(app):
         queue_paused = bool(saved.get('paused', False))
         for job in sorted(all_jobs(), key=lambda j: j['created_at']):
             if job.get('status') == 'running':
-                job.update(status='failed', message='The app closed before this generation finished. Use Retry to run it again.', finished_at=time.time())
+                if job.get('request', {}).get('execution') == 'runpod' and job.get('remote_id'):
+                    job.update(status='queued', stage='queued', message='Reconnecting to RunPod')
+                else:
+                    job.update(status='failed', message='The app closed before this generation finished. Use Retry to run it again.', finished_at=time.time())
                 write_json(JOBS_DIR / job['id'] / 'status.json', job)
             if job.get('status') == 'queued':
                 pending_jobs.append(job['id'])
@@ -203,7 +319,52 @@ def health():
 
 @app.get('/api/config')
 def config():
-    return {'token': SESSION_TOKEN, 'models': model_status(), 'catalog': models.state(), 'enhancement': antigravity.status(), 'output_dir': str(OUTPUTS_DIR), 'video_output_dir':str(VIDEOS_DIR), 'active_job': active_job, 'model': 'Qwen-Image-2.1', 'device': 'NVIDIA GeForce RTX 4090', 'data_dir': str(DATA_DIR)}
+    return {'token': SESSION_TOKEN, 'models': model_status(), 'catalog': catalog_state(), 'enhancement': antigravity.status(), 'cloud': cloud.status(), 'output_dir': str(OUTPUTS_DIR), 'video_output_dir':str(VIDEOS_DIR), 'active_job': active_job, 'model': 'Qwen-Image-2.1', 'device': 'RunPod GPU' if cloud.settings()['mode'] == 'runpod' else 'Local NVIDIA GPU', 'data_dir': str(DATA_DIR)}
+
+
+class CloudInput(BaseModel):
+    mode: Literal['local', 'runpod']
+    image_endpoint: str = ''
+    video_endpoint: str = ''
+    datacenter: str = ''
+    volume_id: str = ''
+    api_key: str = ''
+    s3_access_key: str = ''
+    s3_secret_key: str = ''
+
+
+@app.get('/api/cloud')
+def cloud_status():
+    return cloud.status()
+
+
+@app.post('/api/cloud')
+def cloud_configure(body: CloudInput):
+    try:
+        with active_lock:
+            if active_job or pending_jobs:
+                raise ValueError('Finish or cancel queued jobs before changing the processing location.')
+            return cloud.configure(body.model_dump())
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(409, str(exc))
+
+
+@app.post('/api/cloud/test')
+def cloud_test():
+    try:
+        return cloud.test_connection()
+    except Exception as exc:
+        raise HTTPException(424, str(exc)[:500])
+
+
+def catalog_state():
+    state = models.state()
+    if cloud.settings()['mode'] == 'runpod':
+        for item in state['models']:
+            if item['kind'] in ('image', 'video'):
+                item['ready'] = cloud.ready(item['kind'])
+        state['remote'] = True
+    return state
 
 class CallbackInput(BaseModel):
     callbackInput: str = Field(min_length=1, max_length=16000)
@@ -264,7 +425,7 @@ def connection_test():
 
 @app.get('/api/models')
 def get_models():
-    return models.state() | {'resident': image_worker.status()}
+    return catalog_state() | {'resident': image_worker.status() if cloud.settings()['mode'] == 'local' else None}
 
 @app.post('/api/models/release')
 def release_models():
@@ -342,7 +503,10 @@ def generate(body: GenerationRequest):
         needed = models.required(body.model_id, body.text_encoder)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    if not all(models.is_installed(name) for name in needed):
+    remote = cloud.settings()['mode'] == 'runpod'
+    if remote and not cloud.ready('image'):
+        raise HTTPException(503, 'Connect a RunPod image endpoint and network volume in Settings.')
+    if not remote and not all(models.is_installed(name) for name in needed):
         raise HTTPException(503, 'A required model is not installed. Open Settings to download it.')
     if body.enhance and not antigravity.status()['connected']:
         raise HTTPException(409, 'Connect Google Account in Settings → Prompt enhancement, or turn off Enhance prompt.')
@@ -361,10 +525,14 @@ def generate(body: GenerationRequest):
     with active_lock:
         # Removal uses the same lock; recheck after acquiring it so another tab
         # cannot remove a dependency between validation and starting the worker.
-        if not all(models.is_installed(name) for name in needed):
+        remote = cloud.settings()['mode'] == 'runpod'
+        if remote and not cloud.ready('image'):
+            raise HTTPException(503, 'Connect a RunPod image endpoint and network volume in Settings.')
+        if not remote and not all(models.is_installed(name) for name in needed):
             raise HTTPException(503, 'A required model is not installed. Open Settings to download it.')
         job_id = uuid.uuid4().hex
         data = body.model_dump()
+        data['execution'] = 'runpod' if remote else 'local'
         default_steps = models.entry(body.model_id)['generation_defaults']['steps']
         data['steps'] = body.steps if body.steps is not None else default_steps
         data['steps_mode'] = 'custom' if body.steps is not None else 'model'
@@ -399,10 +567,13 @@ def generate_video(body: VideoRequest):
     if body.enhance and not antigravity.status()['connected']:
         raise HTTPException(409,'Connect Google Account in Settings, or turn off Enhance prompt.')
     with active_lock:
-        if not all(models.is_installed(name) for name in needed):
+        remote = cloud.settings()['mode'] == 'runpod'
+        if remote and not cloud.ready('video'):
+            raise HTTPException(503, 'Connect a RunPod video endpoint and network volume in Settings.')
+        if not remote and not all(models.is_installed(name) for name in needed):
             raise HTTPException(503,'A required video model is not installed. Open Settings to download it.')
         data=body.model_dump()
-        data.update(kind='video',output_dir=str(destination),enhancement_model=antigravity.selected_model())
+        data.update(kind='video',execution='runpod' if remote else 'local',output_dir=str(destination),enhancement_model=antigravity.selected_model())
         if body.randomize_seed:
             data['seed']=secrets.randbelow(2147483648)
         fast=models.entry(body.model_id)['family']=='fasth3'
@@ -429,8 +600,14 @@ def cancel(job_id: str):
         if read_job(job_id)['status'] in ('succeeded', 'failed', 'cancelled'):
             return {'ok': True}
         cancelled_jobs.add(job_id)
+        remote_to_cancel = active_remote[1] if active_remote and active_remote[0] == job_id else None
         if active_process and active_process.poll() is None:
             stop_worker(active_process)
+    if remote_to_cancel:
+        try:
+            cloud.cancel('video' if read_job(job_id).get('kind') == 'video' else 'image', remote_to_cancel)
+        except Exception:
+            pass
     return {'ok': True}
 
 @app.get('/api/queue')
@@ -567,8 +744,11 @@ def reuse(job_id: str):
 
 @app.post('/api/open-output')
 def open_output(kind: str = 'image'):
+    destination = VIDEOS_DIR if kind == 'video' else OUTPUTS_DIR
     if os.name == 'nt':
-        os.startfile(VIDEOS_DIR if kind=='video' else OUTPUTS_DIR)
+        os.startfile(destination)
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', str(destination)])
     return {'ok': True}
 
 if EXAMPLES_DIR.exists():

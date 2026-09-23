@@ -59,7 +59,7 @@ def run():
             image = img.convert('RGBA')
             image.save(directory / f'input-{i+1}.png')
             images.append(image)
-    rewrite = rewrite_prompt(images) if request['enhance'] else {}
+    rewrite = request.get('enhancement_result') or (rewrite_prompt(images) if request['enhance'] else {})
     prompt = rewrite.get('positive_prompt') or request['prompt']
     width, height = output_dimensions(request, images, rewrite)
     render_width = math.ceil(width / 32) * 32

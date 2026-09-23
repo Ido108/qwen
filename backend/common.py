@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 APP_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.environ.get('QWEN_DATA_DIR', 'E:/AI/qwen-image-studio')).resolve()
+DATA_DIR = Path(os.environ.get('QWEN_DATA_DIR', 'E:/AI/qwen-image-studio' if os.name == 'nt' else str(Path.home() / 'Library/Application Support/Qwen'))).resolve()
 MODELS_DIR = DATA_DIR / 'models'
 JOBS_DIR = DATA_DIR / 'jobs'
 UPLOADS_DIR = DATA_DIR / 'uploads'
