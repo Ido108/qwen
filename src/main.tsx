@@ -3,6 +3,8 @@ import {createRoot} from 'react-dom/client';
 import {UploadCloud, Image as ImageIcon, Download, X, ChevronDown, ChevronLeft, ChevronRight, Sparkles, FolderOpen, Expand, Copy, Check, RotateCcw, CircleHelp, Loader2, Plus, ArrowUpRight, Settings} from 'lucide-react';
 import {ModelSettings,type ModelState} from './ModelSettings';
 import {VideoTab} from './VideoTab';
+import {ReferenceTab} from './ReferenceTab';
+import {UpscaleTab} from './UpscaleTab';
 import {ImageSettings,type ImageOptions} from './ImageSettings';
 import {Gallery,inputImage} from './Gallery';
 import {JobQueue,useQueue,type SavedJob} from './JobQueue';
@@ -11,6 +13,7 @@ import {GenerationTiming,type Timing} from './GenerationTiming';
 import {en,type TextKey} from './i18n';
 import './style.css';
 import './workspace.css';
+import './reference.css';
 
 type InputImage = {id:string; name:string; url:string};
 type Params = ImageOptions & {model_id:string;text_encoder:string;prompt:string; images:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string};
@@ -20,9 +23,11 @@ type Config = {token:string; models:Record<string,boolean>; output_dir:string; a
 const defaults:Params = {model_id:'gguf-q8_0',text_encoder:'auto',prompt:'',images:[],enhance:true,custom_size:false,auto_resolution:2048,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:null};
 function loadDraft():Params {try {const saved=JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}');return {...defaults,...saved,steps:saved.auto_resolution===undefined&&saved.steps===40?null:(saved.steps??null)};} catch {return defaults;}}
 function App(){
-  const [tab,setTab]=useState<'image'|'video'|'gallery'>(()=>location.hash==='#gallery'?'gallery':location.hash==='#video'?'video':'image');
+  const [tab,setTab]=useState<'image'|'video'|'reference'|'upscale'|'gallery'>(()=>location.hash==='#gallery'?'gallery':location.hash==='#video'?'video':location.hash==='#reference'?'reference':location.hash==='#upscale'?'upscale':'image');
   const [queueOpen,setQueueOpen]=useState(false);
   const [videoRestore,setVideoRestore]=useState<{job:SavedJob;key:number}|null>(null);
+  const [referenceRestore,setReferenceRestore]=useState<{job:SavedJob;key:number}|null>(null);
+  const [upscaleRestore,setUpscaleRestore]=useState<{job:SavedJob;key:number}|null>(null);
   const [galleryView,setGalleryView]=useState<{job:SavedJob;key:number}|null>(null);
   const [videoBusy,setVideoBusy]=useState(false);
   const [videoModel,setVideoModel]=useState(()=>{try{return JSON.parse(localStorage.getItem('qwen-video-draft')||'{}').model_id||'fasth3-q4_k_m';}catch{return 'fasth3-q4_k_m';}});
@@ -63,6 +68,8 @@ function App(){
   const queue=useQueue(api,!!config);
   function restoreJob(saved:SavedJob){
     if(saved.kind==='video'){setVideoRestore({job:saved,key:Date.now()});setVideoModel(saved.request.model_id);setTab('video');window.history.replaceState(null,'','#video');}
+    else if(saved.kind==='reference-video'){setReferenceRestore({job:saved,key:Date.now()});setTab('reference');window.history.replaceState(null,'','#reference');}
+    else if(saved.kind==='upscale'){setUpscaleRestore({job:saved,key:Date.now()});setTab('upscale');window.history.replaceState(null,'','#upscale');}
     else{setParams({...defaults,...saved.request,seed:saved.seed,randomize_seed:false});setInputs((saved.request.images||[]).map(inputImage));if(saved.status==='succeeded')setResult(saved as Job);setTab('image');window.history.replaceState(null,'','#images');setNotice('Original prompt, input images, seed and settings loaded.');setError('');}
   }
   function viewJob(saved:SavedJob){setGalleryView({job:saved,key:Date.now()});setTab('gallery');window.history.replaceState(null,'','#gallery');}
@@ -70,10 +77,10 @@ function App(){
     const [cfg,ex,old]=await Promise.all([api('/api/config'),api('/api/examples'),api('/api/history')]);
     if(!alive)return; token.current=cfg.token; setConfig(cfg);setModelState(cfg.catalog);setEnhancement(cfg.enhancement); setExamples(ex); setHistory(old);setResult(old[0]||null);
     setParams(p=>({...p,output_dir:p.output_dir||cfg.output_dir}));
-    if(!cfg.catalog.models.some((model:{kind:string;ready:boolean})=>model.kind==='image'&&model.ready))setShowSettings(true);
+    if(tab==='image'&&!cfg.catalog.models.some((model:{kind:string;ready:boolean})=>model.kind==='image'&&model.ready))setShowSettings(true);
     if(cfg.active_job){
       const active:Job=await api(`/api/jobs/${cfg.active_job}`);if(!alive)return;
-      if((active as Job&{kind?:string}).kind==='video')return;
+      if((active as Job&{kind?:string}).kind&&((active as Job&{kind?:string}).kind!=='image'))return;
       setJob(active);setPollId(active.id);
     }
   }catch(e){if(alive)setError(String(e));}})(); return()=>{alive=false;};},[]);
@@ -115,7 +122,7 @@ function App(){
   const featured=[examples.find(e=>e.title_en==='Transparent anime bride'),examples.find(e=>e.inputs.length>0),examples.find(e=>e.title_en==='Product photography')].filter(Boolean) as Example[];
   const displayed=allExamples?examples:(featured.length===3?featured:examples.slice(0,3));
   return <>
-    <header className="header"><div className="brand"><img src="/branding/icon-64.png" alt=""/><strong>Qwen</strong><span className="brand-divider"/><nav className="app-tabs" aria-label="Generation type"><button aria-current={tab==='image'?'page':undefined} onClick={()=>{setTab('image');window.history.replaceState(null,'','#images');}}><ImageIcon size={17}/>Images</button><button aria-current={tab==='video'?'page':undefined} onClick={()=>{setTab('video');window.history.replaceState(null,'','#video');}}><span className="video-tab-icon" aria-hidden="true">▷</span>Video{videoBusy?<Loader2 className="spin" size={13}/>:null}</button><button aria-current={tab==='gallery'?'page':undefined} onClick={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}>Gallery</button></nav><span className="brand-divider model-divider"/>{tab==='image'?<button className="model-name model-choice" dir="ltr" onClick={()=>setShowSettings(true)} aria-label={t('chooseModel')}>Qwen-Image-2.1 <span>{chosenModel?.title.split(' · ').at(-1)||'Q8_0'}</span><ChevronDown size={13}/></button>:tab==='video'?<select className="video-model-choice" aria-label="Video model" value={videoModel} disabled={submitting} onChange={e=>setVideoModel(e.target.value)}>{modelState?.models.filter(m=>m.kind==='video').map(m=><option key={m.id} value={m.id}>{m.title} · {m.modes?.includes('image')?'Text + images':'Text only'}{m.ready?'':' · Download needed'}</option>)}</select>:null}</div>
+    <header className="header"><div className="brand"><img src="/branding/icon-64.png" alt=""/><strong>Qwen</strong><span className="brand-divider"/><nav className="app-tabs" aria-label="Generation type"><button aria-current={tab==='image'?'page':undefined} onClick={()=>{setTab('image');window.history.replaceState(null,'','#images');}}><ImageIcon size={17}/>Images</button><button aria-current={tab==='video'?'page':undefined} onClick={()=>{setTab('video');window.history.replaceState(null,'','#video');}}><span className="video-tab-icon" aria-hidden="true">▷</span>Video{videoBusy?<Loader2 className="spin" size={13}/>:null}</button><button aria-current={tab==='reference'?'page':undefined} onClick={()=>{setTab('reference');window.history.replaceState(null,'','#reference');}}>Video to video</button><button aria-current={tab==='upscale'?'page':undefined} onClick={()=>{setTab('upscale');window.history.replaceState(null,'','#upscale');}}>Upscale</button><button aria-current={tab==='gallery'?'page':undefined} onClick={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}>Gallery</button></nav><span className="brand-divider model-divider"/>{tab==='image'?<button className="model-name model-choice" dir="ltr" onClick={()=>setShowSettings(true)} aria-label={t('chooseModel')}>Qwen-Image-2.1 <span>{chosenModel?.title.split(' · ').at(-1)||'Q8_0'}</span><ChevronDown size={13}/></button>:tab==='video'?<select className="video-model-choice" aria-label="Video model" value={videoModel} disabled={submitting} onChange={e=>setVideoModel(e.target.value)}>{modelState?.models.filter(m=>m.kind==='video').map(m=><option key={m.id} value={m.id}>{m.title} · {m.modes?.includes('image')?'Text + images':'Text only'}{m.ready?'':' · Download needed'}</option>)}</select>:null}</div>
       <div className="header-tools"><button className="queue-header-button" onClick={()=>setQueueOpen(true)} aria-label={`Open queue (${queue.count})`}>Queue <span>{queue.count}</span></button><button className="icon-button" onClick={()=>setShowSettings(true)} title={t('settings')} aria-label={t('settings')}><Settings size={19}/></button><button className="icon-button" onClick={()=>setShowHelp(true)} title={t('help')} aria-label={t('help')}><CircleHelp size={19}/></button></div>
     </header>
     <JobQueue api={api} state={queue.state} error={queue.error} refresh={queue.refresh} open={queueOpen} onOpen={setQueueOpen} onRestore={restoreJob} onView={viewJob}/>
@@ -160,6 +167,8 @@ function App(){
       <footer><span className="local-status"><i/>{t('local')}</span><span>{config?.device||''}</span></footer>
     </main>
     <VideoTab visible={tab==='video'} api={api} models={modelState} enhancement={enhancement} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)}/>
+    <ReferenceTab visible={tab==='reference'} api={api} token={token.current} models={modelState} enhancement={enhancement} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
+    <UpscaleTab visible={tab==='upscale'} api={api} token={token.current} models={modelState} restoreRequest={upscaleRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
     <Gallery api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>
     <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':'content-dialog'}><button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>
       {showSettings?<ModelSettings enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}

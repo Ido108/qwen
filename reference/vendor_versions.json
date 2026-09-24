@@ -1,4 +1,6 @@
 ﻿{
     "gguf":  "f912d5e5c25921e41eae2c0131eeb4d350e7c165",
-    "comfy":  "b0f4b7b294ce482a2e071d9d762c133d38c7aa07"
+    "comfy":  "b0f4b7b294ce482a2e071d9d762c133d38c7aa07",
+    "seedvr2": "4490bd1f482e026674543386bb2a4d176da245b9",
+    "crossview": "3266a83a84eaa6833a9ebc38ac7cdd8789e44f5b"
 }

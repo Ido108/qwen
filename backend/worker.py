@@ -40,9 +40,12 @@ def rewrite_prompt(images):
 
 def run():
     update(status='running', stage='loading', message='Loading generation tools…', started_at=time.time())
-    if request.get('kind') == 'video':
+    if request.get('kind') in ('video','reference-video'):
         from .video_worker import run as run_video
         return run_video(request, job, directory, update)
+    if request.get('kind') == 'upscale':
+        from .upscale_worker import run as run_upscale
+        return run_upscale(request, job, directory, update)
     import torch
     from PIL import Image
     from PIL.PngImagePlugin import PngInfo
@@ -102,7 +105,7 @@ def execute(folder):
         traceback.print_exc()
         message = str(exc)
         if 'out of memory' in message.lower():
-            if request.get('kind') == 'video':
+            if request.get('kind') in ('video','reference-video','upscale'):
                 message = ('Not enough free GPU memory while processing the prompt and input images. '
                            'Close unused AI apps and retry.' if job.get('stage') == 'encoding' else
                            'Not enough free GPU memory while generating video. '

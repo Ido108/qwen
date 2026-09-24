@@ -3,7 +3,7 @@ from __future__ import annotations
 from fractions import Fraction
 from pathlib import Path
 import time
-from .common import resolve_image, write_json
+from .common import resolve_image, resolve_video, write_json
 
 
 def save_mp4(path, frames, audio, fps=24):
@@ -59,17 +59,93 @@ def run(request, job, directory, update):
         raise RuntimeError('NVIDIA CUDA is unavailable. Check the graphics driver and restart Qwen.')
     torch.set_float32_matmul_precision('high')
     torch.set_num_threads(8)
+    reference=request.get('kind')=='reference-video'
     images = {}
-    for name in ('first_frame', 'last_frame'):
-        if request.get(name):
-            with Image.open(resolve_image(request[name])) as source:
-                images[name] = source.convert('RGB')
-                images[name].save(directory / f'{name}.png')
-    prompt = request['prompt']
-    if request['enhance']:
-        from .prompt_enhancer import enhance_video
-        prompt = enhance_video(prompt, images, request, update)
-    frames, audio = generate(request, prompt, images, update)
+    source_audio=None
+    if reference:
+        from .reference_media import read_frames,read_audio
+        update(stage='reading_inputs',message='Reading reference video and images…')
+        source=resolve_video(request['source_video'])
+        images['source_video']=read_frames(source,request['frames'])
+        source_audio=read_audio(source,request['frames']/24) if request['source_audio'] or request['output_audio']=='source' else None
+        if request['source_audio']:
+            images['source_audio']=source_audio
+        if request['workflow']=='crossview':
+            if request.get('warp_video'):
+                images['warp_video']=read_frames(resolve_video(request['warp_video']),request['frames'])
+                if len(images['warp_video'])<len(images['source_video']):
+                    raise ValueError('The camera warp video must cover the source clip.')
+        for index,image_id in enumerate(request['reference_images'],1):
+            with Image.open(resolve_image(image_id)) as source_image:
+                images[f'ref_image_{index}']=source_image.convert('RGB')
+                images[f'ref_image_{index}'].save(directory/f'reference-{index}.png')
+        prompt=request['prompt'].strip()
+        if request['workflow']=='faceswap':
+            prompt=('Faceswap. '+prompt) if prompt and 'faceswap' not in prompt.lower() else (prompt or 'Faceswap')
+        elif request['workflow']=='crossview':
+            prompt=('crossview. '+prompt) if prompt and 'crossview' not in prompt.lower() else (prompt or 'crossview')
+        elif not prompt:
+            raise ValueError('Enter a reference video prompt.')
+        if request['enhance']:
+            from .prompt_enhancer import enhance_reference
+            camera_request={**request,'reference_images':[]} if request['workflow']=='crossview' else request
+            prompt=enhance_reference(prompt,images,camera_request,update)
+    else:
+        for name in ('first_frame', 'last_frame'):
+            if request.get(name):
+                with Image.open(resolve_image(request[name])) as source:
+                    images[name] = source.convert('RGB')
+                    images[name].save(directory / f'{name}.png')
+        prompt = request['prompt']
+        if request['enhance']:
+            from .prompt_enhancer import enhance_video
+            prompt = enhance_video(prompt, images, request, update)
+    if reference and request['workflow']=='crossview' and request.get('replace_subjects_first'):
+        steps=request['steps']
+        def stage_progress(stage_number):
+            def relay(**values):
+                values['phase']='Replacing subjects' if stage_number==0 else 'Changing camera view'
+                if values.get('message'):
+                    values['message']=values['phase']+' · '+values['message']
+                if 'total_steps' in values:
+                    values['total_steps']=steps*2
+                if values.get('stage')=='generating':
+                    values['step']=values.get('step',0)+stage_number*steps
+                update(**values)
+            return relay
+        replacement_prompt=request['replacement_prompt'].strip()
+        if not replacement_prompt:
+            raise ValueError('Enter a subject replacement prompt.')
+        if not replacement_prompt.lower().startswith('faceswap'):
+            replacement_prompt='Faceswap. '+replacement_prompt
+        replacement_request={**request,'workflow':'faceswap','warp_video':None,
+                             'output_audio':'mute'}
+        if request['enhance']:
+            from .prompt_enhancer import enhance_reference
+            replacement_prompt=enhance_reference(replacement_prompt,images,
+                replacement_request,stage_progress(0))
+        update(subject_replacement_prompt=replacement_prompt)
+        first_frames,_=generate(replacement_request,replacement_prompt,images,stage_progress(0))
+        intermediate=directory/'subject-replacement.mp4'
+        save_mp4(intermediate,first_frames,None)
+        update(subject_replacement_ready=True)
+        second_images={'source_video':first_frames}
+        if 'warp_video' in images:
+            second_images['warp_video']=images['warp_video']
+        if request['source_audio'] and source_audio is not None:
+            second_images['source_audio']=source_audio
+        camera_request={**request,'reference_images':[]}
+        del first_frames,images
+        frames,audio=generate(camera_request,prompt,second_images,stage_progress(1))
+    else:
+        frames, audio = generate(request, prompt, images, update)
+    if reference:
+        if request['output_audio']=='source':
+            if source_audio is None:
+                raise ValueError('The source video has no audio track. Choose generated audio or mute.')
+            audio=source_audio
+        elif request['output_audio']=='mute':
+            audio=None
     if len(frames) != request['frames']:
         raise RuntimeError(f'The decoder returned {len(frames)} frames; expected {request["frames"]}.')
     update(stage='saving', message='Saving MP4…')
@@ -81,6 +157,7 @@ def run(request, job, directory, update):
         video_url=f'/api/jobs/{job["id"]}/video', poster_url=f'/api/jobs/{job["id"]}/poster',
         finished_at=time.time(), elapsed_seconds=round(time.time() - job['started_at'], 1),
         duration_seconds=round(len(frames) / 24, 3), fps=24, frames=len(frames),
+        width=int(frames.shape[2]),height=int(frames.shape[1]),
         has_audio=audio is not None, audio_sample_rate=audio['sample_rate'] if audio else None,
         actual_prompt=prompt, model_revision=entry(request['model_id'])['revision'])
     write_json(destination.with_suffix('.json'), job)

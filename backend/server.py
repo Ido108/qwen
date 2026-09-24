@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import uuid
+from urllib.parse import unquote
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -21,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
-from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, GenerationRequest, VideoRequest, model_status, resolve_image, read_json, write_json
+from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, GenerationRequest, VideoRequest, ReferenceVideoRequest, UpscaleRequest, model_status, resolve_image, resolve_video, read_json, write_json
 from . import models, antigravity
 from .resident_worker import ImageWorker
 
@@ -35,6 +36,7 @@ recent_jobs: deque[str] = deque(maxlen=20)
 queue_paused = False
 shutting_down = False
 image_worker = ImageWorker()
+VIDEO_KINDS={'video','reference-video','upscale'}
 
 
 def start_next_locked():
@@ -103,7 +105,7 @@ def run_job(job_id):
     directory = JOBS_DIR / job_id
     try:
         request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
-        is_video = request.get('kind') == 'video'
+        is_video = request.get('kind') in ('video', 'reference-video', 'upscale')
         with (directory / 'worker.log').open('a', encoding='utf-8') as log:
             with active_lock:
                 if job_id in cancelled_jobs:
@@ -336,6 +338,86 @@ def uploaded_image(image_id: str):
         raise HTTPException(404, str(exc))
     return FileResponse(path)
 
+
+@app.put('/api/video-uploads')
+async def upload_video(request: Request):
+    """Stream large media directly to the model drive instead of the OS temp drive."""
+    name=unquote(request.headers.get('x-file-name','video.mp4'))
+    suffix=Path(name).suffix.lower()
+    if suffix not in {'.mp4','.mov','.mkv','.webm'}:
+        raise HTTPException(400,'Select an MP4, MOV, MKV or WebM video.')
+    video_id=uuid.uuid4().hex+suffix
+    destination=VIDEO_UPLOADS_DIR/video_id
+    temporary=VIDEO_UPLOADS_DIR/(video_id+'.part')
+    total=0
+    limit=20*1024**3
+    try:
+        with temporary.open('wb') as handle:
+            async for chunk in request.stream():
+                total+=len(chunk)
+                if total>limit:
+                    raise HTTPException(413,'Videos must be under 20 GB.')
+                handle.write(chunk)
+        if total==0:
+            raise HTTPException(400,'The video file is empty.')
+        import av
+        with av.open(str(temporary)) as media:
+            stream=next((s for s in media.streams if s.type=='video'),None)
+            if stream is None:
+                raise HTTPException(400,'This file has no readable video stream.')
+            width,height=stream.width,stream.height
+            if not width or not height or width*height>80_000_000:
+                raise HTTPException(400,'Video dimensions are unsupported.')
+            frame=next(media.decode(stream),None)
+            if frame is None:
+                raise HTTPException(400,'This video has no readable frames.')
+            duration=(media.duration/1_000_000) if media.duration else None
+            fps=float(stream.average_rate) if stream.average_rate else None
+            poster=frame.to_image()
+            poster.thumbnail((960,540),Image.Resampling.LANCZOS)
+            poster.save(VIDEO_UPLOADS_DIR/(video_id+'.jpg'),quality=85)
+            has_audio=any(s.type=='audio' for s in media.streams)
+        temporary.replace(destination)
+    except HTTPException:
+        temporary.unlink(missing_ok=True)
+        (VIDEO_UPLOADS_DIR/(video_id+'.jpg')).unlink(missing_ok=True)
+        raise
+    except (OSError,ValueError,StopIteration) as exc:
+        temporary.unlink(missing_ok=True)
+        (VIDEO_UPLOADS_DIR/(video_id+'.jpg')).unlink(missing_ok=True)
+        raise HTTPException(400,f'Could not read this video: {exc}')
+    result={'id':video_id,'name':Path(name).name,'url':f'/api/video-uploads/{video_id}',
+            'poster_url':f'/api/video-uploads/{video_id}/poster','bytes':total,
+            'width':width,'height':height,'fps':fps,'duration_seconds':duration,'has_audio':has_audio}
+    write_json(VIDEO_UPLOADS_DIR/(video_id+'.json'),result)
+    return result
+
+
+@app.get('/api/video-uploads/{video_id}/metadata')
+def video_upload_metadata(video_id: str):
+    try:
+        resolve_video(video_id)
+        return read_json(VIDEO_UPLOADS_DIR/(video_id+'.json'))
+    except (ValueError,FileNotFoundError) as exc:
+        raise HTTPException(404,str(exc))
+
+
+@app.get('/api/video-uploads/{video_id}/poster')
+def video_upload_poster(video_id: str):
+    try:
+        resolve_video(video_id)
+    except ValueError as exc:
+        raise HTTPException(404,str(exc))
+    return FileResponse(VIDEO_UPLOADS_DIR/(video_id+'.jpg'),media_type='image/jpeg')
+
+
+@app.get('/api/video-uploads/{video_id}')
+def uploaded_video(video_id: str):
+    try:
+        return FileResponse(resolve_video(video_id))
+    except ValueError as exc:
+        raise HTTPException(404,str(exc))
+
 @app.post('/api/generate', status_code=202)
 def generate(body: GenerationRequest):
     try:
@@ -413,6 +495,70 @@ def generate_video(body: VideoRequest):
         enqueue_locked(job, data)
     return public_job(job)
 
+
+@app.post('/api/reference-video/generate',status_code=202)
+def generate_reference_video(body: ReferenceVideoRequest):
+    try:
+        needed=models.required_reference(body)
+        resolve_video(body.source_video)
+        if body.warp_video:
+            resolve_video(body.warp_video)
+        for image_id in body.reference_images:
+            resolve_image(image_id)
+        destination=Path(body.output_dir).expanduser().resolve()
+        destination.mkdir(parents=True,exist_ok=True)
+        probe=destination/f'.write-test-{uuid.uuid4().hex}'
+        probe.write_bytes(b'');probe.unlink()
+        if shutil.disk_usage(destination).free<1024**3:
+            raise ValueError('The output drive needs at least 1 GB of free space.')
+    except (ValueError,OSError) as exc:
+        raise HTTPException(400,str(exc))
+    if body.enhance and not antigravity.status()['connected']:
+        raise HTTPException(409,'Connect Google Account in Settings, or turn off Enhance prompt.')
+    with active_lock:
+        if not all(models.is_installed(name) for name in needed):
+            raise HTTPException(503,'Required reference video files are missing. Download them in Settings.')
+        selected=models.entry(body.model_id)
+        steps=body.steps or (8 if body.quality=='turbo' else selected['generation_defaults']['steps'])
+        data=body.model_dump()
+        data.update(kind='reference-video',steps=steps,output_dir=str(destination),
+                    enhancement_model=antigravity.selected_model())
+        if body.randomize_seed:
+            data['seed']=secrets.randbelow(2147483648)
+        job_id=uuid.uuid4().hex
+        job={'id':job_id,'kind':'reference-video','status':'queued','message':'Waiting in queue','stage':'queued',
+             'created_at':time.time(),'seed':data['seed'],'request':data,'rewritten_prompt':'','step':0,
+             'total_steps':steps*(2 if body.workflow=='crossview' and body.replace_subjects_first else 1)}
+        enqueue_locked(job,data)
+    return public_job(job)
+
+
+@app.post('/api/upscale/generate',status_code=202)
+def generate_upscale(body: UpscaleRequest):
+    try:
+        needed=models.required_upscale(body)
+        source=resolve_video(body.source_video)
+        if source.stat().st_size>20*1024**3:
+            raise ValueError('Videos must be under 20 GB.')
+        destination=Path(body.output_dir).expanduser().resolve()
+        destination.mkdir(parents=True,exist_ok=True)
+        probe=destination/f'.write-test-{uuid.uuid4().hex}'
+        probe.write_bytes(b'');probe.unlink()
+        if shutil.disk_usage(destination).free<max(source.stat().st_size*2,2*1024**3):
+            raise ValueError('The output drive needs more free space for this video.')
+    except (ValueError,OSError) as exc:
+        raise HTTPException(400,str(exc))
+    with active_lock:
+        if not all(models.is_installed(name) for name in needed):
+            raise HTTPException(503,'Required upscaling files are missing. Download them in Settings.')
+        data=body.model_dump()
+        data.update(kind='upscale',output_dir=str(destination))
+        job_id=uuid.uuid4().hex
+        job={'id':job_id,'kind':'upscale','status':'queued','message':'Waiting in queue','stage':'queued',
+             'created_at':time.time(),'seed':body.seed,'request':data,'rewritten_prompt':'','step':0,'total_steps':0}
+        enqueue_locked(job,data)
+    return public_job(job)
+
 @app.post('/api/jobs/{job_id}/cancel')
 def cancel(job_id: str):
     with active_lock:
@@ -476,7 +622,14 @@ def retry_job(job_id: str):
     previous = read_job(job_id)
     data = dict(previous['request'])
     data.update(seed=previous['seed'], randomize_seed=False)
-    return generate_video(VideoRequest(**data)) if previous.get('kind') == 'video' else generate(GenerationRequest(**data))
+    kind=previous.get('kind','image')
+    if kind=='video':
+        return generate_video(VideoRequest(**data))
+    if kind=='reference-video':
+        return generate_reference_video(ReferenceVideoRequest(**data))
+    if kind=='upscale':
+        return generate_upscale(UpscaleRequest(**data))
+    return generate(GenerationRequest(**data))
 
 
 @app.get('/api/library')
@@ -485,7 +638,8 @@ def library(kind: Literal['all', 'image', 'video'] = 'all', search: str = '',
     query = search.casefold().strip()
     titles = {item['id']: item['title'] for item in models.catalog()}
     jobs = [j for j in all_jobs() if j.get('status') == 'succeeded'
-            and (kind == 'all' or j.get('kind', 'image') == kind)
+            and (kind == 'all' or (kind=='video' and j.get('kind') in VIDEO_KINDS)
+                 or j.get('kind', 'image') == kind)
             and (not query or query in (j.get('request', {}).get('prompt', '') + ' ' + j.get('request', {}).get('model_id', '')
                  + ' ' + titles.get(j.get('request', {}).get('model_id', ''), '')).casefold())]
     jobs.sort(key=lambda j: j['created_at'], reverse=True)
@@ -516,7 +670,7 @@ def result(job_id: str, download: bool = False):
 def video_result(job_id: str, download: bool = False):
     job=read_job(job_id)
     path=Path(job.get('output_path',''))
-    if job.get('kind')!='video' or job['status']!='succeeded' or not path.is_file():
+    if job.get('kind') not in VIDEO_KINDS or job['status']!='succeeded' or not path.is_file():
         raise HTTPException(404,'Saved video not found.')
     return FileResponse(path,media_type='video/mp4',filename=path.name if download else None)
 
@@ -524,9 +678,18 @@ def video_result(job_id: str, download: bool = False):
 def video_poster(job_id: str):
     job=read_job(job_id)
     path=JOBS_DIR/job_id/'poster.png'
-    if job.get('kind')!='video' or job['status']!='succeeded' or not path.is_file():
+    if job.get('kind') not in VIDEO_KINDS or job['status']!='succeeded' or not path.is_file():
         raise HTTPException(404,'Video preview not found.')
     return FileResponse(path,media_type='image/png')
+
+
+@app.get('/api/jobs/{job_id}/subject-video')
+def subject_replacement_video(job_id: str, download: bool = False):
+    job=read_job(job_id)
+    path=JOBS_DIR/job_id/'subject-replacement.mp4'
+    if job.get('kind')!='reference-video' or not job.get('subject_replacement_ready') or not path.is_file():
+        raise HTTPException(404,'Subject replacement video not found.')
+    return FileResponse(path,media_type='video/mp4',filename=path.name if download else None)
 
 
 @app.get('/api/jobs/{job_id}/thumbnail')
@@ -537,7 +700,7 @@ def thumbnail(job_id: str):
     directory = JOBS_DIR / job_id
     cached = directory / 'thumbnail.webp'
     if not cached.exists():
-        source = directory / 'poster.png' if job.get('kind') == 'video' else Path(job.get('output_path', ''))
+        source = directory / 'poster.png' if job.get('kind') in VIDEO_KINDS else Path(job.get('output_path', ''))
         if not source.is_file():
             raise HTTPException(404, 'Saved result not found.')
         temporary = directory / f'thumbnail-{uuid.uuid4().hex}.tmp'
@@ -568,7 +731,7 @@ def reuse(job_id: str):
 @app.post('/api/open-output')
 def open_output(kind: str = 'image'):
     if os.name == 'nt':
-        os.startfile(VIDEOS_DIR if kind=='video' else OUTPUTS_DIR)
+        os.startfile(VIDEOS_DIR if kind in VIDEO_KINDS else OUTPUTS_DIR)
     return {'ok': True}
 
 if EXAMPLES_DIR.exists():

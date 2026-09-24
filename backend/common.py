@@ -12,10 +12,11 @@ DATA_DIR = Path(os.environ.get('QWEN_DATA_DIR', 'E:/AI/qwen-image-studio')).reso
 MODELS_DIR = DATA_DIR / 'models'
 JOBS_DIR = DATA_DIR / 'jobs'
 UPLOADS_DIR = DATA_DIR / 'uploads'
+VIDEO_UPLOADS_DIR = UPLOADS_DIR / 'videos'
 OUTPUTS_DIR = DATA_DIR / 'images'
 VIDEOS_DIR = DATA_DIR / 'videos'
 EXAMPLES_DIR = APP_DIR / 'public' / 'examples'
-for directory in (JOBS_DIR, UPLOADS_DIR, OUTPUTS_DIR, VIDEOS_DIR):
+for directory in (JOBS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, OUTPUTS_DIR, VIDEOS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 def read_json(path: Path):
@@ -116,6 +117,75 @@ class VideoRequest(BaseModel):
         return value
 
 
+class ReferenceVideoRequest(BaseModel):
+    workflow: Literal['faceswap', 'crossview', 'reference'] = 'faceswap'
+    model_id: str = 'h3-ref-turbo-int8'
+    source_video: str
+    reference_images: list[str] = Field(default_factory=list, max_length=9)
+    replace_subjects_first: bool = False
+    replacement_prompt: str = Field(default='Replace the people with the supplied reference images. Keep the source motion, clothing and lighting.',max_length=16000)
+    warp_video: str | None = None
+    camera_azimuth: float = Field(default=-30, ge=-90, le=90)
+    camera_elevation: float = Field(default=10, ge=-45, le=60)
+    camera_distance: float = Field(default=1, ge=0.5, le=2)
+    camera_fov: float = Field(default=50, ge=20, le=100)
+    camera_vertical_shift: float = Field(default=0, ge=-0.5, le=0.5)
+    camera_aim_lock: bool = False
+    prompt: str = Field(default='', max_length=16000)
+    width: int = Field(default=768, ge=256, le=1344)
+    height: int = Field(default=448, ge=256, le=1344)
+    frames: int = Field(default=124, ge=22, le=362)
+    steps: int | None = Field(default=None, ge=1, le=60)
+    quality: Literal['standard', 'turbo'] = 'turbo'
+    seed: int = Field(default=0, ge=0, le=2147483647)
+    randomize_seed: bool = True
+    reference_image_size: Literal['match', 'max'] = 'match'
+    source_audio: bool = True
+    output_audio: Literal['generated', 'source', 'mute'] = 'generated'
+    enhance: bool = False
+    output_dir: str = str(VIDEOS_DIR)
+
+    @field_validator('width', 'height')
+    @classmethod
+    def valid_size(cls, value):
+        if value % 32:
+            raise ValueError('Video dimensions must be multiples of 32.')
+        return value
+
+    @field_validator('frames')
+    @classmethod
+    def valid_frames(cls, value):
+        if value % 17 != 5:
+            raise ValueError('Choose a supported video duration.')
+        return value
+
+
+class UpscaleRequest(BaseModel):
+    model_id: str = 'seedvr2-3b-fp8'
+    source_video: str
+    resolution: int = Field(default=1080, ge=480, le=4320)
+    batch_size: int = Field(default=5, ge=5, le=33)
+    chunk_size: int = Field(default=100, ge=5, le=1000)
+    temporal_overlap: int = Field(default=1, ge=0, le=32)
+    seed: int = Field(default=100, ge=0, le=2147483647)
+    preserve_audio: bool = True
+    output_dir: str = str(VIDEOS_DIR)
+
+    @field_validator('resolution')
+    @classmethod
+    def valid_resolution(cls, value):
+        if value % 8:
+            raise ValueError('Target resolution must be a multiple of 8.')
+        return value
+
+    @field_validator('batch_size')
+    @classmethod
+    def valid_batch_size(cls, value):
+        if value % 4 != 1:
+            raise ValueError('Frame batch size must follow 4n+1: 5, 9, 13, 17…')
+        return value
+
+
 def resolve_image(image_id: str) -> Path:
     if image_id.startswith('example:'):
         root, name = EXAMPLES_DIR, image_id.removeprefix('example:')
@@ -126,6 +196,17 @@ def resolve_image(image_id: str) -> Path:
         raise ValueError('Input image not found. Upload it again.')
     if path.suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp'}:
         raise ValueError('Unsupported image file.')
+    return path
+
+
+def resolve_video(video_id: str) -> Path:
+    if not isinstance(video_id, str) or len(video_id) < 34:
+        raise ValueError('Input video not found. Upload it again.')
+    path = (VIDEO_UPLOADS_DIR / video_id).resolve()
+    if not path.is_relative_to(VIDEO_UPLOADS_DIR.resolve()) or not path.is_file():
+        raise ValueError('Input video not found. Upload it again.')
+    if path.suffix.lower() not in {'.mp4', '.mov', '.mkv', '.webm'}:
+        raise ValueError('Unsupported input video.')
     return path
 
 def model_status() -> dict:

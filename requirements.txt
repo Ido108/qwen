@@ -13,5 +13,12 @@ huggingface_hub>=1.0
 hf_xet>=1.0
 gguf==0.19.0
 httpx>=0.28
+diffusers>=0.33.1
+omegaconf>=2.3.0
+peft>=0.17.0
+rotary-embedding-torch>=0.5.3
+opencv-python-headless>=4.11
+matplotlib>=3.10
+imageio-ffmpeg>=0.6.0
 -r requirements-comfy.txt
 -r vendor/ComfyUI-GGUF/requirements.txt

@@ -111,6 +111,18 @@ Open the **Video** tab in the same app. Choose **Text to video** or **Image to v
 
 See [video research and exact model contracts](reference/video-research.md) and [validation results](reference/validation.md). FastH3 is limited to the upstream distilled text-to-video task; image inputs use MiniMax H3. The separate H3 reference-to-video checkpoint is not included in the first/last-frame model.
 
+## Video to video and upscaling
+
+The **Video to video** tab has three separate workflows. **Replace subjects** uses the MiniMax H3 Ref2VA FaceSwap LoRA and ordered person reference images. **Camera view** uses the CrossView Warp LoRA, MoGe 2 depth estimation, and the camera controls. It does not require or apply FaceSwap. **Reference-guided** uses the Ref2VA model with the source video and reference images without either specialized LoRA.
+
+In Camera view, open **Replace subjects before changing camera view** only if both changes are wanted. The checkbox creates a complete subject-replacement MP4 first, then uses that generated video as the source for CrossView. The intermediate MP4 can be viewed and downloaded from the result and gallery. Optional controls, including this checkbox, camera options, and the manual camera guide, start collapsed. A generative replacement or viewpoint change may alter details outside the intended subject or reveal areas absent from the source; it cannot guarantee unchanged pixels.
+
+Settings offers the merged eight-step MiniMax H3 Ref2VA Turbo INT8 checkpoint, the standard INT8 model, and the experimental 10Eros-Max Ref2VA Q4_K_M / Q8_0 GGUF models. Each model selects its matching H3 text encoder, video/audio VAEs, FaceSwap or CrossView LoRA, and MoGe 2 model when needed. Turbo uses eight steps by default; 10Eros-Max uses 25. Steps remain editable. Video and image models use the same Settings download, verification, and removal controls.
+
+The **Upscale** tab runs SeedVR2 at the source frame rate and aspect ratio. FP8 and Q4_K_M GGUF are available for the 3B model; the 7B FP8 model is another Settings option. The default frame batch of five with one overlapping frame avoids redundant processing. VAE tiling is enabled automatically at 1080p and above. Source audio is retained by default and can be changed under Advanced settings. Finished videos appear in the shared gallery with a small source thumbnail, saved parameters, and a full-size overlay.
+
+The [LTX 2.5 Multiple Subject Reference](https://huggingface.co/LiconStudio/LTX-2.5-Multiple-Subject-Reference) LoRA is listed in Settings. Its separate LTX 2.5 base model, Gemma text encoder, and VAEs require access to the [gated Lightricks model](https://huggingface.co/Lightricks/LTX-2.5) through the Hugging Face account used on this computer. The LoRA is designed for ordered image references and optional paired audio, not the FaceSwap or CrossView video-to-video workflows. LTX generation is not exposed while its required base files are unavailable.
+
 ## Queue and gallery
 
 Image and video requests share a persistent queue. The form stays editable while jobs are running or waiting; each click saves a separate snapshot of the prompt, input images, model, dimensions, steps, output folder and resolved seed. Only one worker uses the GPU at a time. Image jobs with the same model and encoder reuse that worker; video and model changes release it before starting the next worker.

@@ -12,13 +12,17 @@ os.environ['HF_HOME']=str(DATA_DIR/'hf-cache')
 os.environ['HF_XET_CACHE']=str(DATA_DIR/'hf-cache'/'xet')
 
 CATALOG_PATH=APP_DIR/'reference'/'model-catalog.json'
+EXTENSION_CATALOG_PATH=APP_DIR/'reference'/'reference-video-catalog.json'
 INSTALL_PATH=DATA_DIR/'installed-models.json'
 lock=threading.RLock()
 transfer={'status':'idle'}
 cancel_event=threading.Event()
 
 def catalog():
-    return json.loads(CATALOG_PATH.read_text(encoding='utf-8'))
+    items=json.loads(CATALOG_PATH.read_text(encoding='utf-8'))
+    if EXTENSION_CATALOG_PATH.is_file():
+        items.extend(json.loads(EXTENSION_CATALOG_PATH.read_text(encoding='utf-8')))
+    return items
 
 def entry(model_id):
     for item in catalog():
@@ -72,6 +76,49 @@ def required_video(request):
     return ids
 
 
+def required_reference(request):
+    item=entry(request.model_id)
+    if item['kind']!='reference-video' or item['family']!='minimax-h3-ref2va':
+        raise ValueError('Choose a MiniMax H3 Ref2VA model for this workflow.')
+    if request.workflow=='faceswap' and not request.reference_images:
+        raise ValueError('Add at least one reference image for subject replacement.')
+    if request.workflow=='crossview' and request.reference_images and not request.replace_subjects_first:
+        raise ValueError('Enable Replace subjects first to use identity images in Camera view.')
+    if request.workflow=='crossview' and request.replace_subjects_first and not request.reference_images:
+        raise ValueError('Add reference images for Replace subjects first.')
+    if request.width*request.height>1344*768:
+        raise ValueError('The video size must not exceed 1344 × 768 pixels.')
+    ids=[item['id'],*item['dependencies']]
+    if request.workflow=='faceswap':
+        ids.append('h3-ref-faceswap')
+    if request.workflow=='crossview':
+        ids.append('h3-ref-crossview')
+        if request.replace_subjects_first:
+            ids.append('h3-ref-faceswap')
+        if not request.warp_video:
+            ids.append('moge2-geometry')
+    if request.quality=='turbo' and item['id']=='h3-ref-base-int8':
+        ids.append('h3-ref-turbo-lora')
+    if item['id']=='h3-ref-turbo-int8' and request.quality!='turbo':
+        raise ValueError('The selected transformer has Turbo merged. Choose Turbo or a standard model.')
+    if item['format']=='GGUF' and request.quality=='turbo':
+        raise ValueError('This GGUF model is not distilled. Choose Standard quality.')
+    return ids
+
+
+def required_upscale(request):
+    item=entry(request.model_id)
+    if item['kind']!='upscale' or item['family']!='seedvr2':
+        raise ValueError('Choose a SeedVR2 upscaling model.')
+    if request.temporal_overlap>=request.chunk_size:
+        raise ValueError('Temporal overlap must be smaller than the chunk size.')
+    if request.temporal_overlap>=request.batch_size:
+        raise ValueError('Temporal overlap must be smaller than the frame batch size.')
+    if request.batch_size>request.chunk_size:
+        raise ValueError('Frame batch size must not exceed the chunk size.')
+    return [item['id'],*item['dependencies']]
+
+
 def state():
     with lock:
         items=[]
@@ -88,7 +135,16 @@ class DownloadCancelled(Exception): pass
 
 def install(model_id):
     from huggingface_hub import hf_hub_download
+    from huggingface_hub.errors import GatedRepoError
     from tqdm.auto import tqdm
+    # The app keeps its model cache on the roomy data drive. Hugging Face's
+    # normal CLI token remains in the user's home cache and is read only for
+    # gated downloads; it is never copied into app data or logged.
+    token=os.environ.get('HF_TOKEN')
+    if not token:
+        default_token=Path.home()/'.cache'/'huggingface'/'token'
+        if default_token.is_file():
+            token=default_token.read_text(encoding='utf-8').strip() or None
     item=entry(model_id)
     if item.get('kind')=='enhancer':
         raise ValueError('Prompt enhancement now uses Antigravity. Local prompt models are no longer downloaded.')
@@ -121,7 +177,7 @@ def install(model_id):
                         return result
                 target=local_path(model,file)
                 invalid=target.with_name(target.name+'.verification-failed')
-                path=hf_hub_download(model['repo'],file['path'],revision=model['revision'],local_dir=MODELS_DIR/model['directory'],tqdm_class=Progress,force_download=invalid.exists())
+                path=hf_hub_download(model['repo'],file['path'],revision=model['revision'],local_dir=MODELS_DIR/model['directory'],tqdm_class=Progress,force_download=invalid.exists(),token=token)
                 with lock:
                     transfer.update(stage='verifying',file=file['path'])
                 if Path(path).stat().st_size!=file['bytes']:
@@ -150,6 +206,13 @@ def install(model_id):
     except DownloadCancelled:
         with lock:
             transfer.update(status='cancelled',message='Download cancelled. Run it again to resume.')
+    except GatedRepoError:
+        with lock:
+            transfer.update(status='failed',message=(
+                f'Access to {model["repo"]} is restricted. Open '
+                f'https://huggingface.co/{model["repo"]} and accept the model terms '
+                'with the Hugging Face account used on this computer, then retry.'
+            ))
     except Exception as exc:
         with lock:
             transfer.update(status='failed',message=str(exc))
