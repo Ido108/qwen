@@ -5,7 +5,7 @@ The Mac app keeps its interface, queue, prompts, uploads, gallery and finished f
 ## Open on a Mac
 
 ```bash
-git clone --branch mac https://github.com/Ido108/qwen.git
+git clone https://github.com/Ido108/qwen.git
 cd qwen
 ./quickStart.command
 ```
@@ -16,7 +16,7 @@ Open `quickStart.command` from Finder on the first run. It also creates `Qwen.ap
 
 1. In RunPod, create a **network volume** in a [datacenter with S3 API support](https://docs.runpod.io/storage/s3-api). The volume and endpoints must be in the same datacenter. The worker sees it at `/runpod-volume`; the desktop uses its S3 API to transfer full-size images and videos. For Q8 image plus video models, start with ample free space and increase the volume based on selected models and Hugging Face cache use.
 2. Create a RunPod API key and a **separate S3 API key** in RunPod Settings. Keep both private. The desktop saves them in macOS Keychain or Windows DPAPI; the worker never receives either key. RunPod's S3 API uses the S3 access key, secret, volume ID and datacenter ID.
-3. Create two **queue-based Serverless endpoints**, one for images and one for video, both from this private GitHub repository's `mac` branch using `runpod/Dockerfile`. Attach the same network volume to both. The exact handler is `runpod/handler.py`; the Docker image is Linux `amd64` and installs CUDA 13 PyTorch wheels. A GPU with 80 GB VRAM is a conservative starting choice for the video endpoint. The image endpoint can start with 48 GB or 80 GB, depending on the model and budget. Actual speed and memory use need measurement on the selected worker.
+3. Create two **queue-based Serverless endpoints**, one for images and one for video, both from this private GitHub repository's default `main` branch using `runpod/Dockerfile`. Attach the same network volume to both. The exact handler is `runpod/handler.py`; the Docker image is Linux `amd64` and installs CUDA 13 PyTorch wheels. A GPU with 80 GB VRAM is a conservative starting choice for the video endpoint. The image endpoint can start with 48 GB or 80 GB, depending on the model and budget. Actual speed and memory use need measurement on the selected worker.
 4. Set **active workers 0**, **max workers 1** for each endpoint. An idle timeout around 120 seconds retains the loaded image model between nearby jobs but incurs a short idle charge. Each request sets a two-hour execution limit and a three-hour total TTL to allow the first model download; the RunPod default execution limit is only 10 minutes. Choose a CUDA-13-compatible host driver.
 5. In Qwen **Settings → Processing location**, choose **RunPod GPU**. Enter the image endpoint ID, video endpoint ID, network volume ID, datacenter ID, RunPod API key, and S3 access/secret key. Select **Save settings**, then **Test connection**. Configure **Prompt enhancement** separately if desired.
 

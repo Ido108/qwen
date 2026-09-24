@@ -1,4 +1,9 @@
-.reference-page{max-width:1600px;margin:auto;padding-top:29px;padding-bottom:40px}
+.video-workflow-nav{max-width:1464px;margin:18px auto 0;padding:0 32px;display:flex;gap:5px;align-items:center;border-bottom:1px solid #ddd8e9}
+.video-workflow-nav button{position:relative;white-space:nowrap;padding:11px 17px 13px;color:#777189;font-size:13px;font-weight:600;border-radius:9px 9px 0 0}
+.video-workflow-nav button:hover{background:#eeeaf6;color:#534379}
+.video-workflow-nav button[aria-selected=true]{color:#513a9d;background:#f0ecfa}
+.video-workflow-nav button[aria-selected=true]:after{content:'';position:absolute;bottom:-1px;left:11px;right:11px;height:3px;border-radius:3px;background:#7456d1}
+.reference-page{max-width:1600px;margin:auto;padding-top:20px;padding-bottom:40px}
 .reference-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:19px}
 .reference-heading h1{font-size:29px;letter-spacing:-.8px;margin:0 0 5px;font-weight:650}
 .reference-heading p{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
@@ -49,3 +54,4 @@
 @media(max-width:1100px){.gallery-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:1060px){.reference-layout{grid-template-columns:minmax(280px,1fr) minmax(0,1fr)}.reference-quick{grid-template-columns:repeat(3,minmax(0,1fr))}.reference-submit{grid-column:1/-1}.reference-settings{grid-template-columns:repeat(2,minmax(0,1fr))}.reference-history-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:760px){.gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.reference-page{padding-top:18px}.reference-heading{align-items:flex-start}.reference-heading h1{font-size:25px}.reference-heading>span{display:none}.reference-modes{overflow-x:auto;width:100%}.reference-modes button{padding:9px 10px}.reference-layout{grid-template-columns:1fr}.reference-output{min-height:245px}.reference-quick,.upscale-quick{grid-template-columns:repeat(2,minmax(0,1fr))}.reference-quick .field:first-child{grid-column:1/-1}.reference-submit{grid-column:1/-1}.reference-settings{grid-template-columns:repeat(2,minmax(0,1fr))}.reference-history-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.video-workflow-nav{margin-top:10px;padding:0 12px;overflow-x:auto}.video-workflow-nav button{padding:10px 12px;font-size:12px}}

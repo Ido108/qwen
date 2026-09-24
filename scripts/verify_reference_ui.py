@@ -21,8 +21,10 @@ def main():
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={'width': 1440, 'height': 900}, device_scale_factor=1)
         page.on('pageerror', lambda error: errors.append(str(error)))
-        page.goto(args.url.rstrip('/') + '/#reference', wait_until='networkidle')
-        page.get_by_role('button', name='Video to video').click()
+        page.goto(args.url.rstrip('/') + '/#video-to-video', wait_until='networkidle')
+        assert page.locator('.app-tabs button').count() == 3
+        assert page.locator('.app-tabs').get_by_role('button', name='Video', exact=True).is_visible()
+        assert page.get_by_role('tab', name='Video to video').get_attribute('aria-selected') == 'true'
         page.get_by_role('heading', name='Video to video').wait_for()
         assert page.get_by_role('tab', name='Replace subjects').get_attribute('aria-selected') == 'true'
         assert not page.get_by_text('Camera position', exact=True).is_visible()
@@ -46,7 +48,13 @@ def main():
         page.get_by_role('tab', name='Replace subjects').click()
         assert not page.get_by_text('Camera position', exact=True).is_visible()
 
-        page.get_by_role('button', name='Upscale', exact=True).click()
+        page.get_by_role('tab', name='Create video').click()
+        assert page.get_by_role('button', name='Text to video', exact=True).is_visible()
+        assert not page.get_by_label('Include generated audio').is_visible()
+        page.locator('.video-advanced summary').click()
+        assert page.get_by_label('Include generated audio').is_visible()
+
+        page.get_by_role('tab', name='Upscale', exact=True).click()
         assert not page.get_by_label('Keep source audio').is_visible()
         page.get_by_text('Advanced settings', exact=False).last.click()
         assert page.get_by_label('Keep source audio').is_visible()
@@ -55,7 +63,7 @@ def main():
         assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), page.evaluate("[...document.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).slice(0,12).map(e => [e.tagName, e.className, Math.round(e.getBoundingClientRect().right)])")
 
         page.set_viewport_size({'width': 768, 'height': 850})
-        page.get_by_role('button', name='Video to video').click()
+        page.get_by_role('tab', name='Video to video').click()
         page.get_by_role('tab', name='Camera view').click()
         page.screenshot(path=str(args.screenshots / 'camera-tablet.png'), full_page=True)
         assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), page.evaluate("[...document.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).slice(0,12).map(e => [e.tagName, e.className, Math.round(e.getBoundingClientRect().right)])")
@@ -94,6 +102,9 @@ def main():
             assert intermediate.locator('video').is_visible()
             video_url = intermediate.locator('video').get_attribute('src')
             assert page.request.get(args.url.rstrip('/') + video_url).status == 200
+            page.locator('.gallery-detail-actions').get_by_role('button', name='Use settings').click()
+            assert page.get_by_role('tab', name='Video to video').get_attribute('aria-selected') == 'true'
+            assert page.locator('.app-tabs').get_by_role('button', name='Video', exact=True).get_attribute('aria-current') == 'page'
         browser.close()
     print('UI mode separation, disclosure controls, desktop/tablet layout, and browser errors: passed')
 
