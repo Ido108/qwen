@@ -10,8 +10,8 @@ function loadDraft(){try{return {...initial,...JSON.parse(localStorage.getItem('
 export function UpscaleTab({api,token,models,visible,restoreRequest,onQueued,openSettings}:{api:Api;token:string;models:ModelState|null;visible:boolean;restoreRequest:{job:SavedJob;key:number}|null;onQueued:()=>void;openSettings:()=>void}){
   const [params,setParams]=useState<Params>(loadDraft);const [source,setSource]=useState<UploadedVideo|null>(null);const [job,setJob]=useState<SavedJob|null>(null);const [result,setResult]=useState<SavedJob|null>(null);const [history,setHistory]=useState<SavedJob[]>([]);const [pollId,setPollId]=useState<string|null>(null);
   const [uploading,setUploading]=useState(false);const [progress,setProgress]=useState(0);const [submitting,setSubmitting]=useState(false);const [error,setError]=useState('');const [notice,setNotice]=useState('');const [clock,setClock]=useState(Date.now());const input=useRef<HTMLInputElement>(null);
-  const selected=models?.models.find(m=>m.id===params.model_id);const needed=[params.model_id,...(selected?.dependencies||[])];const missing=needed.filter(id=>!models?.models.find(m=>m.id===id)?.installed);
-  const ready=!!source&&!missing.length;const busy=!!pollId;
+  const selected=models?.models.find(m=>m.id===params.model_id);const needed=[params.model_id,...(selected?.dependencies||[])];const missing=models?.remote?[]:needed.filter(id=>!models?.models.find(m=>m.id===id)?.installed);
+  const ready=!!source&&(models?.remote?!!selected?.ready:!missing.length);const busy=!!pollId;
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
   useEffect(()=>{localStorage.setItem('qwen-upscale-draft',JSON.stringify(params));},[params]);
   useEffect(()=>{api('/api/config').then((cfg:{video_output_dir:string})=>setParams(p=>({...p,output_dir:p.output_dir||cfg.video_output_dir}))).catch(()=>{});},[api]);

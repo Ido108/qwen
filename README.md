@@ -139,3 +139,6 @@ The image model, conditioning encoder and VAE stay constructed between jobs. GPU
 The most recent prompt/input conditioning is also reused when the actual prompt, negative prompt and ordered image pixels are unchanged. Changing the seed, step count or output dimensions does not require repeating that processing. New text or images are processed normally. An empty negative prompt no longer incurs an unused negative encoding pass at CFG 1; nonempty negatives retain the official CFG 2 behavior. Prompt enhancement remains a separate optional cloud operation.
 
 Progress shows the current stage's time and the total job time separately. **Generation time** in the result/gallery details shows model setup, prompt/input processing, generation and decoding. **Settings → Release model memory** frees the idle image worker without deleting any files. It is disabled while jobs are running or waiting.
+# macOS and RunPod Serverless
+
+Clone the `mac` branch (`git clone --branch mac https://github.com/Ido108/qwen.git`) and open `quickStart.command`. It installs into `.venv` inside the repository and creates an icon-bearing `Qwen.app` for later Finder or Dock launches. Image and video generation on macOS uses RunPod Serverless; see [RUNPOD.md](RUNPOD.md) for endpoint, network volume and in-app connection setup.

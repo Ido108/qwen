@@ -23,7 +23,7 @@ export function ReferenceTab({api,token,models,enhancement,visible,restoreReques
   const [clock,setClock]=useState(Date.now());const sourceRef=useRef<HTMLInputElement>(null);const warpRef=useRef<HTMLInputElement>(null);const imageRef=useRef<HTMLInputElement>(null);
   const busy=!!pollId;const locked=!!uploading||submitting;const selected=models?.models.find(m=>m.id===params.model_id);
   const needed=[params.model_id,...(selected?.dependencies||[]),...(params.workflow==='faceswap'||(params.workflow==='crossview'&&params.replace_subjects_first)?['h3-ref-faceswap']:[]),...(params.workflow==='crossview'?['h3-ref-crossview',...(warp?[]:['moge2-geometry'])]:[]),...(params.model_id==='h3-ref-base-int8'&&params.quality==='turbo'?['h3-ref-turbo-lora']:[])];
-  const missing=needed.filter(id=>!models?.models.find(m=>m.id===id)?.installed);const ready=!!source&&!missing.length&&(!params.enhance||!!enhancement?.connected)&&validSize(params.width,params.height);
+  const missing=models?.remote?[]:needed.filter(id=>!models?.models.find(m=>m.id===id)?.installed);const ready=!!source&&(models?.remote?!!selected?.ready:!missing.length)&&(!params.enhance||!!enhancement?.connected)&&validSize(params.width,params.height);
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
   useEffect(()=>{localStorage.setItem('qwen-reference-draft',JSON.stringify(params));},[params]);
   useEffect(()=>{api('/api/config').then((cfg:{video_output_dir:string})=>setParams(p=>({...p,output_dir:p.output_dir||cfg.video_output_dir}))).catch(()=>{});},[api]);

@@ -6,12 +6,15 @@ __pycache__/
 *.tsbuildinfo
 *.log
 runtime.json
+runpod.json
+runpod.secret
 local-settings.json
 .env
 .env.*
 !.env.example
 *.dpapi
 .venv/
+/*.app/
 venv/
 /models/
 /uploads/

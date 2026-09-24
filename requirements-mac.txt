@@ -1,0 +1,12 @@
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+python-multipart>=0.0.20
+Pillow>=11
+av>=17,<19
+pydantic>=2.10,<3
+httpx>=0.28,<1
+huggingface_hub>=1.0
+hf_xet>=1.0
+tqdm>=4.66
+json-repair>=0.40
+boto3>=1.35

@@ -56,6 +56,7 @@
     "repo": "LiconStudio/LTX-2.5-Multiple-Subject-Reference", "revision": "aa19b48f845995525d8ace60cdc89b842e951ce6", "directory": "video/LiconStudio-LTX25-MSR",
     "files": [{"path": "LTX-2.5-Licon-MSR-V2.safetensors", "bytes": 2215094328, "sha256": "7cf982168d4f77f44b02943fb458f937f90c89335dcf7cf71b2f425e78bab713"}],
     "bytes": 2215094328, "dependencies": ["ltx25-distilled-int8", "ltx25-gemma-int8", "ltx25-video-vae", "ltx25-audio-vae"],
+    "note": "Requires access to the gated LTX 2.5 base model; generation is not available yet.",
     "generation_defaults": {"steps": 8, "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/main/LTX2.5-MSR-sample-workflow-V2.json", "note": "Five ordered image slots; optional paired audio in slots 1 and 2."}
   },
   {

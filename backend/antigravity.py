@@ -17,6 +17,8 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import subprocess
+import sys
 import threading
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -34,6 +36,7 @@ ENDPOINTS = ('https://daily-cloudcode-pa.googleapis.com', 'https://daily-cloudco
 SCOPES = ' '.join(('openid', 'https://www.googleapis.com/auth/cloud-platform', 'https://www.googleapis.com/auth/userinfo.email', 'https://www.googleapis.com/auth/userinfo.profile', 'https://www.googleapis.com/auth/cclog', 'https://www.googleapis.com/auth/experimentsandconfigs'))
 AUTH_DIR = Path(os.environ.get('QWEN_AUTH_DIR', str(DATA_DIR / 'connections')))
 TOKEN_FILE = AUTH_DIR / 'antigravity.dpapi'
+KEYCHAIN_SERVICE = 'Qwen Antigravity'
 SETTINGS_FILE = AUTH_DIR / 'settings.json'
 MODELS = [
     {'id': 'gemini-3.7-flash', 'name': 'Gemini 3.7 Flash', 'wire': 'gemini-3.7-flash-tiered'},
@@ -72,7 +75,10 @@ def _crypt(data: bytes, decrypt=False):
 @contextmanager
 def token_lock():
     # Server and generation worker can both refresh; serialize across processes.
-    import msvcrt
+    if os.name == 'nt':
+        import msvcrt
+    else:
+        import fcntl
     AUTH_DIR.mkdir(parents=True, exist_ok=True)
     with _lock, (AUTH_DIR / '.connection.lock').open('a+b') as handle:
         handle.seek(0, 2)
@@ -82,7 +88,10 @@ def token_lock():
         while True:
             handle.seek(0)
             try:
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                if os.name == 'nt':
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except OSError:
                 if time.monotonic() > deadline:
@@ -92,14 +101,25 @@ def token_lock():
             yield
         finally:
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            if os.name == 'nt':
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 def load_tokens():
+    if sys.platform == 'darwin':
+        result = subprocess.run(['security', 'find-generic-password', '-a', 'user', '-s', KEYCHAIN_SERVICE, '-w'], capture_output=True, text=True)
+        return json.loads(result.stdout) if result.returncode == 0 else {}
     if not TOKEN_FILE.exists():
         return {}
     return json.loads(_crypt(TOKEN_FILE.read_bytes(), decrypt=True))
 
 def save_tokens(tokens):
+    if sys.platform == 'darwin':
+        result = subprocess.run(['security', 'add-generic-password', '-a', 'user', '-s', KEYCHAIN_SERVICE, '-w', json.dumps(tokens), '-U'], capture_output=True, text=True)
+        if result.returncode:
+            raise ConnectionError('Could not save the connection in macOS Keychain.')
+        return
     AUTH_DIR.mkdir(parents=True, exist_ok=True)
     temporary = TOKEN_FILE.with_suffix(f'.{uuid.uuid4().hex}.tmp')
     temporary.write_bytes(_crypt(json.dumps(tokens).encode()))
@@ -202,7 +222,10 @@ def ensure_tokens(force=False):
 
 def disconnect():
     with token_lock(), _flows_lock:
-        TOKEN_FILE.unlink(missing_ok=True)
+        if sys.platform == 'darwin':
+            subprocess.run(['security', 'delete-generic-password', '-a', 'user', '-s', KEYCHAIN_SERVICE], capture_output=True)
+        else:
+            TOKEN_FILE.unlink(missing_ok=True)
         _flows.clear()
     return status()
 
