@@ -64,22 +64,31 @@ def run(request, job, directory, update):
     source_audio=None
     if reference:
         from .reference_media import read_frames,read_audio
+        from .reference_timing import probe_video_duration
         update(stage='reading_inputs',message='Reading reference video and images…')
         source=resolve_video(request['source_video'])
-        images['source_video']=read_frames(source,request['frames'])
-        source_audio=read_audio(source,request['frames']/24) if request['source_audio'] or request['output_audio']=='source' else None
+        clip_start=request.get('source_start_seconds',0)
+        clip_end=request.get('source_end_seconds')
+        images['source_video']=read_frames(source,request['frames'],start_seconds=clip_start,end_seconds=clip_end)
+        source_audio=read_audio(source,request['frames']/24,start_seconds=clip_start,end_seconds=clip_end) if request['source_audio'] or request['output_audio']=='source' else None
         if request['source_audio']:
             images['source_audio']=source_audio
         if request['workflow']=='crossview':
             if request.get('warp_video'):
-                images['warp_video']=read_frames(resolve_video(request['warp_video']),request['frames'])
-                if len(images['warp_video'])<len(images['source_video']):
-                    raise ValueError('The camera warp video must cover the source clip.')
+                warp_path=resolve_video(request['warp_video'])
+                selected_duration=(clip_end-clip_start) if clip_end is not None else request['frames']/24
+                warp_duration=probe_video_duration(warp_path)
+                if warp_duration+1/24<selected_duration:
+                    raise ValueError('The camera guide video must cover the selected source segment.')
+                warp_start=clip_start if clip_end is not None and warp_duration+1/24>=clip_end else 0
+                images['warp_video']=read_frames(warp_path,request['frames'],start_seconds=warp_start,
+                                                 end_seconds=warp_start+selected_duration)
         for index,image_id in enumerate(request['reference_images'],1):
             with Image.open(resolve_image(image_id)) as source_image:
                 images[f'ref_image_{index}']=source_image.convert('RGB')
                 images[f'ref_image_{index}'].save(directory/f'reference-{index}.png')
-        prompt=request['prompt'].strip()
+        from .reference_prompt import render_reference_prompt
+        prompt=render_reference_prompt(request['prompt'].strip(),{**request,'person_assignments':{}})
         if request['workflow']=='faceswap':
             prompt=('Faceswap. '+prompt) if prompt and 'faceswap' not in prompt.lower() else (prompt or 'Faceswap')
         elif request['workflow']=='crossview':
@@ -90,6 +99,8 @@ def run(request, job, directory, update):
             from .prompt_enhancer import enhance_reference
             camera_request={**request,'reference_images':[]} if request['workflow']=='crossview' else request
             prompt=enhance_reference(prompt,images,camera_request,update)
+        if request['workflow']=='faceswap':
+            prompt=render_reference_prompt(prompt,request)
     else:
         for name in ('first_frame', 'last_frame'):
             if request.get(name):
@@ -118,12 +129,14 @@ def run(request, job, directory, update):
             raise ValueError('Enter a subject replacement prompt.')
         if not replacement_prompt.lower().startswith('faceswap'):
             replacement_prompt='Faceswap. '+replacement_prompt
+        replacement_prompt=render_reference_prompt(replacement_prompt,{**request,'person_assignments':{}})
         replacement_request={**request,'workflow':'faceswap','warp_video':None,
                              'output_audio':'mute'}
         if request['enhance']:
             from .prompt_enhancer import enhance_reference
             replacement_prompt=enhance_reference(replacement_prompt,images,
                 replacement_request,stage_progress(0))
+        replacement_prompt=render_reference_prompt(replacement_prompt,request)
         update(subject_replacement_prompt=replacement_prompt)
         first_frames,_=generate(replacement_request,replacement_prompt,images,stage_progress(0))
         intermediate=directory/'subject-replacement.mp4'

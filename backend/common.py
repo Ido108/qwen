@@ -117,11 +117,21 @@ class VideoRequest(BaseModel):
         return value
 
 
+class SourcePerson(BaseModel):
+    id: str = Field(pattern=r'^person-(?:[1-9]|1[0-2])$')
+    time: float = Field(ge=0)
+    box: tuple[float,float,float,float] | None = None
+
+
 class ReferenceVideoRequest(BaseModel):
     workflow: Literal['faceswap', 'crossview', 'reference'] = 'faceswap'
     model_id: str = 'h3-ref-turbo-int8'
     source_video: str
+    source_start_seconds: float = Field(default=0, ge=0)
+    source_end_seconds: float | None = Field(default=None, gt=0)
     reference_images: list[str] = Field(default_factory=list, max_length=9)
+    source_people: list[SourcePerson] = Field(default_factory=list, max_length=12)
+    person_assignments: dict[str, str | None] = Field(default_factory=dict)
     replace_subjects_first: bool = False
     replacement_prompt: str = Field(default='Replace the people with the supplied reference images. Keep the source motion, clothing and lighting.',max_length=16000)
     warp_video: str | None = None

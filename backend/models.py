@@ -70,6 +70,8 @@ def required_video(request):
         raise ValueError('Choose image-to-video to use input images.')
     if request.width*request.height>1344*768:
         raise ValueError('The video size must not exceed 1344 × 768 pixels.')
+    if not 0.25 <= request.width/request.height <= 4:
+        raise ValueError('MiniMax H3 supports output aspect ratios from 1:4 to 4:1.')
     ids=[item['id'],*item['dependencies']]
     if request.quality=='turbo' and item['family']=='minimax-h3':
         ids.append('h3-turbo')
@@ -88,6 +90,8 @@ def required_reference(request):
         raise ValueError('Add reference images for Replace subjects first.')
     if request.width*request.height>1344*768:
         raise ValueError('The video size must not exceed 1344 × 768 pixels.')
+    if not 0.25 <= request.width/request.height <= 4:
+        raise ValueError('MiniMax H3 supports output aspect ratios from 1:4 to 4:1.')
     ids=[item['id'],*item['dependencies']]
     if request.workflow=='faceswap':
         ids.append('h3-ref-faceswap')

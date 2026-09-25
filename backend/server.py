@@ -23,6 +23,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, GenerationRequest, VideoRequest, ReferenceVideoRequest, UpscaleRequest, model_status, resolve_image, resolve_video, read_json, write_json
+from .reference_timing import probe_video_duration, resolve_reference_clip
 from . import models, antigravity, cloud
 from .resident_worker import ImageWorker
 
@@ -159,16 +160,24 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
                 work['prompt'] = enhance_video(request['prompt'], named, request, enhancement_progress)
             elif task_kind == 'reference-video':
                 from .prompt_enhancer import enhance_reference
+                from .reference_prompt import render_reference_prompt
                 named = {}
                 for index, value in enumerate(request.get('reference_images', []), 1):
                     with Image.open(resolve_image(value)) as opened:
                         named[f'ref_image_{index}'] = opened.convert('RGB')
                 camera_request = {**request, 'reference_images': []} if request['workflow'] == 'crossview' else request
-                work['prompt'] = enhance_reference(request['prompt'], named, camera_request, enhancement_progress)
+                tagged_prompt = render_reference_prompt(request['prompt'],{**request,'person_assignments':{}})
+                work['prompt'] = enhance_reference(tagged_prompt, named, camera_request, enhancement_progress)
+                if request['workflow']=='faceswap':
+                    work['prompt'] = render_reference_prompt(work['prompt'],request)
                 if request['workflow'] == 'crossview' and request.get('replace_subjects_first'):
                     replacement_request = {**request, 'workflow': 'faceswap'}
-                    work['replacement_prompt'] = enhance_reference(request['replacement_prompt'], named,
+                    tagged_replacement = render_reference_prompt(request['replacement_prompt'],
+                        {**request,'person_assignments':{}})
+                    work['replacement_prompt'] = enhance_reference(tagged_replacement, named,
                                                                   replacement_request, enhancement_progress)
+                    work['replacement_prompt'] = render_reference_prompt(work['replacement_prompt'],request)
+                work['person_assignments'] = {}
             work['enhance'] = False
         keys = []
         for index, path in enumerate(source_paths):
@@ -182,8 +191,12 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
             work['first_frame'] = next(iterator) if request.get('first_frame') else None
             work['last_frame'] = next(iterator) if request.get('last_frame') else None
         elif task_kind == 'reference-video':
-            work['reference_images'] = [f'cloud-ref-{index}.png'
-                                        for index in range(len(request.get('reference_images', [])))]
+            old_images = request.get('reference_images', [])
+            work['reference_images'] = [f'cloud-ref-{index}.png' for index in range(len(old_images))]
+            if work.get('person_assignments'):
+                image_map=dict(zip(old_images,work['reference_images']))
+                work['person_assignments']={person:(image_map[image] if image else None)
+                                            for person,image in work['person_assignments'].items()}
         work['output_dir'] = '/runpod-volume/qwen-transfer/' + job_id
         write_json(directory / 'remote-request.json', work)
         payload = {'job_id': job_id, 'kind': task_kind, 'request': work, 'input_keys': keys,
@@ -360,6 +373,11 @@ async def local_only(request: Request, call_next):
 @app.get('/api/health')
 def health():
     return {'app': 'image-studio-qwen21', 'version': '1.0.0', 'app_dir':str(APP_DIR), 'data_dir':str(DATA_DIR)}
+
+@app.get('/api/gpu-memory')
+def gpu_memory_status():
+    from .gpu_memory import dedicated_memory_snapshot
+    return dedicated_memory_snapshot()
 
 @app.get('/api/config')
 def config():
@@ -576,8 +594,10 @@ async def upload_video(request: Request):
             frame=next(media.decode(stream),None)
             if frame is None:
                 raise HTTPException(400,'This video has no readable frames.')
-            duration=(media.duration/1_000_000) if media.duration else None
             fps=float(stream.average_rate) if stream.average_rate else None
+            duration=(media.duration/1_000_000) if media.duration else (
+                float(stream.duration*stream.time_base) if stream.duration and stream.time_base else (
+                    stream.frames/fps if stream.frames and fps else None))
             poster=frame.to_image()
             poster.thumbnail((960,540),Image.Resampling.LANCZOS)
             poster.save(VIDEO_UPLOADS_DIR/(video_id+'.jpg'),quality=85)
@@ -614,6 +634,60 @@ def video_upload_poster(video_id: str):
     except ValueError as exc:
         raise HTTPException(404,str(exc))
     return FileResponse(VIDEO_UPLOADS_DIR/(video_id+'.jpg'),media_type='image/jpeg')
+
+
+@app.get('/api/video-uploads/{video_id}/timeline')
+def video_upload_timeline(video_id: str):
+    try:
+        source = resolve_video(video_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    target = VIDEO_UPLOADS_DIR/(video_id+'.timeline-v2.webp')
+    if not target.is_file():
+        import av
+        duration = probe_video_duration(source)
+        count, tile_width, tile_height = 12, 112, 68
+        strip = Image.new('RGB', (count*tile_width, tile_height), '#24212c')
+        with av.open(str(source)) as media:
+            stream = next(item for item in media.streams if item.type == 'video')
+            origin = float(stream.start_time*stream.time_base) if stream.start_time is not None and stream.time_base else 0.0
+            for index in range(count):
+                second = min(max(0, duration-0.1), (index+0.5)*duration/count)
+                if stream.time_base:
+                    media.seek((stream.start_time or 0)+int(second/float(stream.time_base)),
+                               stream=stream, backward=True)
+                frame = None
+                for candidate in media.decode(stream):
+                    frame = candidate
+                    if candidate.time is None or candidate.time-origin >= second-1/24:
+                        break
+                if frame is not None:
+                    tile = ImageOps.contain(frame.to_image().convert('RGB'), (tile_width,tile_height))
+                    strip.paste(tile, (index*tile_width+(tile_width-tile.width)//2,
+                                       (tile_height-tile.height)//2))
+        temporary = target.with_suffix('.webp.part')
+        strip.save(temporary, format='WEBP', quality=78)
+        temporary.replace(target)
+    return FileResponse(target,media_type='image/webp')
+
+
+class PeopleAnalysisRequest(BaseModel):
+    start_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
+
+
+@app.post('/api/video-uploads/{video_id}/people')
+def video_upload_people(video_id: str, body: PeopleAnalysisRequest):
+    try:
+        source = resolve_video(video_id)
+        duration = probe_video_duration(source)
+        if body.end_seconds <= body.start_seconds or body.end_seconds > duration + 1/24:
+            raise ValueError('Select a valid part of the source video.')
+        from .reference_people import analyze_people
+        people = analyze_people(source, body.start_seconds, min(duration,body.end_seconds))
+        return {'people':people,'start_seconds':body.start_seconds,'end_seconds':body.end_seconds}
+    except (ValueError,OSError) as exc:
+        raise HTTPException(400,str(exc))
 
 
 @app.get('/api/video-uploads/{video_id}')
@@ -715,7 +789,20 @@ def generate_video(body: VideoRequest):
 def generate_reference_video(body: ReferenceVideoRequest):
     try:
         needed=models.required_reference(body)
-        resolve_video(body.source_video)
+        source=resolve_video(body.source_video)
+        metadata_path=VIDEO_UPLOADS_DIR/(body.source_video+'.json')
+        metadata=read_json(metadata_path) if metadata_path.is_file() else {}
+        duration=metadata.get('duration_seconds') or probe_video_duration(source)
+        maximum=models.entry(body.model_id).get('generation_defaults',{}).get('max_frames',362)
+        resolve_reference_clip(body,duration,maximum)
+        if body.person_assignments and body.workflow=='crossview' and not body.replace_subjects_first:
+            raise ValueError('Enable Replace subjects first to use person assignments in Camera view.')
+        for person in body.source_people:
+            if not body.source_start_seconds <= person.time <= body.source_end_seconds:
+                raise ValueError('Scan people in the selected source segment again.')
+        from .reference_prompt import render_reference_prompt
+        prompt_request=body.model_dump()
+        render_reference_prompt(body.replacement_prompt if body.workflow=='crossview' and body.replace_subjects_first else body.prompt,prompt_request)
         if body.warp_video:
             resolve_video(body.warp_video)
         for image_id in body.reference_images:

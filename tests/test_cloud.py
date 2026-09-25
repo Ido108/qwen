@@ -69,6 +69,7 @@ class CloudTests(unittest.TestCase):
             with patch.object(cloud, 'settings', return_value={'mode': 'runpod'}), \
                  patch.object(cloud, 'ready', return_value=True) as ready, \
                  patch.object(server, 'resolve_video', return_value=source), \
+                 patch.object(server, 'probe_video_duration', return_value=12.0), \
                  patch.object(server, 'resolve_image', return_value=reference), \
                  patch.object(server.models, 'is_installed', side_effect=AssertionError('local model checked')), \
                  patch.object(server, 'enqueue_locked', side_effect=lambda job, data: captured.append((job, data))), \
@@ -76,12 +77,18 @@ class CloudTests(unittest.TestCase):
                 replacement = server.generate_reference_video(ReferenceVideoRequest(
                     workflow='crossview', replace_subjects_first=True,
                     source_video=source.name, reference_images=[reference.name],
+                    source_start_seconds=2, source_end_seconds=9,
+                    source_people=[{'id':'person-1','time':3,'box':(0.1,0.2,0.2,0.3)}],
+                    person_assignments={'person-1':reference.name},
                     prompt='New camera angle', output_dir=folder, enhance=False,
                 ))
                 upscale = server.generate_upscale(UpscaleRequest(source_video=source.name, output_dir=folder))
             self.assertEqual([item['kind'] for item, _ in captured], ['reference-video', 'upscale'])
             self.assertEqual([data['execution'] for _, data in captured], ['runpod', 'runpod'])
             self.assertEqual(replacement['total_steps'], 16)
+            self.assertEqual(captured[0][1]['source_start_seconds'], 2)
+            self.assertEqual(captured[0][1]['source_end_seconds'], 9)
+            self.assertEqual(captured[0][1]['frames'], 175)
             self.assertEqual(upscale['kind'], 'upscale')
             ready.assert_any_call('video')
 
@@ -99,6 +106,8 @@ class CloudTests(unittest.TestCase):
                 workflow='crossview', replace_subjects_first=True, source_video=source.name,
                 reference_images=[reference.name], prompt='New camera angle', output_dir=folder,
                 enhance=False, source_audio=False,
+                source_people=[{'id':'person-1','time':0.5}],
+                person_assignments={'person-1':reference.name},
             ).model_dump()
             request.update(kind='reference-video', execution='runpod', steps=8)
             (job_folder / 'status.json').write_text(json.dumps({
@@ -128,6 +137,7 @@ class CloudTests(unittest.TestCase):
             self.assertEqual(submitted[0][0], 'video')
             self.assertEqual(submitted[0][1]['kind'], 'reference-video')
             self.assertEqual(submitted[0][1]['request']['reference_images'], ['cloud-ref-0.png'])
+            self.assertEqual(submitted[0][1]['request']['person_assignments'], {'person-1':'cloud-ref-0.png'})
             self.assertTrue((job_folder / 'subject-replacement.mp4').is_file())
             self.assertTrue(Path(saved['output_path']).is_file())
 

@@ -96,3 +96,25 @@ Local artifacts: `validation/resident/`, `validation/resident-api-1790087796/`, 
 The final mixed GPU queue (`validation/resident-api-1790088313/`) completed all five requests in FIFO order without overlapping inference: Q8 image 51.8 s, cached-input Q8 image 16.7 s, changed two-image/negative conditioning 43.2 s, H3 Turbo first/last-frame video 121.4 s, then Q8 text-to-image 43.5 s. The first three shared one worker PID; the video and subsequent image each had a new PID. The cached image's first step finished in 1.863 s, input processing took 0.042 s. Startup variability is visible across runs; warm reuse is the relevant comparison, not a promise of fixed generation times.
 
 The browser check confirmed an editable draft during the real queue and released the idle model with **Settings → Release model memory**. Dedicated GPU use returned to about 1.9 GiB. Gallery timing details, the reuse indicator, full images and desktop/mobile layout were verified with no browser errors or mobile overflow. The gallery check was replayed against the completed results after correcting a test locator that matched both the hidden image result and the gallery dialog; no GPU work was repeated for that selector correction.
+
+## Ref2VA source selection, person mapping and GPU regression (2026-09-25)
+
+The failed Turbo INT8 job `8b4b1dca236d45969caeb18614c71d1c` completed all eight sampling steps and failed during VAE decode: `qk_norm_scale` remained on CPU while the attention query was on CUDA. The MiniMax H3 VAE now casts that scale to the query device before the fused RMS/rope operation. A controlled low-VRAM run loaded part of the VAE on CPU and completed the same decode path.
+
+The source interval now defaults to the uploaded duration up to the model's frame limit; a draggable timeline and numeric fields select the section. Video frames and source audio are read from that interval and aligned to the H3 17n+5 output grid. The source preview remains available while a job runs. Face detection/recognition is local and CPU-based, while video conditioning, sampling and VAE operations use CUDA where available. Detected people can be assigned reference images or marked Keep; `@Person`, `@Ref` and `@SourceVideo` tags are resolved to H3 media tags. The model follows these instructions generatively; an unchanged unselected person is not guaranteed.
+
+| Real RTX 4090 local smoke | Output | Elapsed | Result |
+|---|---|---:|---|
+| Ref2VA Turbo INT8, eight steps | 22 frames, 768x448 | 80.8 s | MP4 saved |
+| Turbo INT8, forced low-VRAM VAE offload | 22 frames, 768x448 | 97.4 s | MP4 saved; CPU/CUDA regression cleared |
+| 10Eros GGUF Q4_K_M, 25 steps | 22 frames, 768x448 | 130.2 s | MP4 saved |
+| 10Eros GGUF Q8_0, 25 steps | 22 frames, 768x448 | 185.7 s | MP4 saved |
+| Official Ref2VA INT8, 20 steps | 22 frames, 768x448 | 128.1 s | MP4 saved |
+| Turbo INT8, source-matched portrait | 22 frames, 576x1024 | 86.7 s | MP4 saved |
+| Official INT8 plus 8-step LoRA and detected-person tags | 22 frames, 576x1024 | 98.9 s | MP4 saved; actual prompt contains <Video 1> and <Picture 1> |
+
+All seven outputs are local 24 fps H.264 MP4s with the expected frame count and dimensions. The official INT8 file was checked against Hugging Face's SHA-256, `9255f52b6677845ad238f20dfaafa94727053694127ab7f255c048f0f9365779`; the model manager checksum-verified Q8 and the other downloaded variants. Artifacts are in `E:\AI\qwen-image-studio\validation\reference-gpu-smoke`.
+
+A 243-frame Turbo INT8 diagnostic was stopped after its first step took 12 minutes: approximately 12.6 GB of transformer weights were offloaded because other processes occupied dedicated VRAM. It was a performance diagnosis, not a successful full-length generation. The UI now reports free dedicated VRAM before submission and explains the risk of RAM offload. A CrossView smoke reached GPU MoGe depth estimation and text-encoder loading, then was stopped immediately when the user asked for no more renders; CrossView output is not certified by this run.
+
+The browser check exercised desktop, tablet and 390 px mobile layouts; source playback; trimming; a two-person clip with independent Keep/Replace choices; prompt-tag menus in both subject-replacement fields; model changes; automatic portrait/source aspect matching; preset and custom ratios; resolution tiers; and custom dimensions. No JavaScript errors or horizontal overflow occurred. The Python suite has 68 passing tests, including trimmed video/audio selection, person-tag validation, cloud mapping, and model aspect limits. The Mac UI and RunPod execution were code-checked but were not physically run on a Mac or live RunPod endpoint.

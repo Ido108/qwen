@@ -5,6 +5,21 @@ import subprocess
 GIB = 1024 ** 3
 
 
+def dedicated_memory_snapshot():
+    """Report physical VRAM, rather than CUDA's virtual WDDM allocation limit."""
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=name,memory.total,memory.free', '--format=csv,noheader,nounits'],
+            capture_output=True, text=True, check=True, timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+        )
+        name, total, free = (part.strip() for part in result.stdout.splitlines()[0].rsplit(',', 2))
+        return {'available': True, 'name': name, 'total_gb': round(int(total)/1024, 2),
+                'free_gb': round(int(free)/1024, 2)}
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return {'available': False}
+
+
 def reserve_for_dedicated_memory(cuda_free, dedicated_free, safety=2 * GIB):
     # WDDM CUDA mem_get_info can expose a virtual budget rather than free
     # dedicated VRAM. Reserve that difference before ComfyUI places weights.

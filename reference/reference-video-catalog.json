@@ -2,30 +2,30 @@
   {
     "id": "h3-ref-base-int8", "title": "MiniMax H3 Ref2VA · INT8", "kind": "reference-video", "family": "minimax-h3-ref2va", "format": "INT8",
     "repo": "Comfy-Org/MiniMax-H3", "revision": "1c41cfca8ebba91d0af792a05c5761fb2c3a7975", "directory": "video/Comfy-Org-MiniMax-H3",
-    "files": [{"path": "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors", "bytes": 20970379616, "sha256": null}],
+    "files": [{"path": "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors", "bytes": 20970379616, "sha256": "9255f52b6677845ad238f20dfaafa94727053694127ab7f255c048f0f9365779"}],
     "bytes": 20970379616, "dependencies": ["h3-encoder", "h3-video-vae", "h3-audio-vae"],
-    "generation_defaults": {"steps": 20, "source": "https://huggingface.co/Comfy-Org/MiniMax-H3", "note": "Standard Ref2VA with reference images and video."}
+    "generation_defaults": {"steps": 20, "max_frames": 362, "source": "https://huggingface.co/Comfy-Org/MiniMax-H3", "note": "Standard Ref2VA with reference images and video."}
   },
   {
     "id": "h3-ref-turbo-int8", "title": "MiniMax H3 Ref2VA Turbo · INT8", "kind": "reference-video", "family": "minimax-h3-ref2va", "format": "INT8",
     "repo": "PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot", "revision": "6395b6922e1a82694401e752b731aedf85ff8ac9", "directory": "h3-ref-turbo-int8",
     "files": [{"path": "minimax_h3_ref2va_pruned_turbo_int8_convrot.safetensors", "bytes": 20970379854, "sha256": "e64cef63bc2785bcd72e6103c52aa78c6cd2c4f9870a7ce79675083fd65cf2e7"}],
     "bytes": 20970379854, "dependencies": ["h3-encoder", "h3-video-vae", "h3-audio-vae"],
-    "generation_defaults": {"steps": 8, "source": "https://huggingface.co/PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot", "note": "Turbo weights already merged. Do not stack another turbo LoRA."}
+    "generation_defaults": {"steps": 8, "max_frames": 362, "source": "https://huggingface.co/PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot", "note": "Turbo weights already merged. Do not stack another turbo LoRA."}
   },
   {
     "id": "h3-ref-eros-q4", "title": "10Eros-Max Ref2VA · Q4_K_M", "kind": "reference-video", "family": "minimax-h3-ref2va", "format": "GGUF",
     "repo": "Abiray/10Eros-Max-ref2va-Beta2-GGUF", "revision": "4d1c9a751b5974351254ac1088c3ad475426b61a", "directory": "video/Abiray-10Eros-Max-ref2va-Beta2-GGUF",
     "files": [{"path": "10Eros-Max-Ref2VA-Beta2-Pruned-Q4_K_M.gguf", "bytes": 11564180576, "sha256": "c97b0e0ffbbb7d5edb5a9d9931ab715d35dfbca9a762f5b302cf3919c161176b"}],
     "bytes": 11564180576, "dependencies": ["h3-encoder", "h3-video-vae", "h3-audio-vae"],
-    "generation_defaults": {"steps": 25, "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF", "note": "Experimental community fine-tune; standard 20–30 steps."}
+    "generation_defaults": {"steps": 25, "max_frames": 362, "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF", "note": "Experimental community fine-tune; standard 20–30 steps."}
   },
   {
     "id": "h3-ref-eros-q8", "title": "10Eros-Max Ref2VA · Q8_0", "kind": "reference-video", "family": "minimax-h3-ref2va", "format": "GGUF",
     "repo": "Abiray/10Eros-Max-ref2va-Beta2-GGUF", "revision": "4d1c9a751b5974351254ac1088c3ad475426b61a", "directory": "video/Abiray-10Eros-Max-ref2va-Beta2-GGUF",
     "files": [{"path": "10Eros-Max-Ref2VA-Beta2-Pruned-Q8_0.gguf", "bytes": 21583324256, "sha256": "23a32bf9dfe3241d18700a413906944dc66940c252ad2017ea291861411ef03e"}],
     "bytes": 21583324256, "dependencies": ["h3-encoder", "h3-video-vae", "h3-audio-vae"],
-    "generation_defaults": {"steps": 25, "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF", "note": "Experimental community fine-tune; highest precision GGUF."}
+    "generation_defaults": {"steps": 25, "max_frames": 362, "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF", "note": "Experimental community fine-tune; highest precision GGUF."}
   },
   {
     "id": "h3-ref-turbo-lora", "title": "MiniMax H3 Ref2VA · 8-step LoRA", "kind": "reference-support", "format": "LoRA",

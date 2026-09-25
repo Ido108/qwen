@@ -299,7 +299,7 @@ class Attention(nn.Module):
             rms_rope = (comfy.quant_ops.ck.rms_rope_split_half if torch.is_grad_enabled()
                         else comfy.quant_ops.ck.rms_rope_split_half_)
             query, key = rms_rope(
-                query, key, rotary_pos_emb, self.qk_norm_scale,
+                query, key, rotary_pos_emb, comfy.ops.cast_to_input(self.qk_norm_scale, query),
                 epsilon=self.norm_q.eps, rot_dim=rotary_pos_emb.shape[-3] * 2)
         else:
             query = comfy.rmsnorm.rms_norm(query, self.norm_q.weight, self.norm_q.eps)
