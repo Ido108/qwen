@@ -6,6 +6,51 @@ import re
 TAG = re.compile(r'@(?:Person\d+|Ref\d+|SourceVideo)\b', re.IGNORECASE)
 
 
+def reference_instructions(request: dict, *, replacement=False) -> str:
+    """Resolve optional user instructions without losing structured selections."""
+    field = 'replacement_prompt' if replacement else 'prompt'
+    context = {**request, 'person_assignments': {}}
+    if request['workflow'] == 'crossview' and not replacement:
+        context['reference_images'] = []
+    return render_reference_prompt((request.get(field) or '').strip(), context)
+
+
+def build_reference_prompt(request: dict, instructions: str | None = None, *, replacement=False) -> str:
+    """Compile every workflow from controls; text is only an optional addition.
+
+    Append person choices after enhancement so local and remote enhancement cannot
+    drop the selected identities or people marked Keep.
+    """
+    workflow = 'faceswap' if replacement else request['workflow']
+    if workflow == 'faceswap':
+        base = ('Faceswap. Change only the selected identities in <Video 1>. '
+                'Preserve the source actions, expressions, motion, clothing, timing, '
+                'camera, lighting and background throughout the video.')
+        if not request.get('reference_images'):
+            raise ValueError('Add a reference image for subject replacement.')
+        if not request.get('person_assignments'):
+            base += (' Replace the main person with the identity in <Picture 1>. '
+                     'Use additional reference images as views of that same identity. '
+                     'Keep all other people unchanged.')
+        elif not any(request['person_assignments'].values()):
+            raise ValueError('Choose a reference image for at least one detected person.')
+    elif workflow == 'crossview':
+        base = ('crossview. Show the scene and action in <Video 1> from the camera '
+                'position in the supplied camera guide. Preserve the subjects, '
+                'identities, actions, timing, clothing and lighting. Do not replace people.')
+    else:
+        base = ('Follow the movement, actions, camera and timing of <Video 1>. '
+                'Use the supplied reference images to guide the subjects and keep '
+                'their appearance consistent throughout the video.')
+    extra = reference_instructions(request, replacement=replacement) if instructions is None else instructions.strip()
+    if extra:
+        base += '\n\nAdditional instructions: ' + extra
+    if workflow == 'faceswap':
+        base += '\n\nThe selected person assignments take priority over any conflicting identity instructions.'
+        return render_reference_prompt(base, request)
+    return base
+
+
 def render_reference_prompt(prompt: str, request: dict) -> str:
     images = request.get('reference_images') or []
     people = {person['id']: person for person in (request.get('source_people') or [])}

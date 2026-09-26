@@ -121,7 +121,7 @@ The source timeline selects the full uploaded duration by default, up to the mod
 
 **Aspect ratio** matches the source video by default. You can choose a preset or a custom ratio independently of **Resolution** (Draft, Standard, High), or enter custom width and height. The result shows the actual 32-pixel-aligned dimensions. This app currently caps H3 output at 1,032,192 pixels and 256–1344 pixels per side, with a supported ratio range from 1:4 to 4:1. The app also shows available dedicated GPU memory before submission; when another process occupies VRAM, 20 GB INT8/Q8 weights can stream through RAM and become much slower. Choose Q4_K_M or free VRAM when that warning appears.
 
-Settings offers the merged eight-step MiniMax H3 Ref2VA Turbo INT8 checkpoint, the standard INT8 model, and the experimental 10Eros-Max Ref2VA Q4_K_M / Q8_0 GGUF models. Each model selects its matching H3 text encoder, video/audio VAEs, FaceSwap or CrossView LoRA, and MoGe 2 model when needed. Turbo uses eight steps by default; 10Eros-Max uses 25. Steps remain editable. Video and image models use the same Settings download, verification, and removal controls.
+Settings offers MiniMax H3 Ref2VA Turbo INT8, standard INT8, all seven Pruned GGUF and ten full GGUF quantizations, plus the existing 10Eros-Max Q4_K_M / Q8_0 models. Each model selects its matching H3 text encoder, video/audio VAEs, FaceSwap or CrossView LoRA, and MoGe 2 model when needed. Turbo defaults to eight steps; standard INT8 and Pruned GGUF use 20, while full GGUF and 10Eros-Max use 25. Advanced settings shows the selected model default, its source, an editable step count and Reset. Video and image models use the same Settings download, verification, and removal controls.
 
 Open **Video → Upscale** to run SeedVR2 at the source frame rate and aspect ratio. FP8 and Q4_K_M GGUF are available for the 3B model; the 7B FP8 model is another Settings option. The default frame batch of five with one overlapping frame avoids redundant processing. VAE tiling is enabled automatically at 1080p and above. Source audio is retained by default and can be changed under Advanced settings. Finished videos appear in the shared gallery with a small source thumbnail, saved parameters, and a full-size overlay.
 
@@ -146,3 +146,18 @@ Progress shows the current stage's time and the total job time separately. **Gen
 # macOS and RunPod Serverless
 
 Clone the default `main` branch (`git clone https://github.com/Ido108/qwen.git`) and open `quickStart.command`. The same branch includes the Windows installer and the Video to video, Upscale, and image workflows for both platforms. The Mac launcher installs into `.venv` inside the repository and creates an icon-bearing `Qwen.app` for later Finder or Dock launches. Image and video generation on macOS uses RunPod Serverless; see [RUNPOD.md](RUNPOD.md) for endpoint, network volume and in-app connection setup.
+
+
+## Ref2VA controls and activity
+
+Person/reference selections generate the replacement instructions automatically.
+**Additional instructions** is optional. The source player includes the trim timeline;
+one thumbnail dropdown assigns a reference or **Keep person**. **Live preview** shows
+an approximate animated draft from each completed generation step, alongside actual
+stages and step counts. It is separate from the source and final result.
+
+On Windows, opening `Start Qwen.bat` or `Qwen.lnk` leaves a visible activity terminal.
+`Show Qwen Logs.bat` attaches to the current server without restarting it. After a code
+update, `Restart Qwen.bat` reloads an idle server; it refuses while jobs are running or
+queued. See the [Ref2VA model and performance audit](reference/ref2va-audit-2026-09-26.md)
+for exact sampling sources and verification limits.

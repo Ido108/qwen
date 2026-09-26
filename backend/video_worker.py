@@ -60,16 +60,22 @@ def run(request, job, directory, update):
     torch.set_float32_matmul_precision('high')
     torch.set_num_threads(8)
     reference=request.get('kind')=='reference-video'
+    if reference:
+        from .reference_sampling import reference_sampling
+        sampling=reference_sampling(entry(request['model_id']),request.get('quality'),request.get('steps'))
+        request.update(quality=sampling['quality'],steps=sampling['steps'])
     images = {}
     source_audio=None
     if reference:
         from .reference_media import read_frames,read_audio
         from .reference_timing import probe_video_duration
-        update(stage='reading_inputs',message='Reading reference video and images…')
+        update(stage='decoding_source',message='Decoding selected source video…')
         source=resolve_video(request['source_video'])
         clip_start=request.get('source_start_seconds',0)
         clip_end=request.get('source_end_seconds')
-        images['source_video']=read_frames(source,request['frames'],start_seconds=clip_start,end_seconds=clip_end)
+        images['source_video']=read_frames(source,request['frames'],start_seconds=clip_start,end_seconds=clip_end,
+            progress=lambda done,total:update(input_frames_done=done,input_frames_total=total))
+        update(stage='reading_audio',message='Preparing source audio…')
         source_audio=read_audio(source,request['frames']/24,start_seconds=clip_start,end_seconds=clip_end) if request['source_audio'] or request['output_audio']=='source' else None
         if request['source_audio']:
             images['source_audio']=source_audio
@@ -83,24 +89,18 @@ def run(request, job, directory, update):
                 warp_start=clip_start if clip_end is not None and warp_duration+1/24>=clip_end else 0
                 images['warp_video']=read_frames(warp_path,request['frames'],start_seconds=warp_start,
                                                  end_seconds=warp_start+selected_duration)
+        update(stage='reading_references',message='Preparing reference images…')
         for index,image_id in enumerate(request['reference_images'],1):
             with Image.open(resolve_image(image_id)) as source_image:
                 images[f'ref_image_{index}']=source_image.convert('RGB')
                 images[f'ref_image_{index}'].save(directory/f'reference-{index}.png')
-        from .reference_prompt import render_reference_prompt
-        prompt=render_reference_prompt(request['prompt'].strip(),{**request,'person_assignments':{}})
-        if request['workflow']=='faceswap':
-            prompt=('Faceswap. '+prompt) if prompt and 'faceswap' not in prompt.lower() else (prompt or 'Faceswap')
-        elif request['workflow']=='crossview':
-            prompt=('crossview. '+prompt) if prompt and 'crossview' not in prompt.lower() else (prompt or 'crossview')
-        elif not prompt:
-            raise ValueError('Enter a reference video prompt.')
-        if request['enhance']:
+        from .reference_prompt import build_reference_prompt, reference_instructions
+        instructions=reference_instructions(request)
+        if request['enhance'] and instructions:
             from .prompt_enhancer import enhance_reference
             camera_request={**request,'reference_images':[]} if request['workflow']=='crossview' else request
-            prompt=enhance_reference(prompt,images,camera_request,update)
-        if request['workflow']=='faceswap':
-            prompt=render_reference_prompt(prompt,request)
+            instructions=enhance_reference(instructions,images,camera_request,update)
+        prompt=build_reference_prompt(request,instructions)
     else:
         for name in ('first_frame', 'last_frame'):
             if request.get(name):
@@ -124,21 +124,16 @@ def run(request, job, directory, update):
                     values['step']=values.get('step',0)+stage_number*steps
                 update(**values)
             return relay
-        replacement_prompt=request['replacement_prompt'].strip()
-        if not replacement_prompt:
-            raise ValueError('Enter a subject replacement prompt.')
-        if not replacement_prompt.lower().startswith('faceswap'):
-            replacement_prompt='Faceswap. '+replacement_prompt
-        replacement_prompt=render_reference_prompt(replacement_prompt,{**request,'person_assignments':{}})
+        replacement_instructions=reference_instructions(request,replacement=True)
         replacement_request={**request,'workflow':'faceswap','warp_video':None,
                              'output_audio':'mute'}
-        if request['enhance']:
+        if request['enhance'] and replacement_instructions:
             from .prompt_enhancer import enhance_reference
-            replacement_prompt=enhance_reference(replacement_prompt,images,
+            replacement_instructions=enhance_reference(replacement_instructions,images,
                 replacement_request,stage_progress(0))
-        replacement_prompt=render_reference_prompt(replacement_prompt,request)
+        replacement_prompt=build_reference_prompt(request,replacement_instructions,replacement=True)
         update(subject_replacement_prompt=replacement_prompt)
-        first_frames,_=generate(replacement_request,replacement_prompt,images,stage_progress(0))
+        first_frames,_=generate(replacement_request,replacement_prompt,images,stage_progress(0),preview_directory=directory)
         intermediate=directory/'subject-replacement.mp4'
         save_mp4(intermediate,first_frames,None)
         update(subject_replacement_ready=True)
@@ -149,9 +144,9 @@ def run(request, job, directory, update):
             second_images['source_audio']=source_audio
         camera_request={**request,'reference_images':[]}
         del first_frames,images
-        frames,audio=generate(camera_request,prompt,second_images,stage_progress(1))
+        frames,audio=generate(camera_request,prompt,second_images,stage_progress(1),preview_directory=directory)
     else:
-        frames, audio = generate(request, prompt, images, update)
+        frames, audio = generate(request, prompt, images, update,preview_directory=directory)
     if reference:
         if request['output_audio']=='source':
             if source_audio is None:

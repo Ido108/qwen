@@ -17,7 +17,7 @@ import uuid
 from urllib.parse import unquote
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
@@ -135,7 +135,6 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
         source_paths = [resolve_video(value) if media == 'video' else resolve_image(value)
                         for media, value in input_ids]
         if request.get('enhance'):
-            from PIL import Image
             pictures = []
             if task_kind in ('image', 'video'):
                 for path in source_paths:
@@ -160,24 +159,19 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
                 work['prompt'] = enhance_video(request['prompt'], named, request, enhancement_progress)
             elif task_kind == 'reference-video':
                 from .prompt_enhancer import enhance_reference
-                from .reference_prompt import render_reference_prompt
+                from .reference_prompt import reference_instructions
                 named = {}
                 for index, value in enumerate(request.get('reference_images', []), 1):
                     with Image.open(resolve_image(value)) as opened:
                         named[f'ref_image_{index}'] = opened.convert('RGB')
                 camera_request = {**request, 'reference_images': []} if request['workflow'] == 'crossview' else request
-                tagged_prompt = render_reference_prompt(request['prompt'],{**request,'person_assignments':{}})
-                work['prompt'] = enhance_reference(tagged_prompt, named, camera_request, enhancement_progress)
-                if request['workflow']=='faceswap':
-                    work['prompt'] = render_reference_prompt(work['prompt'],request)
+                tagged_prompt = reference_instructions(request)
+                work['prompt'] = enhance_reference(tagged_prompt, named, camera_request, enhancement_progress) if tagged_prompt else ''
                 if request['workflow'] == 'crossview' and request.get('replace_subjects_first'):
                     replacement_request = {**request, 'workflow': 'faceswap'}
-                    tagged_replacement = render_reference_prompt(request['replacement_prompt'],
-                        {**request,'person_assignments':{}})
+                    tagged_replacement = reference_instructions(request,replacement=True)
                     work['replacement_prompt'] = enhance_reference(tagged_replacement, named,
-                                                                  replacement_request, enhancement_progress)
-                    work['replacement_prompt'] = render_reference_prompt(work['replacement_prompt'],request)
-                work['person_assignments'] = {}
+                        replacement_request, enhancement_progress) if tagged_replacement else ''
             work['enhance'] = False
         keys = []
         for index, path in enumerate(source_paths):
@@ -218,6 +212,25 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
             return
         current.update(stage='processing' if state == 'IN_PROGRESS' else 'waiting',
                        message=cloud.progress_message(result) or ('Generating on RunPod' if state == 'IN_PROGRESS' else 'Waiting for RunPod GPU'))
+        details=cloud.progress_details(result)
+        preview_key=details.pop('preview_key',None)
+        revision=details.pop('preview_updated_at',None)
+        if state=='IN_PROGRESS':
+            current.update(details)
+        if (preview_key==f'qwen-transfer/{job_id}/preview.webp' and revision
+                and revision!=current.get('preview_updated_at')):
+            temporary=directory/'remote-preview.tmp'
+            try:
+                cloud.download(preview_key,temporary)
+                with Image.open(temporary) as preview:
+                    if preview.format!='WEBP' or max(preview.size)>1024:
+                        raise ValueError('Invalid preview')
+                temporary.replace(directory/'live-preview.webp')
+                current.update(preview_url=f'/api/jobs/{job_id}/live-preview',preview_updated_at=revision)
+            except Exception:
+                temporary.unlink(missing_ok=True)
+                # Preview transport must never fail the paid generation.
+                pass
         write_json(directory / 'status.json', current)
     try:
         result = cloud.poll(kind, remote_id, update_remote, lambda: job_id in cancelled_jobs)
@@ -788,6 +801,8 @@ def generate_video(body: VideoRequest):
 @app.post('/api/reference-video/generate',status_code=202)
 def generate_reference_video(body: ReferenceVideoRequest):
     try:
+        from .reference_sampling import reference_sampling
+        body.quality=reference_sampling(models.entry(body.model_id),body.quality,body.steps)['quality']
         needed=models.required_reference(body)
         source=resolve_video(body.source_video)
         metadata_path=VIDEO_UPLOADS_DIR/(body.source_video+'.json')
@@ -800,9 +815,13 @@ def generate_reference_video(body: ReferenceVideoRequest):
         for person in body.source_people:
             if not body.source_start_seconds <= person.time <= body.source_end_seconds:
                 raise ValueError('Scan people in the selected source segment again.')
-        from .reference_prompt import render_reference_prompt
+        from .reference_prompt import build_reference_prompt
         prompt_request=body.model_dump()
-        render_reference_prompt(body.replacement_prompt if body.workflow=='crossview' and body.replace_subjects_first else body.prompt,prompt_request)
+        build_reference_prompt(prompt_request)
+        if body.workflow=='crossview' and body.replace_subjects_first:
+            build_reference_prompt(prompt_request,replacement=True)
+        if not body.prompt.strip() and not (body.workflow=='crossview' and body.replace_subjects_first and body.replacement_prompt.strip()):
+            body.enhance=False
         if body.warp_video:
             resolve_video(body.warp_video)
         for image_id in body.reference_images:
@@ -824,10 +843,13 @@ def generate_reference_video(body: ReferenceVideoRequest):
         if not remote and not all(models.is_installed(name) for name in needed):
             raise HTTPException(503,'Required reference video files are missing. Download them in Settings.')
         selected=models.entry(body.model_id)
-        steps=body.steps or (8 if body.quality=='turbo' else selected['generation_defaults']['steps'])
+        from .reference_sampling import reference_sampling
+        sampling=reference_sampling(selected,body.quality,body.steps)
+        steps=sampling['steps']
         data=body.model_dump()
         data.update(kind='reference-video',execution='runpod' if remote else 'local',steps=steps,output_dir=str(destination),
-                    enhancement_model=antigravity.selected_model())
+                    enhancement_model=antigravity.selected_model(),sampling_profile=sampling,
+                    steps_mode='custom' if body.steps is not None else 'model')
         if body.randomize_seed:
             data['seed']=secrets.randbelow(2147483648)
         job_id=uuid.uuid4().hex
@@ -987,6 +1009,15 @@ def video_result(job_id: str, download: bool = False):
     if job.get('kind') not in VIDEO_KINDS or job['status']!='succeeded' or not path.is_file():
         raise HTTPException(404,'Saved video not found.')
     return FileResponse(path,media_type='video/mp4',filename=path.name if download else None)
+
+@app.get('/api/jobs/{job_id}/live-preview')
+def live_video_preview(job_id: str):
+    job=read_job(job_id)
+    path=JOBS_DIR/job_id/'live-preview.webp'
+    if job.get('kind') not in VIDEO_KINDS or not path.is_file():
+        raise HTTPException(404,'The live preview is not available yet.')
+    return Response(path.read_bytes(),media_type='image/webp',headers={'Cache-Control':'no-store'})
+
 
 @app.get('/api/jobs/{job_id}/poster')
 def video_poster(job_id: str):

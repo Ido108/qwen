@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
 
 def _seek(media, stream, start_seconds: float) -> float:
@@ -14,11 +15,11 @@ def _seek(media, stream, start_seconds: float) -> float:
 
 
 def read_frames(path: Path, max_frames: int, max_edge: int = 1024,
-                start_seconds: float = 0, end_seconds: float | None = None):
+                start_seconds: float = 0, end_seconds: float | None = None,
+                progress=lambda done, total: None):
     import av
     import numpy as np
     import torch
-    from PIL import Image
 
     with av.open(str(path)) as media:
         stream=next((s for s in media.streams if s.type=='video'),None)
@@ -32,6 +33,7 @@ def read_frames(path: Path, max_frames: int, max_edge: int = 1024,
         end_seconds=end_seconds if end_seconds is not None else start_seconds+max_frames/24
         selection_length=end_seconds-start_seconds
         frames=[]
+        last_report=0.0
         previous_time=-1.0
         for index,frame in enumerate(media.decode(stream)):
             seconds=(frame.time-origin) if frame.time is not None else seek_time+index/rate
@@ -43,19 +45,27 @@ def read_frames(path: Path, max_frames: int, max_edge: int = 1024,
                 continue
             if seconds>end_seconds+0.5/rate:
                 break
-            picture=frame.to_image().convert('RGB')
-            if max(picture.size)>max_edge:
-                picture.thumbnail((max_edge,max_edge),Image.Resampling.LANCZOS)
-            array=np.asarray(picture,dtype=np.uint8)
+            # Resize in libswscale before allocating RGB pixels. The old path
+            # expanded every 4K frame to PIL RGB and only then reduced it.
+            scale=min(1.0,max_edge/max(frame.width,frame.height))
+            width,height=max(1,round(frame.width*scale)),max(1,round(frame.height*scale))
+            array=frame.reformat(width=width,height=height,format='rgb24',interpolation='LANCZOS').to_ndarray()
             while len(frames)<max_frames and start_seconds+(len(frames)+0.5)*selection_length/max_frames<=seconds+0.5/rate:
                 frames.append(array)
+            now=time.monotonic()
+            if now-last_report>=0.5 or len(frames)==max_frames:
+                progress(len(frames),max_frames)
+                last_report=now
             if len(frames)>=max_frames:
                 break
         if not frames:
             raise ValueError('The selected video segment has no readable frames.')
         while len(frames)<max_frames:
             frames.append(frames[-1])
-        return torch.from_numpy(np.stack(frames).astype(np.float32)/255.0)
+        progress(max_frames,max_frames)
+        result=np.stack(frames).astype(np.float32)
+        result/=255.0
+        return torch.from_numpy(result)
 
 
 def read_audio(path: Path, max_seconds: float, start_seconds: float = 0,

@@ -121,9 +121,21 @@ def handler(job: dict) -> dict:
             current = read_json(directory / 'status.json')
         except (OSError, ValueError):
             current = {}
-        progress = (current.get('stage'), current.get('step'))
+        progress = (current.get('stage'), current.get('step'),current.get('preview_updated_at'),current.get('input_frames_done'))
         if progress != last_progress and progress[0]:
-            runpod.serverless.progress_update(job, f"{current.get('message', progress[0])}")
+            from backend.cloud import progress_details
+            details=progress_details({'output':current})
+            details['message']=current.get('message',progress[0])
+            preview=directory/'live-preview.webp'
+            if current.get('preview_url') and preview.is_file():
+                try:
+                    temporary=output_dir/'preview.tmp'
+                    shutil.copyfile(preview,temporary)
+                    temporary.replace(output_dir/'preview.webp')
+                    details['preview_key']=prefix+'preview.webp'
+                except OSError:
+                    pass
+            runpod.serverless.progress_update(job, details)
             last_progress = progress
         if kind == 'image' and (directory / 'worker.done.json').exists():
             break

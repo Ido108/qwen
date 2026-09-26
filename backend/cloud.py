@@ -199,6 +199,18 @@ def progress_message(result: dict) -> str:
     return value[:180] if isinstance(value, str) else ''
 
 
+def progress_details(result: dict) -> dict:
+    value=result.get('output')
+    if isinstance(value,list) and value:
+        value=value[-1]
+    if not isinstance(value,dict):
+        return {}
+    allowed=('stage','stage_started_at','stage_seconds','step','total_steps','phase',
+             'input_frames_done','input_frames_total','preview_step','preview_updated_at',
+             'preview_unavailable','preview_key')
+    return {key:value[key] for key in allowed if key in value}
+
+
 def test_connection() -> dict:
     data = settings()
     if not ready('image') and not ready('video'):

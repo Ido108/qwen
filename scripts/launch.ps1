@@ -1,4 +1,4 @@
-param([switch]$NoBrowser)
+param([switch]$NoBrowser, [switch]$NoConsole)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'paths.ps1')
 if (-not (Test-QwenSetup)) {
@@ -51,3 +51,7 @@ if (-not $NoBrowser) {
     } else { Start-Process $studioUrl }
 }
 Write-Host "Qwen is ready: $studioUrl"
+if (-not $NoBrowser -and -not $NoConsole) {
+    $Host.UI.RawUI.WindowTitle = 'Qwen - Activity'
+    & $pythonPath -u (Join-Path $PSScriptRoot 'watch_logs.py') --url $studioUrl --data-dir $dataRoot
+}

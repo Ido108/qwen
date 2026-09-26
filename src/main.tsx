@@ -14,6 +14,7 @@ import {en,type TextKey} from './i18n';
 import './style.css';
 import './workspace.css';
 import './reference.css';
+import './reference-workbench.css';
 
 type InputImage = {id:string; name:string; url:string};
 type Params = ImageOptions & {model_id:string;text_encoder:string;prompt:string; images:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string};

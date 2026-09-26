@@ -1,0 +1,41 @@
+import {useEffect,useId,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
+import {Check,ChevronDown,UserRound} from 'lucide-react';
+
+export function ReferenceChoice({personNumber,references,value,onChange}:{personNumber:number;references:{id:string;url:string}[];value:string|null;onChange:(value:string|null)=>void}){
+  const [open,setOpen]=useState(false);
+  const [position,setPosition]=useState({left:0,top:0,width:230});
+  const trigger=useRef<HTMLButtonElement>(null);
+  const menu=useRef<HTMLDivElement>(null);
+  const id=useId();
+  const selected=references.findIndex(reference=>reference.id===value);
+  const options=[{id:null,url:'',label:'Keep person'},...references.map((reference,index)=>({...reference,label:`@Ref${index+1}`}))];
+  function choose(next:string|null){onChange(next);setOpen(false);trigger.current?.focus();}
+  useEffect(()=>{
+    if(!open)return;
+    const bounds=trigger.current!.getBoundingClientRect();
+    const width=Math.min(260,window.innerWidth-24);
+    const height=Math.min(options.length*47+10,280);
+    setPosition({left:Math.max(12,Math.min(bounds.left,window.innerWidth-width-12)),top:bounds.bottom+height<window.innerHeight-12?bounds.bottom+6:Math.max(12,bounds.top-height-6),width});
+    const frame=requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus());
+    const outside=(event:PointerEvent)=>{if(!menu.current?.contains(event.target as Node)&&!trigger.current?.contains(event.target as Node))setOpen(false);};
+    const close=()=>setOpen(false);
+    const scroll=(event:Event)=>{if(!menu.current?.contains(event.target as Node))close();};
+    document.addEventListener('pointerdown',outside);window.addEventListener('resize',close);document.addEventListener('scroll',scroll,true);
+    return()=>{cancelAnimationFrame(frame);document.removeEventListener('pointerdown',outside);window.removeEventListener('resize',close);document.removeEventListener('scroll',scroll,true);};
+  },[open,options.length]);
+  return <>
+    <button ref={trigger} type="button" className="person-choice" aria-label={`Replacement for Person ${personNumber}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={open?id:undefined} onClick={()=>setOpen(!open)} onKeyDown={event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setOpen(true);}}}>
+      {selected>=0?<img src={references[selected].url} alt={`Selected reference ${selected+1}`}/>:<UserRound size={17}/>}
+      <span>{selected>=0?`@Ref${selected+1}`:'Keep person'}</span><ChevronDown size={13}/>
+    </button>
+    {open?createPortal(<div ref={menu} id={id} role="listbox" aria-label={`Choose replacement for Person ${personNumber}`} className="person-choice-menu" style={position} onKeyDown={event=>{
+      const buttons=Array.from(menu.current!.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+      const current=buttons.indexOf(document.activeElement as HTMLButtonElement);
+      if(event.key==='Escape'){event.preventDefault();setOpen(false);trigger.current?.focus();}
+      if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();buttons[(current+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}
+      if(event.key==='Home'||event.key==='End'){event.preventDefault();buttons[event.key==='Home'?0:buttons.length-1]?.focus();}
+      if(event.key==='Tab')setOpen(false);
+    }}>{options.map(option=><button type="button" role="option" key={option.id||'keep'} aria-selected={option.id===(selected>=0?value:null)} onClick={()=>choose(option.id)}>{option.url?<img src={option.url} alt=""/>:<span className="person-keep-thumb"><UserRound size={20}/></span>}<span>{option.label}</span>{option.id===(selected>=0?value:null)?<Check size={15}/>:null}</button>)}</div>,document.body):null}
+  </>;
+}

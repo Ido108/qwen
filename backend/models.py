@@ -101,12 +101,10 @@ def required_reference(request):
             ids.append('h3-ref-faceswap')
         if not request.warp_video:
             ids.append('moge2-geometry')
-    if request.quality=='turbo' and item['id']=='h3-ref-base-int8':
-        ids.append('h3-ref-turbo-lora')
-    if item['id']=='h3-ref-turbo-int8' and request.quality!='turbo':
-        raise ValueError('The selected transformer has Turbo merged. Choose Turbo or a standard model.')
-    if item['format']=='GGUF' and request.quality=='turbo':
-        raise ValueError('This GGUF model is not distilled. Choose Standard quality.')
+    from .reference_sampling import reference_sampling
+    profile = reference_sampling(item, request.quality, request.steps)
+    if profile.get('lora_id'):
+        ids.append(profile['lora_id'])
     return ids
 
 

@@ -8,7 +8,8 @@ from .common import APP_DIR
 from .models import entry, local_path
 
 
-def generate(request, prompt, images, progress):
+def generate(request, prompt, images, progress, preview_directory=None):
+    progress(stage='initializing_video', message='Initializing video processing…')
     logging.basicConfig(level=logging.INFO, format='%(message)s')
     import numpy as np
     import torch
@@ -56,10 +57,12 @@ def generate(request, prompt, images, progress):
     fast = selected['family'] == 'fasth3'
     turbo = not fast and request['quality'] == 'turbo'
     steps = request['steps'] if reference else (8 if fast or turbo else request['steps'])
+    from .reference_sampling import reference_sampling
+    sampling = reference_sampling(selected, request['quality'], request.get('steps')) if reference else None
     # Official H3 and FastH3 workflows use BasicGuider (CFG 1). Applying the
     # conventional video CFG 6 burns image-conditioned detail on this model.
     cfg = 1.0
-    progress(stage='loading_model', message='Loading the video text encoder…', total_steps=steps,
+    progress(stage='loading_encoder', message='Loading the video text encoder…', total_steps=steps,
              text_encoder_id='h3-encoder', vae_id='h3-video-vae', audio_vae_id='h3-audio-vae',
              fps=24, frames=request['frames'], width=request['width'], height=request['height'])
     weights, metadata = read_weights('h3-encoder')
@@ -74,20 +77,22 @@ def generate(request, prompt, images, progress):
     clip.cond_stage_model.memory_estimation_function = lambda tokens, device=None: encoding_scratch
     progress(encoder_working_memory_gb=encoding_scratch/GIB)
     vae = None
+    from .video_conditioning import SingleUseEncoder, ProgressVAE
     if images or reference:
+        progress(stage='loading_video_vae', message='Loading the video encoder…')
         weights, _ = read_weights('h3-video-vae')
-        vae = comfy.sd.VAE(sd=weights)
+        vae = ProgressVAE(comfy.sd.VAE(sd=weights), progress)
         del weights
     tensors = {name: torch.from_numpy(np.asarray(image.convert('RGB'), dtype=np.float32) / 255).unsqueeze(0)
                for name, image in images.items() if hasattr(image,'convert')}
-    from .video_conditioning import SingleUseEncoder
-    encoder = SingleUseEncoder(clip, release)
+    encoder = SingleUseEncoder(clip, release, progress)
     del clip
-    progress(stage='encoding', message='Reading the prompt and video inputs…')
+    progress(stage='preparing_conditioning', message='Preparing video conditioning…')
     audio_vae = None
     if reference and images.get('source_audio') is not None:
+        progress(stage='loading_audio_vae', message='Loading the audio encoder…')
         weights, _ = read_weights('h3-audio-vae')
-        audio_vae = comfy.sd.VAE(sd=weights)
+        audio_vae = ProgressVAE(comfy.sd.VAE(sd=weights), progress, audio=True)
         del weights
     with torch.inference_mode():
         if reference:
@@ -107,6 +112,8 @@ def generate(request, prompt, images, progress):
         negative = []
     del encoder, tensors, vae, audio_vae
     release()
+    progress(conditioning_cuda_allocated_gb=round(torch.cuda.memory_allocated()/GIB,2),
+             conditioning_cuda_free_gb=round(torch.cuda.mem_get_info()[0]/GIB,2))
     progress(stage='loading_model', message='Loading the video model…')
     if selected['format'] == 'GGUF':
         module_dir = APP_DIR / 'vendor/ComfyUI-GGUF'
@@ -143,8 +150,9 @@ def generate(request, prompt, images, progress):
     if model is None:
         raise RuntimeError('This file is not a compatible MiniMax H3 video model.')
     del weights
-    if turbo and (not reference or selected['id']=='h3-ref-base-int8'):
-        lora, _ = read_weights('h3-ref-turbo-lora' if reference else 'h3-turbo')
+    turbo_lora = sampling.get('lora_id') if reference else ('h3-turbo' if turbo else None)
+    if turbo_lora:
+        lora, _ = read_weights(turbo_lora)
         model, _ = comfy.sd.load_lora_for_models(model, None, lora, 1.0, 0)
         del lora
     if reference and request['workflow'] in ('faceswap','crossview'):
@@ -153,7 +161,9 @@ def generate(request, prompt, images, progress):
         lora, _ = read_weights(lora_id)
         model, _ = comfy.sd.load_lora_for_models(model,None,lora,strength,0)
         del lora
-    model = MiniMaxH3SigmaShift.execute(model, 10.0 if fast else 12.0, 3.0)[0]
+    video_shift = sampling['video_shift'] if sampling else (10.0 if fast else 12.0)
+    audio_shift = sampling['audio_shift'] if sampling else 3.0
+    model = MiniMaxH3SigmaShift.execute(model, video_shift, audio_shift)[0]
     model = ModelAttentionBackend.execute(model, 'comfy kitchen attention')[0]
     if fast:
         import comfy_kitchen as ck
@@ -164,13 +174,30 @@ def generate(request, prompt, images, progress):
         progress(attention='VSA-H3', sparse_kernel_available=True, video_sigma_shift=10.0, audio_sigma_shift=3.0)
     release()
     samples = latent['samples']
+    streams=samples.unbind() if samples.is_nested else [samples]
+    packed_elements=sum(stream[0].numel() for stream in streams)
+    from .reference_memory import account_for_reference_memory
+    reference_elements = account_for_reference_memory(model.model, positive) if reference else 0
+    progress(model_format=selected['format'],
+             reference_latent_elements=reference_elements,video_sigma_shift=video_shift,audio_sigma_shift=audio_shift,
+             model_weight_gb=round(model.model_size()/GIB,2),
+             inference_estimate_gb=round(model.model.memory_required([1,1,packed_elements])/GIB,2))
+    del streams
     noise = comfy.sample.prepare_noise(samples, request['seed'])
+    from .video_preview import LiveVideoPreview
+    preview = LiveVideoPreview(preview_directory, model.model.latent_format, progress, request['frames']/24)
+    progress(preview_url=None,preview_step=0,preview_unavailable=not preview.enabled)
     def callback(step, x0, x, total):
         progress(stage='generating', message='Generating video and audio…', step=step + 1, total_steps=total)
-    sampler='euler' if reference and selected['id'] in ('h3-ref-turbo-int8','h3-ref-eros-q4','h3-ref-eros-q8') else 'res_multistep'
-    progress(stage='generating', message='Generating video and audio…', step=0, guidance=cfg, sampler=sampler, scheduler='simple')
+        if step==0:
+            progress(model_gpu_weight_gb=round(model.loaded_size()/GIB,2),
+                     model_offloaded_weight_gb=round((model.model_size()-model.loaded_size())/GIB,2))
+        preview.publish(x0,step+1)
+    sampler=sampling['sampler'] if sampling else 'res_multistep'
+    scheduler=sampling['scheduler'] if sampling else 'simple'
+    progress(stage='generating', message='Generating video and audio…', step=0, guidance=cfg, sampler=sampler, scheduler=scheduler)
     with torch.inference_mode():
-        samples = comfy.sample.sample(model, noise, steps, cfg, sampler, 'simple',
+        samples = comfy.sample.sample(model, noise, steps, cfg, sampler, scheduler,
             positive, negative, samples, callback=callback, seed=request['seed'])
         del model, positive, negative, noise, latent
         release()

@@ -133,7 +133,7 @@ class ReferenceVideoRequest(BaseModel):
     source_people: list[SourcePerson] = Field(default_factory=list, max_length=12)
     person_assignments: dict[str, str | None] = Field(default_factory=dict)
     replace_subjects_first: bool = False
-    replacement_prompt: str = Field(default='Replace the people with the supplied reference images. Keep the source motion, clothing and lighting.',max_length=16000)
+    replacement_prompt: str = Field(default='',max_length=16000)
     warp_video: str | None = None
     camera_azimuth: float = Field(default=-30, ge=-90, le=90)
     camera_elevation: float = Field(default=10, ge=-45, le=60)
@@ -146,7 +146,7 @@ class ReferenceVideoRequest(BaseModel):
     height: int = Field(default=448, ge=256, le=1344)
     frames: int = Field(default=124, ge=22, le=362)
     steps: int | None = Field(default=None, ge=1, le=60)
-    quality: Literal['standard', 'turbo'] = 'turbo'
+    quality: Literal['standard', 'turbo'] | None = None
     seed: int = Field(default=0, ge=0, le=2147483647)
     randomize_seed: bool = True
     reference_image_size: Literal['match', 'max'] = 'match'

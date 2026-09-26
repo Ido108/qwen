@@ -1,110 +1,1174 @@
 [
   {
-    "id": "h3-ref-base-int8", "title": "MiniMax H3 Ref2VA · INT8", "kind": "reference-video", "family": "minimax-h3-ref2va", "format": "INT8",
-    "repo": "Comfy-Org/MiniMax-H3", "revision": "1c41cfca8ebba91d0af792a05c5761fb2c3a7975", "directory": "video/Comfy-Org-MiniMax-H3",
-    "files": [{"path": "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors", "bytes": 20970379616, "sha256": "9255f52b6677845ad238f20dfaafa94727053694127ab7f255c048f0f9365779"}],
-    "bytes": 20970379616, "dependencies": ["h3-encoder", "h3-video-vae", "h3-audio-vae"],
-    "generation_defaults": {"steps": 20, "max_frames": 362, "source": "https://huggingface.co/Comfy-Org/MiniMax-H3", "note": "Standard Ref2VA with reference images and video."}
+    "id": "h3-ref-base-int8",
+    "title": "MiniMax H3 Ref2VA · INT8",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "INT8",
+    "repo": "Comfy-Org/MiniMax-H3",
+    "revision": "1c41cfca8ebba91d0af792a05c5761fb2c3a7975",
+    "directory": "video/Comfy-Org-MiniMax-H3",
+    "files": [
+      {
+        "path": "diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "bytes": 20970379616,
+        "sha256": "9255f52b6677845ad238f20dfaafa94727053694127ab7f255c048f0f9365779"
+      }
+    ],
+    "bytes": 20970379616,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "max_frames": 362,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+      "note": "Standard Ref2VA with reference images and video.",
+      "quality": "standard",
+      "profiles": {
+        "standard": {
+          "steps": 20,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+        },
+        "turbo": {
+          "steps": 8,
+          "sampler": "euler",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 6,
+          "audio_shift": 3.0,
+          "source": "https://github.com/ModelTC/Minimax-H3-Turbo/blob/main/COMFYUI_SETUP_AND_INFERENCE.md",
+          "lora_id": "h3-ref-turbo-lora"
+        }
+      }
+    },
+    "model_group": "MiniMax H3 ? INT8"
   },
   {
-    "id": "h3-ref-turbo-int8", "title": "MiniMax H3 Ref2VA Turbo · INT8", "kind": "reference-video", "family": "minimax-h3-ref2va", "format": "INT8",
-    "repo": "PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot", "revision": "6395b6922e1a82694401e752b731aedf85ff8ac9", "directory": "h3-ref-turbo-int8",
-    "files": [{"path": "minimax_h3_ref2va_pruned_turbo_int8_convrot.safetensors", "bytes": 20970379854, "sha256": "e64cef63bc2785bcd72e6103c52aa78c6cd2c4f9870a7ce79675083fd65cf2e7"}],
-    "bytes": 20970379854, "dependencies": ["h3-encoder", "h3-video-vae", "h3-audio-vae"],
-    "generation_defaults": {"steps": 8, "max_frames": 362, "source": "https://huggingface.co/PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot", "note": "Turbo weights already merged. Do not stack another turbo LoRA."}
+    "id": "h3-ref-turbo-int8",
+    "title": "MiniMax H3 Ref2VA Turbo · INT8",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "INT8",
+    "repo": "PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot",
+    "revision": "6395b6922e1a82694401e752b731aedf85ff8ac9",
+    "directory": "h3-ref-turbo-int8",
+    "files": [
+      {
+        "path": "minimax_h3_ref2va_pruned_turbo_int8_convrot.safetensors",
+        "bytes": 20970379854,
+        "sha256": "e64cef63bc2785bcd72e6103c52aa78c6cd2c4f9870a7ce79675083fd65cf2e7"
+      }
+    ],
+    "bytes": 20970379854,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "max_frames": 362,
+      "source": "https://huggingface.co/PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot",
+      "note": "Turbo weights already merged. Do not stack another turbo LoRA.",
+      "quality": "turbo",
+      "profiles": {
+        "turbo": {
+          "steps": 8,
+          "sampler": "euler",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot"
+        }
+      }
+    },
+    "model_group": "MiniMax H3 ? INT8"
   },
   {
-    "id": "h3-ref-eros-q4", "title": "10Eros-Max Ref2VA · Q4_K_M", "kind": "reference-video", "family": "minimax-h3-ref2va", "format": "GGUF",
-    "repo": "Abiray/10Eros-Max-ref2va-Beta2-GGUF", "revision": "4d1c9a751b5974351254ac1088c3ad475426b61a", "directory": "video/Abiray-10Eros-Max-ref2va-Beta2-GGUF",
-    "files": [{"path": "10Eros-Max-Ref2VA-Beta2-Pruned-Q4_K_M.gguf", "bytes": 11564180576, "sha256": "c97b0e0ffbbb7d5edb5a9d9931ab715d35dfbca9a762f5b302cf3919c161176b"}],
-    "bytes": 11564180576, "dependencies": ["h3-encoder", "h3-video-vae", "h3-audio-vae"],
-    "generation_defaults": {"steps": 25, "max_frames": 362, "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF", "note": "Experimental community fine-tune; standard 20–30 steps."}
+    "id": "h3-ref-eros-q4",
+    "title": "10Eros-Max Ref2VA · Q4_K_M",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "repo": "Abiray/10Eros-Max-ref2va-Beta2-GGUF",
+    "revision": "4d1c9a751b5974351254ac1088c3ad475426b61a",
+    "directory": "video/Abiray-10Eros-Max-ref2va-Beta2-GGUF",
+    "files": [
+      {
+        "path": "10Eros-Max-Ref2VA-Beta2-Pruned-Q4_K_M.gguf",
+        "bytes": 11564180576,
+        "sha256": "c97b0e0ffbbb7d5edb5a9d9931ab715d35dfbca9a762f5b302cf3919c161176b"
+      }
+    ],
+    "bytes": 11564180576,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF",
+      "note": "Standard Beta 2: publisher recommends 20?30 steps; app default is 25.",
+      "quality": "standard",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "euler",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF"
+        }
+      },
+      "recommended_steps": [
+        20,
+        30
+      ]
+    },
+    "model_group": "10Eros-Max"
   },
   {
-    "id": "h3-ref-eros-q8", "title": "10Eros-Max Ref2VA · Q8_0", "kind": "reference-video", "family": "minimax-h3-ref2va", "format": "GGUF",
-    "repo": "Abiray/10Eros-Max-ref2va-Beta2-GGUF", "revision": "4d1c9a751b5974351254ac1088c3ad475426b61a", "directory": "video/Abiray-10Eros-Max-ref2va-Beta2-GGUF",
-    "files": [{"path": "10Eros-Max-Ref2VA-Beta2-Pruned-Q8_0.gguf", "bytes": 21583324256, "sha256": "23a32bf9dfe3241d18700a413906944dc66940c252ad2017ea291861411ef03e"}],
-    "bytes": 21583324256, "dependencies": ["h3-encoder", "h3-video-vae", "h3-audio-vae"],
-    "generation_defaults": {"steps": 25, "max_frames": 362, "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF", "note": "Experimental community fine-tune; highest precision GGUF."}
+    "id": "h3-ref-eros-q8",
+    "title": "10Eros-Max Ref2VA · Q8_0",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "repo": "Abiray/10Eros-Max-ref2va-Beta2-GGUF",
+    "revision": "4d1c9a751b5974351254ac1088c3ad475426b61a",
+    "directory": "video/Abiray-10Eros-Max-ref2va-Beta2-GGUF",
+    "files": [
+      {
+        "path": "10Eros-Max-Ref2VA-Beta2-Pruned-Q8_0.gguf",
+        "bytes": 21583324256,
+        "sha256": "23a32bf9dfe3241d18700a413906944dc66940c252ad2017ea291861411ef03e"
+      }
+    ],
+    "bytes": 21583324256,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF",
+      "note": "Standard Beta 2: publisher recommends 20?30 steps; app default is 25.",
+      "quality": "standard",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "euler",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF"
+        }
+      },
+      "recommended_steps": [
+        20,
+        30
+      ]
+    },
+    "model_group": "10Eros-Max"
   },
   {
-    "id": "h3-ref-turbo-lora", "title": "MiniMax H3 Ref2VA · 8-step LoRA", "kind": "reference-support", "format": "LoRA",
-    "repo": "lightx2v/Minimax-h3-Turbo", "revision": "3ec17a324ced54151364f24f8b5fb6bf7e26414f", "directory": "video/lightx2v-Minimax-h3-Turbo",
-    "files": [{"path": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", "bytes": 1956193000, "sha256": "6a56f41ab4229c9dd845b9501bbd475ee57e112d846cf2e819d534a1ae928c5a"}],
-    "bytes": 1956193000, "dependencies": []
+    "id": "h3-ref-turbo-lora",
+    "title": "MiniMax H3 Ref2VA · 8-step LoRA",
+    "kind": "reference-support",
+    "format": "LoRA",
+    "repo": "lightx2v/Minimax-h3-Turbo",
+    "revision": "3ec17a324ced54151364f24f8b5fb6bf7e26414f",
+    "directory": "video/lightx2v-Minimax-h3-Turbo",
+    "files": [
+      {
+        "path": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+        "bytes": 1956193000,
+        "sha256": "6a56f41ab4229c9dd845b9501bbd475ee57e112d846cf2e819d534a1ae928c5a"
+      }
+    ],
+    "bytes": 1956193000,
+    "dependencies": []
   },
   {
-    "id": "h3-ref-faceswap", "title": "MiniMax H3 · FaceSwap LoRA", "kind": "reference-support", "format": "LoRA",
-    "repo": "UntMods/FaceSwap_MiniMaxH3_REF2VA", "revision": "b2a5823ca64bc78d91725fbfcc576095bfceb764", "directory": "video/UntMods-FaceSwap-MiniMaxH3-REF2VA",
-    "files": [{"path": "SS_FaceSwap_MiniMax_H3_REF2VA.safetensors", "bytes": 65623904, "sha256": "1e032cf519cc143f434e67516d8ad0aacf4c6e146315b2dcc3b1c2800470326d"}],
-    "bytes": 65623904, "dependencies": []
+    "id": "h3-ref-faceswap",
+    "title": "MiniMax H3 · FaceSwap LoRA",
+    "kind": "reference-support",
+    "format": "LoRA",
+    "repo": "UntMods/FaceSwap_MiniMaxH3_REF2VA",
+    "revision": "b2a5823ca64bc78d91725fbfcc576095bfceb764",
+    "directory": "video/UntMods-FaceSwap-MiniMaxH3-REF2VA",
+    "files": [
+      {
+        "path": "SS_FaceSwap_MiniMax_H3_REF2VA.safetensors",
+        "bytes": 65623904,
+        "sha256": "1e032cf519cc143f434e67516d8ad0aacf4c6e146315b2dcc3b1c2800470326d"
+      }
+    ],
+    "bytes": 65623904,
+    "dependencies": []
   },
   {
-    "id": "h3-ref-crossview", "title": "MiniMax H3 · CrossView Warp LoRA", "kind": "reference-support", "format": "LoRA",
-    "repo": "Cseti/MiniMax-H3_Ref2VA-LoRA-CrossView-Warp_v1", "revision": "94dc2a07c5a3f7e10b7c1d053cc700762d15c35d", "directory": "video/Cseti-MiniMax-H3-CrossView-Warp",
-    "files": [{"path": "MiniMax-H3_Ref2VA-LoRA-CrossView-Warp_v1_3500.safetensors", "bytes": 596452584, "sha256": "aab492964261f6611ced672c70866ce9d64bab66fbd28fd39d26bcd09c852f91"}],
-    "bytes": 596452584, "dependencies": []
+    "id": "h3-ref-crossview",
+    "title": "MiniMax H3 · CrossView Warp LoRA",
+    "kind": "reference-support",
+    "format": "LoRA",
+    "repo": "Cseti/MiniMax-H3_Ref2VA-LoRA-CrossView-Warp_v1",
+    "revision": "94dc2a07c5a3f7e10b7c1d053cc700762d15c35d",
+    "directory": "video/Cseti-MiniMax-H3-CrossView-Warp",
+    "files": [
+      {
+        "path": "MiniMax-H3_Ref2VA-LoRA-CrossView-Warp_v1_3500.safetensors",
+        "bytes": 596452584,
+        "sha256": "aab492964261f6611ced672c70866ce9d64bab66fbd28fd39d26bcd09c852f91"
+      }
+    ],
+    "bytes": 596452584,
+    "dependencies": []
   },
   {
-    "id": "moge2-geometry", "title": "MoGe 2 · Camera depth model", "kind": "reference-support", "format": "FP16",
-    "repo": "Comfy-Org/MoGe", "revision": "1484985258ba7ef45c314144fcf0e90924ffbf44", "directory": "video/Comfy-Org-MoGe",
-    "files": [{"path": "geometry_estimation/moge_2_vitl_normal_fp16.safetensors", "bytes": 661859924, "sha256": "cb1a692d03235671e959e81360d7b4d9f44aefadb1f852d6ca6aa17799d5e31f"}],
-    "bytes": 661859924, "dependencies": []
+    "id": "moge2-geometry",
+    "title": "MoGe 2 · Camera depth model",
+    "kind": "reference-support",
+    "format": "FP16",
+    "repo": "Comfy-Org/MoGe",
+    "revision": "1484985258ba7ef45c314144fcf0e90924ffbf44",
+    "directory": "video/Comfy-Org-MoGe",
+    "files": [
+      {
+        "path": "geometry_estimation/moge_2_vitl_normal_fp16.safetensors",
+        "bytes": 661859924,
+        "sha256": "cb1a692d03235671e959e81360d7b4d9f44aefadb1f852d6ca6aa17799d5e31f"
+      }
+    ],
+    "bytes": 661859924,
+    "dependencies": []
   },
   {
-    "id": "ltx25-msr-v2", "title": "LTX 2.5 · Multiple Subject Reference V2", "kind": "reference-video", "family": "ltx25-msr", "format": "LoRA",
-    "repo": "LiconStudio/LTX-2.5-Multiple-Subject-Reference", "revision": "aa19b48f845995525d8ace60cdc89b842e951ce6", "directory": "video/LiconStudio-LTX25-MSR",
-    "files": [{"path": "LTX-2.5-Licon-MSR-V2.safetensors", "bytes": 2215094328, "sha256": "7cf982168d4f77f44b02943fb458f937f90c89335dcf7cf71b2f425e78bab713"}],
-    "bytes": 2215094328, "dependencies": ["ltx25-distilled-int8", "ltx25-gemma-int8", "ltx25-video-vae", "ltx25-audio-vae"],
+    "id": "ltx25-msr-v2",
+    "title": "LTX 2.5 · Multiple Subject Reference V2",
+    "kind": "reference-video",
+    "family": "ltx25-msr",
+    "format": "LoRA",
+    "repo": "LiconStudio/LTX-2.5-Multiple-Subject-Reference",
+    "revision": "aa19b48f845995525d8ace60cdc89b842e951ce6",
+    "directory": "video/LiconStudio-LTX25-MSR",
+    "files": [
+      {
+        "path": "LTX-2.5-Licon-MSR-V2.safetensors",
+        "bytes": 2215094328,
+        "sha256": "7cf982168d4f77f44b02943fb458f937f90c89335dcf7cf71b2f425e78bab713"
+      }
+    ],
+    "bytes": 2215094328,
+    "dependencies": [
+      "ltx25-distilled-int8",
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae"
+    ],
     "note": "Requires access to the gated LTX 2.5 base model; generation is not available yet.",
-    "generation_defaults": {"steps": 8, "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/main/LTX2.5-MSR-sample-workflow-V2.json", "note": "Five ordered image slots; optional paired audio in slots 1 and 2."}
+    "generation_defaults": {
+      "steps": 8,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/main/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Five ordered image slots; optional paired audio in slots 1 and 2."
+    }
   },
   {
-    "id": "ltx25-distilled-int8", "title": "LTX 2.5 · Distilled INT8 transformer", "kind": "reference-support", "format": "INT8",
-    "repo": "Lightricks/LTX-2.5", "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9", "directory": "video/Lightricks-LTX-2.5",
-    "files": [{"path": "diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors", "bytes": 21504034224, "sha256": null}],
-    "bytes": 21504034224, "dependencies": []
+    "id": "ltx25-distilled-int8",
+    "title": "LTX 2.5 · Distilled INT8 transformer",
+    "kind": "reference-support",
+    "format": "INT8",
+    "repo": "Lightricks/LTX-2.5",
+    "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9",
+    "directory": "video/Lightricks-LTX-2.5",
+    "files": [
+      {
+        "path": "diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+        "bytes": 21504034224,
+        "sha256": null
+      }
+    ],
+    "bytes": 21504034224,
+    "dependencies": []
   },
   {
-    "id": "ltx25-gemma-int8", "title": "LTX 2.5 · Gemma 4 INT8 text encoder", "kind": "reference-support", "format": "INT8",
-    "repo": "Lightricks/LTX-2.5", "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9", "directory": "video/Lightricks-LTX-2.5",
-    "files": [{"path": "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "bytes": 15372969374, "sha256": null}],
-    "bytes": 15372969374, "dependencies": []
+    "id": "ltx25-gemma-int8",
+    "title": "LTX 2.5 · Gemma 4 INT8 text encoder",
+    "kind": "reference-support",
+    "format": "INT8",
+    "repo": "Lightricks/LTX-2.5",
+    "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9",
+    "directory": "video/Lightricks-LTX-2.5",
+    "files": [
+      {
+        "path": "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+        "bytes": 15372969374,
+        "sha256": null
+      }
+    ],
+    "bytes": 15372969374,
+    "dependencies": []
   },
   {
-    "id": "ltx25-video-vae", "title": "LTX 2.5 · Video VAE", "kind": "reference-support", "format": "BF16",
-    "repo": "Lightricks/LTX-2.5", "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9", "directory": "video/Lightricks-LTX-2.5",
-    "files": [{"path": "vae/ltx-2.5-video-vae-bf16.safetensors", "bytes": 1472223346, "sha256": null}],
-    "bytes": 1472223346, "dependencies": []
+    "id": "ltx25-video-vae",
+    "title": "LTX 2.5 · Video VAE",
+    "kind": "reference-support",
+    "format": "BF16",
+    "repo": "Lightricks/LTX-2.5",
+    "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9",
+    "directory": "video/Lightricks-LTX-2.5",
+    "files": [
+      {
+        "path": "vae/ltx-2.5-video-vae-bf16.safetensors",
+        "bytes": 1472223346,
+        "sha256": null
+      }
+    ],
+    "bytes": 1472223346,
+    "dependencies": []
   },
   {
-    "id": "ltx25-audio-vae", "title": "LTX 2.5 · Audio VAE", "kind": "reference-support", "format": "BF16",
-    "repo": "Lightricks/LTX-2.5", "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9", "directory": "video/Lightricks-LTX-2.5",
-    "files": [{"path": "vae/ltx-2.5-audio-vae-bf16.safetensors", "bytes": 364866540, "sha256": null}],
-    "bytes": 364866540, "dependencies": []
+    "id": "ltx25-audio-vae",
+    "title": "LTX 2.5 · Audio VAE",
+    "kind": "reference-support",
+    "format": "BF16",
+    "repo": "Lightricks/LTX-2.5",
+    "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9",
+    "directory": "video/Lightricks-LTX-2.5",
+    "files": [
+      {
+        "path": "vae/ltx-2.5-audio-vae-bf16.safetensors",
+        "bytes": 364866540,
+        "sha256": null
+      }
+    ],
+    "bytes": 364866540,
+    "dependencies": []
   },
   {
-    "id": "seedvr2-vae", "title": "SeedVR2 · Shared VAE", "kind": "upscale-support", "format": "FP16",
-    "repo": "numz/SeedVR2_comfyUI", "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8", "directory": "upscale/SeedVR2",
-    "files": [{"path": "ema_vae_fp16.safetensors", "bytes": 501324814, "sha256": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1"}],
-    "bytes": 501324814, "dependencies": []
+    "id": "seedvr2-vae",
+    "title": "SeedVR2 · Shared VAE",
+    "kind": "upscale-support",
+    "format": "FP16",
+    "repo": "numz/SeedVR2_comfyUI",
+    "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "ema_vae_fp16.safetensors",
+        "bytes": 501324814,
+        "sha256": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1"
+      }
+    ],
+    "bytes": 501324814,
+    "dependencies": []
   },
   {
-    "id": "seedvr2-3b-fp8", "title": "SeedVR2 3B · FP8", "kind": "upscale", "family": "seedvr2", "format": "FP8",
-    "repo": "numz/SeedVR2_comfyUI", "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8", "directory": "upscale/SeedVR2",
-    "files": [{"path": "seedvr2_ema_3b_fp8_e4m3fn.safetensors", "bytes": 3391544696, "sha256": "3bf1e43ebedd570e7e7a0b1b60d6a02e105978f505c8128a241cde99a8240cff"}],
-    "bytes": 3391544696, "dependencies": ["seedvr2-vae"]
+    "id": "seedvr2-3b-fp8",
+    "title": "SeedVR2 3B · FP8",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "FP8",
+    "repo": "numz/SeedVR2_comfyUI",
+    "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+        "bytes": 3391544696,
+        "sha256": "3bf1e43ebedd570e7e7a0b1b60d6a02e105978f505c8128a241cde99a8240cff"
+      }
+    ],
+    "bytes": 3391544696,
+    "dependencies": [
+      "seedvr2-vae"
+    ]
   },
   {
-    "id": "seedvr2-3b-q4", "title": "SeedVR2 3B · Q4_K_M GGUF", "kind": "upscale", "family": "seedvr2", "format": "GGUF",
-    "repo": "cmeka/SeedVR2-GGUF", "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d", "directory": "upscale/SeedVR2",
-    "files": [{"path": "seedvr2_ema_3b-Q4_K_M.gguf", "bytes": 1995344224, "sha256": "e665e3909de1a8c88a69c609bca9d43ff5a134647face2ce4497640cc3597f0e"}],
-    "bytes": 1995344224, "dependencies": ["seedvr2-vae"]
+    "id": "seedvr2-3b-q4",
+    "title": "SeedVR2 3B · Q4_K_M GGUF",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_3b-Q4_K_M.gguf",
+        "bytes": 1995344224,
+        "sha256": "e665e3909de1a8c88a69c609bca9d43ff5a134647face2ce4497640cc3597f0e"
+      }
+    ],
+    "bytes": 1995344224,
+    "dependencies": [
+      "seedvr2-vae"
+    ]
   },
   {
-    "id": "seedvr2-7b-fp8", "title": "SeedVR2 7B · FP8", "kind": "upscale", "family": "seedvr2", "format": "FP8",
-    "repo": "numz/SeedVR2_comfyUI", "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8", "directory": "upscale/SeedVR2",
-    "files": [{"path": "seedvr2_ema_7b_fp8_e4m3fn.safetensors", "bytes": 8239729704, "sha256": "1fdbf3877b7d1eb266038d3a165a977f17dbb4daa4a0f0d334d5461476963037"}],
-    "bytes": 8239729704, "dependencies": ["seedvr2-vae"]
+    "id": "seedvr2-7b-fp8",
+    "title": "SeedVR2 7B · FP8",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "FP8",
+    "repo": "numz/SeedVR2_comfyUI",
+    "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_fp8_e4m3fn.safetensors",
+        "bytes": 8239729704,
+        "sha256": "1fdbf3877b7d1eb266038d3a165a977f17dbb4daa4a0f0d334d5461476963037"
+      }
+    ],
+    "bytes": 8239729704,
+    "dependencies": [
+      "seedvr2-vae"
+    ]
+  },
+  {
+    "id": "h3-ref-pruned-q3_k_m",
+    "title": "MiniMax H3 Ref2VA Pruned ? Q3_K_M",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q3_K_M",
+    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
+    "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
+    "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
+    "files": [
+      {
+        "path": "MiniMax-H3-Ref2VA-Pruned-Q3_K_M.gguf",
+        "bytes": 8902845536,
+        "sha256": "6e22b83e7c2213018ab0e66542633564fc6ffc05df25ed6fce2285716f335e58"
+      }
+    ],
+    "bytes": 8902845536,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 20,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-pruned-q4_k_m",
+    "title": "MiniMax H3 Ref2VA Pruned ? Q4_K_M",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q4_K_M",
+    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
+    "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
+    "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
+    "files": [
+      {
+        "path": "MiniMax-H3-Ref2VA-Pruned-Q4_K_M.gguf",
+        "bytes": 11564180576,
+        "sha256": "a67ff28c56f0bcf05f7a5edb2d215f2dce5c302587d4caf748e2e61e1ffea736"
+      }
+    ],
+    "bytes": 11564180576,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 20,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-pruned-q4_k_s",
+    "title": "MiniMax H3 Ref2VA Pruned ? Q4_K_S",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q4_K_S",
+    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
+    "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
+    "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
+    "files": [
+      {
+        "path": "MiniMax-H3-Ref2VA-Pruned-Q4_K_S.gguf",
+        "bytes": 11564180576,
+        "sha256": "8744d71ce13a02aa6c2406c57f7339fcb2906612862bc28c3769b4e1bcf522db"
+      }
+    ],
+    "bytes": 11564180576,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 20,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-pruned-q5_k_m",
+    "title": "MiniMax H3 Ref2VA Pruned ? Q5_K_M",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q5_K_M",
+    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
+    "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
+    "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
+    "files": [
+      {
+        "path": "MiniMax-H3-Ref2VA-Pruned-Q5_K_M.gguf",
+        "bytes": 14068966496,
+        "sha256": "dd220ed3888317740af9cc9b84baaf14c4d2e330ec89f2f445a758c21f4e98c5"
+      }
+    ],
+    "bytes": 14068966496,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 20,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-pruned-q5_k_s",
+    "title": "MiniMax H3 Ref2VA Pruned ? Q5_K_S",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q5_K_S",
+    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
+    "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
+    "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
+    "files": [
+      {
+        "path": "MiniMax-H3-Ref2VA-Pruned-Q5_K_S.gguf",
+        "bytes": 14068966496,
+        "sha256": "bcc259231840da7d5291d9cc960b1d2aa1423aac27ae7161594ba93c316d642c"
+      }
+    ],
+    "bytes": 14068966496,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 20,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-pruned-q6_k",
+    "title": "MiniMax H3 Ref2VA Pruned ? Q6_K",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q6_K",
+    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
+    "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
+    "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
+    "files": [
+      {
+        "path": "MiniMax-H3-Ref2VA-Pruned-Q6_K.gguf",
+        "bytes": 16730301536,
+        "sha256": "78eb118329679557c78d528dd3274aa1cae1536653895403bb1c07590a585c2e"
+      }
+    ],
+    "bytes": 16730301536,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 20,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-pruned-q8_0",
+    "title": "MiniMax H3 Ref2VA Pruned ? Q8_0",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q8_0",
+    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
+    "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
+    "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
+    "files": [
+      {
+        "path": "MiniMax-H3-Ref2VA-Pruned-Q8_0.gguf",
+        "bytes": 21583324256,
+        "sha256": "d42b22f417a3d37be06ba1a1a96d6eae0ac643a6296b05bd5c9b1f3de6164c77"
+      }
+    ],
+    "bytes": 21583324256,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 20,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 20,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q3_k_m",
+    "title": "MiniMax H3 Ref2VA Full ? Q3_K_M",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q3_K_M",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q3_K_M.gguf",
+        "bytes": 15567048992,
+        "sha256": "efb4fbd62816f7f1ec0dc3fad5ecc0c297205a4f05ac651b8771a748e87401a7"
+      }
+    ],
+    "bytes": 15567048992,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q3_k_s",
+    "title": "MiniMax H3 Ref2VA Full ? Q3_K_S",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q3_K_S",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q3_K_S.gguf",
+        "bytes": 15567048992,
+        "sha256": "01dc304e6656419f48dd76453cec9e2c527c100b4413b94806f1aa27a166e1b8"
+      }
+    ],
+    "bytes": 15567048992,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q4_0",
+    "title": "MiniMax H3 Ref2VA Full ? Q4_0",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q4_0",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q4_0.gguf",
+        "bytes": 18639605024,
+        "sha256": "2c895025b05310d73cec2172a168c3ce8e2c69bdec4c4d0d091e312fcfb474ce"
+      }
+    ],
+    "bytes": 18639605024,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q4_k_m",
+    "title": "MiniMax H3 Ref2VA Full ? Q4_K_M",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q4_K_M",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q4_K_M.gguf",
+        "bytes": 19853333792,
+        "sha256": "1471161b5039bc26fcb425f4a8ad415ef6b36bab79e9066c1fa4444342b8bf18"
+      }
+    ],
+    "bytes": 19853333792,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q4_k_s",
+    "title": "MiniMax H3 Ref2VA Full ? Q4_K_S",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q4_K_S",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q4_K_S.gguf",
+        "bytes": 19853333792,
+        "sha256": "132ba7222242d4f5058f0c3495f3ab901831c0594f8138646639f5dbdf527b94"
+      }
+    ],
+    "bytes": 19853333792,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q5_0",
+    "title": "MiniMax H3 Ref2VA Full ? Q5_0",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q5_0",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q5_0.gguf",
+        "bytes": 22779297056,
+        "sha256": "e465d9304932048cde7790149f9130c70ca08beee51265b66594fada47f24223"
+      }
+    ],
+    "bytes": 22779297056,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q5_k_m",
+    "title": "MiniMax H3 Ref2VA Full ? Q5_K_M",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q5_K_M",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q5_K_M.gguf",
+        "bytes": 23887484192,
+        "sha256": "e054075d3cb6e41cd769bd3964f3dea1b16f7a9842a194a8bf302439f5db290e"
+      }
+    ],
+    "bytes": 23887484192,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q5_k_s",
+    "title": "MiniMax H3 Ref2VA Full ? Q5_K_S",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q5_K_S",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q5_K_S.gguf",
+        "bytes": 23887484192,
+        "sha256": "80857caabdfc21edc8f7591ac89bfe06cf7fd5d17c54e50d7b665f6fb1c18c9d"
+      }
+    ],
+    "bytes": 23887484192,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q6_k",
+    "title": "MiniMax H3 Ref2VA Full ? Q6_K",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q6_K",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q6_K.gguf",
+        "bytes": 28219050240,
+        "sha256": "47032be02e6efcafb0e643249276f4d702d6cfad7c91a091497bcd0ed88b84a0"
+      }
+    ],
+    "bytes": 28219050240,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
+  },
+  {
+    "id": "h3-ref-full-q8_0",
+    "title": "MiniMax H3 Ref2VA Full ? Q8_0",
+    "kind": "reference-video",
+    "family": "minimax-h3-ref2va",
+    "format": "GGUF",
+    "quantization": "Q8_0",
+    "model_group": "MiniMax H3 ? Full GGUF",
+    "repo": "Abiray/MiniMax-H3-GGUF",
+    "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
+    "directory": "video/Abiray-MiniMax-H3-GGUF",
+    "files": [
+      {
+        "path": "unet/MiniMax-H3-Ref2VA-Q8_0.gguf",
+        "bytes": 36035216640,
+        "sha256": "cf93fb0191eb12d76dce2a89627a667f088f36dec3e62b8298f592eb73f5cb42"
+      }
+    ],
+    "bytes": 36035216640,
+    "dependencies": [
+      "h3-encoder",
+      "h3-video-vae",
+      "h3-audio-vae"
+    ],
+    "generation_defaults": {
+      "steps": 25,
+      "max_frames": 362,
+      "quality": "standard",
+      "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+      "note": "Standard Ref2VA weights; shared H3 encoder and video/audio VAEs.",
+      "profiles": {
+        "standard": {
+          "steps": 25,
+          "sampler": "res_multistep",
+          "scheduler": "simple",
+          "guidance": 1.0,
+          "video_shift": 12,
+          "audio_shift": 3.0,
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+        }
+      }
+    }
   }
 ]

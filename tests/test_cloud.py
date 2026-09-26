@@ -10,6 +10,41 @@ from backend.common import GenerationRequest, VideoRequest, ReferenceVideoReques
 
 
 class CloudTests(unittest.TestCase):
+    def test_progress_keeps_real_steps_and_drops_untrusted_status_fields(self):
+        details={'stage':'generating','step':2,'total_steps':8,'stage_started_at':123,
+                 'preview_step':2,'preview_key':'qwen-transfer/abc/preview.webp',
+                 'status':'succeeded','output_path':'untrusted','request':{'prompt':'changed'}}
+        for output in (details,[{'step':1},details]):
+            safe=cloud.progress_details({'output':output})
+            self.assertEqual(safe['step'],2)
+            self.assertEqual(safe['stage'],'generating')
+            self.assertNotIn('status',safe)
+            self.assertNotIn('request',safe)
+        self.assertEqual(cloud.progress_details({'output':'Loading model'}),{})
+
+    def test_remote_preview_is_saved_while_generation_continues(self):
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);job_id='e'*32;directory=root/job_id;directory.mkdir()
+            request=VideoRequest(prompt='Motion',enhance=False,output_dir=folder).model_dump()
+            (directory/'status.json').write_text(json.dumps({'id':job_id,'kind':'video','status':'queued','request':request,'seed':0,'created_at':1}),encoding='utf-8')
+            prefix=f'qwen-transfer/{job_id}/'
+            def download(key,destination):
+                if key.endswith('preview.webp'):Image.new('RGB',(8,8),'red').save(destination,format='WEBP')
+                else:destination.write_bytes(b'video')
+            def poll(kind,remote_id,update,cancelled):
+                update('IN_PROGRESS',{'output':{'stage':'generating','step':3,'total_steps':8,'preview_key':prefix+'preview.webp','preview_updated_at':123}})
+                current=json.loads((directory/'status.json').read_text())
+                self.assertEqual(current['status'],'running')
+                self.assertEqual(current['step'],3)
+                self.assertEqual(current['preview_url'],f'/api/jobs/{job_id}/live-preview')
+                self.assertTrue((directory/'live-preview.webp').is_file())
+                return {'output_key':prefix+'result.mp4'}
+            with patch.object(server,'JOBS_DIR',root),patch.object(cloud,'submit',return_value='remote'), \
+                 patch.object(cloud,'download',side_effect=download),patch.object(cloud,'poll',side_effect=poll):
+                server.run_cloud_job(job_id,request,'video')
+            self.assertEqual(json.loads((directory/'status.json').read_text())['status'],'succeeded')
+
     def test_remote_catalog_offers_supported_video_workflows_only(self):
         with patch.object(cloud, 'settings', return_value={'mode': 'runpod'}), \
              patch.object(cloud, 'ready', return_value=True):
