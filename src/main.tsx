@@ -15,6 +15,7 @@ import './style.css';
 import './workspace.css';
 import './reference.css';
 import './reference-workbench.css';
+import {apiRequest} from './session';
 
 type InputImage = {id:string; name:string; url:string};
 type Params = ImageOptions & {model_id:string;text_encoder:string;prompt:string; images:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string};
@@ -63,11 +64,7 @@ function App(){
   const ready=imageReady&&!!chosenModel?.generation_defaults&&validSteps&&(!params.enhance||!!enhancement?.connected);
   const missingModels=modelState?.remote?[]:requiredIds.map(id=>modelState?.models.find(m=>m.id===id)).filter(m=>m&&!m.installed);
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
-  const api=useCallback(async (path:string,init:RequestInit={})=>{
-    const response=await fetch(path,{...init,headers:{...init.headers,'X-Studio-Token':token.current}});
-    if(!response.ok){const data=await response.json().catch(()=>({detail:response.statusText})); throw new Error(typeof data.detail==='string'?data.detail:(data.detail||[]).map((e:{msg:string})=>e.msg).join(' '));}
-    return response.json();
-  },[]);
+  const api=useCallback(apiRequest,[]);
   const queue=useQueue(api,!!config);
   function showVideo(section:VideoSection){setTab('video');setVideoSection(section);window.history.replaceState(null,'',section==='create'?'#video':section==='reference'?'#video-to-video':'#upscale');}
   function restoreJob(saved:SavedJob){

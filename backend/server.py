@@ -371,11 +371,11 @@ async def local_only(request: Request, call_next):
     if host not in ('localhost', '127.0.0.1', 'testserver'):
         return JSONResponse({'detail': 'Local access only.'}, status_code=403)
     if request.method not in ('GET', 'HEAD', 'OPTIONS'):
-        if request.headers.get('x-studio-token') != SESSION_TOKEN:
-            return JSONResponse({'detail': 'Refresh the app and try again.'}, status_code=403)
         origin = request.headers.get('origin')
         if origin and origin not in (f'http://{request.headers.get("host")}', 'http://127.0.0.1:5173'):
             return JSONResponse({'detail': 'Local access only.'}, status_code=403)
+        if request.headers.get('x-studio-token') != SESSION_TOKEN:
+            return JSONResponse({'detail': 'Refresh the app and try again.', 'code': 'session_expired'}, status_code=403, headers={'Cache-Control': 'no-store'})
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'no-referrer'
@@ -395,6 +395,11 @@ def gpu_memory_status():
 @app.get('/api/config')
 def config():
     return {'token': SESSION_TOKEN, 'models': model_status(), 'catalog': catalog_state(), 'enhancement': antigravity.status(), 'cloud': cloud.status(), 'output_dir': str(OUTPUTS_DIR), 'video_output_dir':str(VIDEOS_DIR), 'active_job': active_job, 'model': 'Qwen-Image-2.1', 'device': 'RunPod GPU' if cloud.settings()['mode'] == 'runpod' else 'Local NVIDIA GPU', 'data_dir': str(DATA_DIR)}
+
+
+@app.get('/api/session')
+def session():
+    return {'token': SESSION_TOKEN}
 
 
 class CloudInput(BaseModel):

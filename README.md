@@ -156,8 +156,15 @@ one thumbnail dropdown assigns a reference or **Keep person**. **Live preview** 
 an approximate animated draft from each completed generation step, alongside actual
 stages and step counts. It is separate from the source and final result.
 
-On Windows, opening `Start Qwen.bat` or `Qwen.lnk` leaves a visible activity terminal.
-`Show Qwen Logs.bat` attaches to the current server without restarting it. After a code
-update, `Restart Qwen.bat` reloads an idle server; it refuses while jobs are running or
-queued. See the [Ref2VA model and performance audit](reference/ref2va-audit-2026-09-26.md)
+On Windows, `Start Qwen.bat` and `Qwen.lnk` open one Qwen window and its activity
+terminal. Closing either stops the server and all local processing immediately.
+Opening the shortcut again shows the existing window. `Restart Qwen.bat` closes
+the managed instance before opening a new one; an interrupted local job can be
+retried from the queue. Waiting jobs remain saved. Qwen uses its own browser profile
+so closing it never closes unrelated Edge/Chrome windows. The one-time upgrade
+from the old detached launcher requires its jobs to finish or be cancelled first.
+`Show Qwen Logs.bat` opens an additional read-only viewer; closing that extra viewer
+does not stop Qwen. RunPod jobs run remotely and may continue after the local app
+closes. An open browser tab renews its connection automatically after server restarts.
+See the [Ref2VA model and performance audit](reference/ref2va-audit-2026-09-26.md)
 for exact sampling sources and verification limits.

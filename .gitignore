@@ -9,6 +9,7 @@ runtime.json
 runpod.json
 runpod.secret
 local-settings.json
+.local/
 .env
 .env.*
 !.env.example

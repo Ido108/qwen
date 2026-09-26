@@ -34,6 +34,19 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/config', headers={'host':'evil.example'}).status_code, 403)
         self.assertEqual(self.client.post('/api/uploads', headers={**self.headers, 'Origin':'https://evil.example'}).status_code, 403)
 
+    def test_expired_session_has_retry_code_without_running_handler(self):
+        with patch('backend.server.resolve_video') as resolve:
+            response=self.client.post('/api/video-uploads/'+'a'*32+'.mp4/people',json={},headers={'X-Studio-Token':'old'})
+            self.assertEqual(response.status_code,403)
+            self.assertEqual(response.json()['code'],'session_expired')
+            resolve.assert_not_called()
+        session=self.client.get('/api/session')
+        self.assertEqual(session.json()['token'],self.headers['X-Studio-Token'])
+        self.assertEqual(session.headers['cache-control'],'no-store')
+        self.assertEqual(self.client.get('/api/session',headers={'host':'evil.example'}).status_code,403)
+        wrong_origin=self.client.post('/api/uploads',headers={'Origin':'https://evil.example'})
+        self.assertNotIn('code',wrong_origin.json())
+
     def test_atomic_status_write_survives_a_windows_reader(self):
         target=Path(temporary.name)/'status-retry.json'
         write_json(target,{'step':1})

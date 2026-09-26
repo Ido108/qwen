@@ -43,27 +43,21 @@ class LogTail:
             pass
 
 
-def main():
-    parser=argparse.ArgumentParser()
-    parser.add_argument('--url',default='http://127.0.0.1:47821')
-    parser.add_argument('--data-dir',type=Path,required=True)
-    parser.add_argument('--once',action='store_true')
-    args=parser.parse_args()
-    print(f'Qwen activity\n{args.url}\nClosing this window leaves Qwen and running jobs active.\n',flush=True)
-    tails=[LogTail(args.data_dir/'logs/server.out.log','Server'),LogTail(args.data_dir/'logs/server.err.log','Server')]
+def watch(url, data_dir, *, once=False, stop_event=None):
+    tails=[LogTail(data_dir/'logs/server.out.log','Server'),LogTail(data_dir/'logs/server.err.log','Server')]
     worker=None
     active_id=None
     last_state=None
-    while True:
+    while not stop_event or not stop_event.is_set():
         try:
-            with urlopen(args.url+'/api/queue',timeout=2) as response:
+            with urlopen(url+'/api/queue',timeout=2) as response:
                 queue=json.load(response)
             active=queue.get('active') or {}
             if active.get('id')!=active_id:
                 if worker:
                     worker.read()
                 active_id=active.get('id')
-                worker=LogTail(args.data_dir/'jobs'/active_id/'worker.log','Generation') if active_id else None
+                worker=LogTail(data_dir/'jobs'/active_id/'worker.log','Generation') if active_id else None
             state=(active_id,active.get('stage'),active.get('step'),len(queue.get('pending') or []))
             if state!=last_state:
                 if active_id:
@@ -81,13 +75,26 @@ def main():
             tail.read()
         if worker:
             worker.read()
-        if args.once:
+        if once:
             return
-        time.sleep(1)
+        if stop_event:
+            stop_event.wait(1)
+        else:
+            time.sleep(1)
+
+
+def main():
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--url',default='http://127.0.0.1:47821')
+    parser.add_argument('--data-dir',type=Path,required=True)
+    parser.add_argument('--once',action='store_true')
+    args=parser.parse_args()
+    print(f'Qwen activity viewer\n{args.url}\nThis extra viewer does not control Qwen. Close the main Qwen window to stop the app.\n',flush=True)
+    watch(args.url,args.data_dir,once=args.once)
 
 
 if __name__=='__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print('\nLog viewer closed. Qwen is still running.')
+        print('\nActivity viewer closed.')

@@ -13,6 +13,8 @@ args=parser.parse_args()
 ROOT=args.data_dir;OUT=ROOT/'validation/reference-workbench-qa'
 OUT.mkdir(parents=True,exist_ok=True)
 SOURCE=args.source_id;REF=args.reference_id
+for fixture in (ROOT/'uploads'/REF,ROOT/'uploads/videos'/SOURCE):
+    if not fixture.is_file():raise FileNotFoundError(f'UI fixture does not exist: {fixture}')
 
 def get(path):
     with urllib.request.urlopen(args.api_url.rstrip('/')+path) as response:return json.load(response)
@@ -25,12 +27,18 @@ models['models']=[{**m,**{k:v for k,v in by_id.get(m['id'],{}).items() if k in (
 metadata=json.loads((ROOT/'uploads/videos'/f'{SOURCE}.json').read_text(encoding='utf-8'))
 metadata.update(id=SOURCE,url=f'/api/video-uploads/{SOURCE}',poster_url=f'/api/video-uploads/{SOURCE}/poster')
 people=[{'id':'person-1','time':.17,'box':[.54,.14,.23,.17],'hits':4,'preview':f'/api/uploads/{REF}'}]
-state={'job':None,'requests':[]}
+state={'job':None,'requests':[],'session':config['token'],'refreshes':0,'rejected':0}
 errors=[]
 def handle(route):
     path=urlsplit(route.request.url).path
     def reply(value,status=200):route.fulfill(status=status,json=value)
     if path=='/api/config':return reply(config)
+    if path=='/api/session':
+        state['refreshes']+=1
+        return reply({'token':state['session']})
+    if route.request.method not in ('GET','HEAD','OPTIONS') and route.request.headers.get('x-studio-token')!=state['session']:
+        state['rejected']+=1
+        return reply({'code':'session_expired','detail':'Refresh the app and try again.'},403)
     if path=='/api/models':return reply(models)
     if path=='/api/queue':return reply({'active':None,'pending':[],'recent':[],'paused':False})
     if path=='/api/history':return reply([])
@@ -69,6 +77,14 @@ try:
     choice=page.get_by_role('button',name='Replacement for Person 1',exact=True)
     choice.scroll_into_view_if_needed()
     assert choice.get_by_alt_text('Selected reference 1').is_visible()
+    # Reproduce the user's 403 after a server restart on the actual Scan button.
+    state['session']='restarted-server-session'
+    rejected_before=state['rejected']
+    with page.expect_response(lambda response:response.url.endswith('/people') and response.status==200):
+        page.get_by_role('button',name='Scan selected clip').click()
+    assert state['rejected']==rejected_before+1 and state['refreshes']>=1
+    assert choice.get_by_alt_text('Selected reference 1').is_visible()
+    assert page.get_by_text('Refresh the app and try again.',exact=True).count()==0
     choice.click()
     menu=page.get_by_role('listbox',name='Choose replacement for Person 1')
     assert menu.get_by_role('option',name='@Ref1',exact=True).locator('img').count()==1
@@ -176,6 +192,6 @@ try:
         assert progress_box['y']+progress_box['height'] <= settings_box['y']+1, (width,progress_box,settings_box)
         page.screenshot(path=str(OUT/f'viewport-{width}.png'),full_page=True)
     assert not errors,errors
-    print('PASS: selection, thumbnails, keyboard, optional prompts, separate stages, queueing, live preview, trim, source ratio, responsive layout; no generation submitted')
+    print('PASS: session renewal after server restart, selection, thumbnails, keyboard, optional prompts, separate stages, queueing, live preview, trim, source ratio, responsive layout; no generation submitted')
     print(json.dumps({'pageHeight':page.evaluate('document.documentElement.scrollHeight'),'viewport':900,'submit':page.get_by_role('button',name='Add to queue',exact=True).bounding_box(),'errors':errors}))
 finally:browser.close()
