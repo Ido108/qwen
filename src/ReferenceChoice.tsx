@@ -1,4 +1,4 @@
-import {useEffect,useId,useRef,useState} from 'react';
+import {useLayoutEffect,useId,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Check,ChevronDown,UserRound} from 'lucide-react';
 
@@ -11,16 +11,19 @@ export function ReferenceChoice({personNumber,references,value,onChange}:{person
   const selected=references.findIndex(reference=>reference.id===value);
   const options=[{id:null,url:'',label:'Keep person'},...references.map((reference,index)=>({...reference,label:`@Ref${index+1}`}))];
   function choose(next:string|null){onChange(next);setOpen(false);trigger.current?.focus();}
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     if(!open)return;
-    const bounds=trigger.current!.getBoundingClientRect();
-    const width=Math.min(260,window.innerWidth-24);
-    const height=Math.min(options.length*47+10,280);
-    setPosition({left:Math.max(12,Math.min(bounds.left,window.innerWidth-width-12)),top:bounds.bottom+height<window.innerHeight-12?bounds.bottom+6:Math.max(12,bounds.top-height-6),width});
-    const frame=requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus());
+    const reposition=()=>{
+      const bounds=trigger.current!.getBoundingClientRect();
+      const width=Math.min(260,window.innerWidth-24);
+      const height=Math.min(options.length*47+10,280);
+      setPosition({left:Math.max(12,Math.min(bounds.left,window.innerWidth-width-12)),top:bounds.bottom+height<window.innerHeight-12?bounds.bottom+6:Math.max(12,bounds.top-height-6),width});
+    };
+    reposition();
+    const frame=requestAnimationFrame(()=>menu.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus({preventScroll:true}));
     const outside=(event:PointerEvent)=>{if(!menu.current?.contains(event.target as Node)&&!trigger.current?.contains(event.target as Node))setOpen(false);};
     const close=()=>setOpen(false);
-    const scroll=(event:Event)=>{if(!menu.current?.contains(event.target as Node))close();};
+    const scroll=(event:Event)=>{if(!menu.current?.contains(event.target as Node))reposition();};
     document.addEventListener('pointerdown',outside);window.addEventListener('resize',close);document.addEventListener('scroll',scroll,true);
     return()=>{cancelAnimationFrame(frame);document.removeEventListener('pointerdown',outside);window.removeEventListener('resize',close);document.removeEventListener('scroll',scroll,true);};
   },[open,options.length]);

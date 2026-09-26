@@ -18,12 +18,12 @@ for fixture in (ROOT/'uploads'/REF,ROOT/'uploads/videos'/SOURCE):
 
 def get(path):
     with urllib.request.urlopen(args.api_url.rstrip('/')+path) as response:return json.load(response)
-config=get('/api/config');models=get('/api/models')
+config=get('/api/config');config['active_job']=None;models=get('/api/models')
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from backend.models import catalog
 by_id={m['id']:m for m in models['models']}
-models['models']=[{**m,**{k:v for k,v in by_id.get(m['id'],{}).items() if k in ('installed','ready','disk_bytes')},'ready':True,'installed':True} for m in catalog()]
+models['models']=[{**m,**{k:v for k,v in by_id.get(m['id'],{}).items() if k in ('installed','ready','disk_bytes')},'ready':False,'installed':False} for m in catalog()]
 metadata=json.loads((ROOT/'uploads/videos'/f'{SOURCE}.json').read_text(encoding='utf-8'))
 metadata.update(id=SOURCE,url=f'/api/video-uploads/{SOURCE}',poster_url=f'/api/video-uploads/{SOURCE}/poster')
 people=[{'id':'person-1','time':.17,'box':[.54,.14,.23,.17],'hits':4,'preview':f'/api/uploads/{REF}'}]
@@ -115,6 +115,11 @@ try:
     assert button.is_enabled()
     button.click()
     assert len(state['requests'])==2
+    state['job'].update(stage='downloading_models',message='Downloading model files',download_completed_bytes=5_000_000_000,download_total_bytes=10_000_000_000)
+    page.get_by_text('Downloading model files',exact=True).wait_for()
+    assert button.is_enabled()
+    assert page.get_by_role('dialog',name='Settings',exact=True).count()==0 or not page.get_by_role('dialog',name='Settings',exact=True).is_visible()
+    state['job'].update(stage='generating')
     details=page.locator('.reference-inputs > .reference-extra-instructions')
     details.locator('summary').click()
     prompt.fill('Keep @')
@@ -173,10 +178,11 @@ try:
     state['job'].update(step=2,preview_step=2,preview_url='/api/jobs/ui-check/live-preview',preview_updated_at=time.time())
     page.get_by_alt_text('Approximate video generated at the latest completed step').wait_for()
     advanced=page.locator('.reference-workbench .reference-advanced');advanced.locator('summary').click()
-    for model_id,default in [('h3-ref-pruned-q4_k_m',20),('h3-ref-full-q8_0',25),('h3-ref-eros-q4',25),('h3-ref-turbo-int8',8),('h3-ref-base-int8',20)]:
+    for model_id,default in [(m['id'],m['generation_defaults']['steps']) for m in catalog() if m.get('family')=='minimax-h3-ref2va']:
         model.select_option(model_id)
         assert page.locator('#reference-steps').get_attribute('placeholder')==str(default)
         assert page.locator('#reference-steps').input_value()==''
+    model.select_option('h3-ref-base-int8')
     page.locator('#reference-quality').select_option('turbo')
     assert page.locator('#reference-steps').get_attribute('placeholder')=='8'
     page.locator('#reference-steps').fill('12');button.click()
@@ -194,4 +200,7 @@ try:
     assert not errors,errors
     print('PASS: session renewal after server restart, selection, thumbnails, keyboard, optional prompts, separate stages, queueing, live preview, trim, source ratio, responsive layout; no generation submitted')
     print(json.dumps({'pageHeight':page.evaluate('document.documentElement.scrollHeight'),'viewport':900,'submit':page.get_by_role('button',name='Add to queue',exact=True).bounding_box(),'errors':errors}))
+except Exception:
+    page.screenshot(path=str(OUT/'failure.png'),full_page=True)
+    raise
 finally:browser.close()

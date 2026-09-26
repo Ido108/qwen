@@ -27,6 +27,28 @@ guide. Its author's eight-step example uses a **DMD adapter**, while the app's
 optional eight-step adapter is **LightX2V**; those recipes are not interchangeable.
 The chosen base/distillation profile determines sampling in both stages.
 
+The subsequent user job `588f99ea7200437a853873475b15debd` selected
+`h3-ref-pruned-q4_k_m`, standard quality and `steps_mode: model`. Its saved request
+contains 20 steps, which matches that model's standard recipe; it was not a
+manual override or a fallback from the Turbo eight-step recipe. CPU tests now
+enumerate all 21 Ref2VA checkpoint entries. Browser checks also select every
+entry, verify its displayed default, and exercise custom steps and Reset.
+
+## Source scene preservation
+
+Replace subjects uses reference-video conditioning and the FaceSwap LoRA without
+CrossView or a generated camera guide. The compiled prompt places explicit source
+camera, movement, framing, perspective, shot boundary, position and background
+preservation instructions after optional enhanced text. Stale camera fields from
+the Camera view tab are not included. Additional instructions remain optional.
+
+The publisher's native FaceSwap workflow is generative video conditioning; it does
+not composite unchanged source pixels outside a person mask. The user-reported
+camera drift is therefore not disproved by correct parameter wiring. There is no
+pixel-exact scene guarantee, and no new rendered output has been generated or
+visually approved after this prompt change. References: [FaceSwap model and native
+workflow](https://huggingface.co/UntMods/FaceSwap_MiniMaxH3_REF2VA).
+
 The Eros quantizer suggests CFG 3.5–4.5, while the original H3 checkpoint is
 CFG-distilled and the native reference workflows use BasicGuider (CFG 1).
 This integration retains CFG 1 with the native H3 conditioning contract. It does

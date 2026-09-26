@@ -30,7 +30,7 @@
 
 .reference-viewer>:not(.reference-output){flex-shrink:0}
 @media(min-width:1000px) and (max-height:800px){
- .reference-viewer:has(.reference-job-progress){display:grid;grid-template-columns:1fr 1.12fr;grid-template-rows:auto auto minmax(95px,1fr) auto;gap:7px 10px;padding:10px}
+ .reference-viewer:has(.reference-job-progress){display:grid;grid-template-columns:1fr 1.12fr;grid-template-rows:auto auto minmax(min-content,1fr) auto;min-height:min-content;gap:7px 10px;padding:10px}
  .reference-viewer:has(.reference-job-progress)>.section-heading,.reference-viewer:has(.reference-job-progress)>.reference-preview-tabs{grid-column:1/-1;margin:0}
  .reference-viewer:has(.reference-job-progress)>.reference-output{grid-column:1;grid-row:3;min-height:0}
  .reference-viewer:has(.reference-job-progress)>.reference-job-progress{grid-column:2;grid-row:3;align-self:center;margin:0;padding:8px}

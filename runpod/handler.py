@@ -13,6 +13,8 @@ import time
 os.environ.setdefault('QWEN_DATA_DIR', '/runpod-volume/qwen-image-studio')
 from backend.common import APP_DIR, JOBS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, ReferenceVideoRequest, UpscaleRequest, read_json, write_json  # noqa: E402
 from backend import models  # noqa: E402
+from backend.common import AUDIO_UPLOADS_DIR
+from backend.ltx_settings import MultiReferenceRequest, required_ltx, media_inputs as ltx_media_inputs
 from backend.resident_worker import ImageWorker  # noqa: E402
 
 VOLUME = Path('/runpod-volume')
@@ -35,6 +37,8 @@ def ensure_models(request: dict, kind: str, progress=lambda _: None) -> None:
         needed = models.required_video(type('VideoSettings', (), request))
     elif kind == 'reference-video':
         needed = models.required_reference(ReferenceVideoRequest(**request))
+    elif kind == 'multi-reference':
+        needed = required_ltx(MultiReferenceRequest(**request))
     elif kind == 'upscale':
         needed = models.required_upscale(UpscaleRequest(**request))
     else:
@@ -44,13 +48,21 @@ def ensure_models(request: dict, kind: str, progress=lambda _: None) -> None:
     with lock_path.open('a+b') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
-            for item in needed:
-                if not models.is_installed(item):
-                    progress(f'Downloading model files: {models.entry(item)["title"]}')
-                    models.cancel_event.clear()
-                    models.install(item)
-                    if models.transfer.get('status') == 'failed':
-                        raise RuntimeError(models.transfer.get('message', 'Model download failed.'))
+            last_update = 0.0
+            started = time.time()
+            def downloading(state):
+                nonlocal last_update
+                now = time.monotonic()
+                if now-last_update < 1:
+                    return
+                last_update = now
+                stage = state.get('stage')
+                message = ('Checking model access' if stage == 'checking_access' else
+                           'Checking model files' if stage == 'verifying' else 'Downloading required model files')
+                progress({'stage': 'downloading_models', 'stage_started_at': started,
+                          'message': message, 'download_completed_bytes': state.get('completed_bytes', 0),
+                          'download_total_bytes': state.get('total_bytes', 0)})
+            models.ensure_installed(needed, owner='runpod', progress=downloading)
             if not all(models.is_installed(item) for item in needed):
                 raise RuntimeError('The requested model or a supporting file is missing after download.')
         finally:
@@ -63,7 +75,7 @@ def handler(job: dict) -> dict:
     kind = payload.get('kind')
     if not isinstance(job_id, str) or len(job_id) != 32 or any(c not in '0123456789abcdef' for c in job_id):
         raise ValueError('Invalid job ID.')
-    if kind not in ('image', 'video', 'reference-video', 'upscale'):
+    if kind not in ('image', 'video', 'reference-video', 'multi-reference', 'upscale'):
         raise ValueError('Invalid generation type.')
     prefix = f'qwen-transfer/{job_id}/'
     if payload.get('output_prefix') != prefix:
@@ -81,6 +93,8 @@ def handler(job: dict) -> dict:
         expected = [('image', value) for value in request.get('images', [])]
     elif kind == 'video':
         expected = [('image', value) for value in (request.get('first_frame'), request.get('last_frame')) if value]
+    elif kind == 'multi-reference':
+        expected = ltx_media_inputs(request)
     elif kind == 'reference-video':
         expected = [('video', request['source_video'])]
         if request.get('warp_video'):
@@ -93,9 +107,11 @@ def handler(job: dict) -> dict:
     for index, key in enumerate(input_keys):
         source = checked_path(key, prefix)
         media, name = expected[index]
-        root = VIDEO_UPLOADS_DIR if media == 'video' else UPLOADS_DIR
+        root = VIDEO_UPLOADS_DIR if media == 'video' else AUDIO_UPLOADS_DIR if media == 'audio' else UPLOADS_DIR
         target = (root / name).resolve()
         suffixes = {'.mp4', '.mov', '.mkv', '.webm'} if media == 'video' else {'.png'}
+        if media == 'audio':
+            suffixes = {'.mp3', '.wav', '.m4a', '.flac', '.ogg'}
         if not target.is_relative_to(root.resolve()) or target.name != name or target.suffix.lower() not in suffixes:
             raise ValueError('Invalid input file name.')
         shutil.copy2(source, target)

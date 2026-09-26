@@ -49,7 +49,7 @@
         }
       }
     },
-    "model_group": "MiniMax H3 ? INT8"
+    "model_group": "MiniMax H3 · INT8"
   },
   {
     "id": "h3-ref-turbo-int8",
@@ -91,7 +91,7 @@
         }
       }
     },
-    "model_group": "MiniMax H3 ? INT8"
+    "model_group": "MiniMax H3 · INT8"
   },
   {
     "id": "h3-ref-eros-q4",
@@ -119,7 +119,7 @@
       "steps": 25,
       "max_frames": 362,
       "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF",
-      "note": "Standard Beta 2: publisher recommends 20?30 steps; app default is 25.",
+      "note": "Standard Beta 2: publisher recommends 20-30 steps; app default is 25.",
       "quality": "standard",
       "profiles": {
         "standard": {
@@ -165,7 +165,7 @@
       "steps": 25,
       "max_frames": 362,
       "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF",
-      "note": "Standard Beta 2: publisher recommends 20?30 steps; app default is 25.",
+      "note": "Standard Beta 2: publisher recommends 20-30 steps; app default is 25.",
       "quality": "standard",
       "profiles": {
         "standard": {
@@ -260,7 +260,7 @@
   {
     "id": "ltx25-msr-v2",
     "title": "LTX 2.5 · Multiple Subject Reference V2",
-    "kind": "reference-video",
+    "kind": "reference-lora",
     "family": "ltx25-msr",
     "format": "LoRA",
     "repo": "LiconStudio/LTX-2.5-Multiple-Subject-Reference",
@@ -274,13 +274,8 @@
       }
     ],
     "bytes": 2215094328,
-    "dependencies": [
-      "ltx25-distilled-int8",
-      "ltx25-gemma-int8",
-      "ltx25-video-vae",
-      "ltx25-audio-vae"
-    ],
-    "note": "Requires access to the gated LTX 2.5 base model; generation is not available yet.",
+    "dependencies": [],
+    "note": "Up to four subjects and a background. Optional voice references for the first two subjects.",
     "generation_defaults": {
       "steps": 8,
       "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/main/LTX2.5-MSR-sample-workflow-V2.json",
@@ -289,8 +284,8 @@
   },
   {
     "id": "ltx25-distilled-int8",
-    "title": "LTX 2.5 · Distilled INT8 transformer",
-    "kind": "reference-support",
+    "title": "LTX 2.5 MSR V2 · INT8",
+    "kind": "multi-reference",
     "format": "INT8",
     "repo": "Lightricks/LTX-2.5",
     "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9",
@@ -299,11 +294,39 @@
       {
         "path": "diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
         "bytes": 21504034224,
-        "sha256": null
+        "sha256": "c4279eeff115cbeaca494bd2183e7d768c38fe85a184dc6afbb7159157c44334"
       }
     ],
     "bytes": 21504034224,
-    "dependencies": []
+    "dependencies": [
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae",
+      "ltx25-msr-v2"
+    ],
+    "note": "",
+    "family": "ltx25-msr",
+    "model_group": "LTX 2.5 Multiple Subject Reference V2",
+    "quantization": "INT8",
+    "generation_defaults": {
+      "steps": 8,
+      "sampler": "euler_ancestral",
+      "sigmas": [
+        1,
+        0.99375,
+        0.9875,
+        0.98125,
+        0.975,
+        0.909375,
+        0.725,
+        0.421875,
+        0
+      ],
+      "fps": 24,
+      "max_frames": 361,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/03061c18f8a79d26f3c63931dd8e28f5e5d872a6/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Eight-step distilled schedule; optional three-step spatial refinement."
+    }
   },
   {
     "id": "ltx25-gemma-int8",
@@ -317,11 +340,12 @@
       {
         "path": "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
         "bytes": 15372969374,
-        "sha256": null
+        "sha256": "6ce688a0aa98a5fa36a9f1e6c3f42152a498cc2b53ee8c15674c64244f91487f"
       }
     ],
     "bytes": 15372969374,
-    "dependencies": []
+    "dependencies": [],
+    "note": ""
   },
   {
     "id": "ltx25-video-vae",
@@ -335,11 +359,12 @@
       {
         "path": "vae/ltx-2.5-video-vae-bf16.safetensors",
         "bytes": 1472223346,
-        "sha256": null
+        "sha256": "847e14ca7f3355debca0cea4eaa24ac0fbcdf0061da054ac89ca638a869ddba3"
       }
     ],
     "bytes": 1472223346,
-    "dependencies": []
+    "dependencies": [],
+    "note": ""
   },
   {
     "id": "ltx25-audio-vae",
@@ -353,11 +378,12 @@
       {
         "path": "vae/ltx-2.5-audio-vae-bf16.safetensors",
         "bytes": 364866540,
-        "sha256": null
+        "sha256": "c52733d37f6a7fb7949c3dc0fb468c6cb2169e4d836983a73babb9f0d54837a5"
       }
     ],
     "bytes": 364866540,
-    "dependencies": []
+    "dependencies": [],
+    "note": ""
   },
   {
     "id": "seedvr2-vae",
@@ -442,12 +468,12 @@
   },
   {
     "id": "h3-ref-pruned-q3_k_m",
-    "title": "MiniMax H3 Ref2VA Pruned ? Q3_K_M",
+    "title": "MiniMax H3 Ref2VA Pruned · Q3_K_M",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q3_K_M",
-    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "model_group": "MiniMax H3 · Pruned GGUF",
     "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
     "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
     "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
@@ -485,12 +511,12 @@
   },
   {
     "id": "h3-ref-pruned-q4_k_m",
-    "title": "MiniMax H3 Ref2VA Pruned ? Q4_K_M",
+    "title": "MiniMax H3 Ref2VA Pruned · Q4_K_M",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q4_K_M",
-    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "model_group": "MiniMax H3 · Pruned GGUF",
     "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
     "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
     "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
@@ -528,12 +554,12 @@
   },
   {
     "id": "h3-ref-pruned-q4_k_s",
-    "title": "MiniMax H3 Ref2VA Pruned ? Q4_K_S",
+    "title": "MiniMax H3 Ref2VA Pruned · Q4_K_S",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q4_K_S",
-    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "model_group": "MiniMax H3 · Pruned GGUF",
     "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
     "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
     "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
@@ -571,12 +597,12 @@
   },
   {
     "id": "h3-ref-pruned-q5_k_m",
-    "title": "MiniMax H3 Ref2VA Pruned ? Q5_K_M",
+    "title": "MiniMax H3 Ref2VA Pruned · Q5_K_M",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q5_K_M",
-    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "model_group": "MiniMax H3 · Pruned GGUF",
     "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
     "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
     "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
@@ -614,12 +640,12 @@
   },
   {
     "id": "h3-ref-pruned-q5_k_s",
-    "title": "MiniMax H3 Ref2VA Pruned ? Q5_K_S",
+    "title": "MiniMax H3 Ref2VA Pruned · Q5_K_S",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q5_K_S",
-    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "model_group": "MiniMax H3 · Pruned GGUF",
     "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
     "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
     "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
@@ -657,12 +683,12 @@
   },
   {
     "id": "h3-ref-pruned-q6_k",
-    "title": "MiniMax H3 Ref2VA Pruned ? Q6_K",
+    "title": "MiniMax H3 Ref2VA Pruned · Q6_K",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q6_K",
-    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "model_group": "MiniMax H3 · Pruned GGUF",
     "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
     "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
     "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
@@ -700,12 +726,12 @@
   },
   {
     "id": "h3-ref-pruned-q8_0",
-    "title": "MiniMax H3 Ref2VA Pruned ? Q8_0",
+    "title": "MiniMax H3 Ref2VA Pruned · Q8_0",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q8_0",
-    "model_group": "MiniMax H3 ? Pruned GGUF",
+    "model_group": "MiniMax H3 · Pruned GGUF",
     "repo": "Abiray/MiniMax-H3-Pruned-GGUF",
     "revision": "76061e7fe4866dbc68903bfdf852430f0f1b2487",
     "directory": "video/Abiray-MiniMax-H3-Pruned-GGUF",
@@ -743,12 +769,12 @@
   },
   {
     "id": "h3-ref-full-q3_k_m",
-    "title": "MiniMax H3 Ref2VA Full ? Q3_K_M",
+    "title": "MiniMax H3 Ref2VA Full · Q3_K_M",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q3_K_M",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -786,12 +812,12 @@
   },
   {
     "id": "h3-ref-full-q3_k_s",
-    "title": "MiniMax H3 Ref2VA Full ? Q3_K_S",
+    "title": "MiniMax H3 Ref2VA Full · Q3_K_S",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q3_K_S",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -829,12 +855,12 @@
   },
   {
     "id": "h3-ref-full-q4_0",
-    "title": "MiniMax H3 Ref2VA Full ? Q4_0",
+    "title": "MiniMax H3 Ref2VA Full · Q4_0",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q4_0",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -872,12 +898,12 @@
   },
   {
     "id": "h3-ref-full-q4_k_m",
-    "title": "MiniMax H3 Ref2VA Full ? Q4_K_M",
+    "title": "MiniMax H3 Ref2VA Full · Q4_K_M",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q4_K_M",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -915,12 +941,12 @@
   },
   {
     "id": "h3-ref-full-q4_k_s",
-    "title": "MiniMax H3 Ref2VA Full ? Q4_K_S",
+    "title": "MiniMax H3 Ref2VA Full · Q4_K_S",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q4_K_S",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -958,12 +984,12 @@
   },
   {
     "id": "h3-ref-full-q5_0",
-    "title": "MiniMax H3 Ref2VA Full ? Q5_0",
+    "title": "MiniMax H3 Ref2VA Full · Q5_0",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q5_0",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -1001,12 +1027,12 @@
   },
   {
     "id": "h3-ref-full-q5_k_m",
-    "title": "MiniMax H3 Ref2VA Full ? Q5_K_M",
+    "title": "MiniMax H3 Ref2VA Full · Q5_K_M",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q5_K_M",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -1044,12 +1070,12 @@
   },
   {
     "id": "h3-ref-full-q5_k_s",
-    "title": "MiniMax H3 Ref2VA Full ? Q5_K_S",
+    "title": "MiniMax H3 Ref2VA Full · Q5_K_S",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q5_K_S",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -1087,12 +1113,12 @@
   },
   {
     "id": "h3-ref-full-q6_k",
-    "title": "MiniMax H3 Ref2VA Full ? Q6_K",
+    "title": "MiniMax H3 Ref2VA Full · Q6_K",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q6_K",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -1130,12 +1156,12 @@
   },
   {
     "id": "h3-ref-full-q8_0",
-    "title": "MiniMax H3 Ref2VA Full ? Q8_0",
+    "title": "MiniMax H3 Ref2VA Full · Q8_0",
     "kind": "reference-video",
     "family": "minimax-h3-ref2va",
     "format": "GGUF",
     "quantization": "Q8_0",
-    "model_group": "MiniMax H3 ? Full GGUF",
+    "model_group": "MiniMax H3 · Full GGUF",
     "repo": "Abiray/MiniMax-H3-GGUF",
     "revision": "9fc3454d3ebe1be1bade862cd4a5011f325a22cb",
     "directory": "video/Abiray-MiniMax-H3-GGUF",
@@ -1170,5 +1196,345 @@
         }
       }
     }
+  },
+  {
+    "id": "ltx25-msr-q3_k_m",
+    "title": "LTX 2.5 MSR V2 · Q3_K_M",
+    "kind": "multi-reference",
+    "family": "ltx25-msr",
+    "model_group": "LTX 2.5 Multiple Subject Reference V2",
+    "quantization": "Q3_K_M",
+    "format": "GGUF",
+    "repo": "Abiray/LTX-2.5-Distilled-GGUF",
+    "revision": "7b0c2025441f1bf12c18eac375ad21f5e3d3c9e0",
+    "directory": "video/Abiray-LTX-2.5-Distilled-GGUF",
+    "files": [
+      {
+        "path": "LTX-2.5-Distilled-Q3_K_M.gguf",
+        "bytes": 12923897280,
+        "sha256": "f593274e67dc0c4714240539c57b76fc6ecac2256fbab9fb32b2a0f72b8d3dea"
+      }
+    ],
+    "bytes": 12923897280,
+    "dependencies": [
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae",
+      "ltx25-msr-v2"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "sampler": "euler_ancestral",
+      "sigmas": [
+        1,
+        0.99375,
+        0.9875,
+        0.98125,
+        0.975,
+        0.909375,
+        0.725,
+        0.421875,
+        0
+      ],
+      "fps": 24,
+      "max_frames": 361,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/03061c18f8a79d26f3c63931dd8e28f5e5d872a6/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Eight-step distilled schedule; optional three-step spatial refinement."
+    },
+    "note": ""
+  },
+  {
+    "id": "ltx25-msr-q3_k_s",
+    "title": "LTX 2.5 MSR V2 · Q3_K_S",
+    "kind": "multi-reference",
+    "family": "ltx25-msr",
+    "model_group": "LTX 2.5 Multiple Subject Reference V2",
+    "quantization": "Q3_K_S",
+    "format": "GGUF",
+    "repo": "Abiray/LTX-2.5-Distilled-GGUF",
+    "revision": "7b0c2025441f1bf12c18eac375ad21f5e3d3c9e0",
+    "directory": "video/Abiray-LTX-2.5-Distilled-GGUF",
+    "files": [
+      {
+        "path": "LTX-2.5-Distilled-Q3_K_S.gguf",
+        "bytes": 12649891264,
+        "sha256": "a71473c8b7fe68151d7c117cd245d764aae309822417d1382287d7915335e808"
+      }
+    ],
+    "bytes": 12649891264,
+    "dependencies": [
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae",
+      "ltx25-msr-v2"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "sampler": "euler_ancestral",
+      "sigmas": [
+        1,
+        0.99375,
+        0.9875,
+        0.98125,
+        0.975,
+        0.909375,
+        0.725,
+        0.421875,
+        0
+      ],
+      "fps": 24,
+      "max_frames": 361,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/03061c18f8a79d26f3c63931dd8e28f5e5d872a6/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Eight-step distilled schedule; optional three-step spatial refinement."
+    },
+    "note": ""
+  },
+  {
+    "id": "ltx25-msr-q4_k_m",
+    "title": "LTX 2.5 MSR V2 · Q4_K_M",
+    "kind": "multi-reference",
+    "family": "ltx25-msr",
+    "model_group": "LTX 2.5 Multiple Subject Reference V2",
+    "quantization": "Q4_K_M",
+    "format": "GGUF",
+    "repo": "Abiray/LTX-2.5-Distilled-GGUF",
+    "revision": "7b0c2025441f1bf12c18eac375ad21f5e3d3c9e0",
+    "directory": "video/Abiray-LTX-2.5-Distilled-GGUF",
+    "files": [
+      {
+        "path": "LTX-2.5-Distilled-Q4_K_M.gguf",
+        "bytes": 15687639488,
+        "sha256": "0f51eb0d82b19bddbfb3b0371a65217844ea03750f27dd733528f22152e0e0d0"
+      }
+    ],
+    "bytes": 15687639488,
+    "dependencies": [
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae",
+      "ltx25-msr-v2"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "sampler": "euler_ancestral",
+      "sigmas": [
+        1,
+        0.99375,
+        0.9875,
+        0.98125,
+        0.975,
+        0.909375,
+        0.725,
+        0.421875,
+        0
+      ],
+      "fps": 24,
+      "max_frames": 361,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/03061c18f8a79d26f3c63931dd8e28f5e5d872a6/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Eight-step distilled schedule; optional three-step spatial refinement."
+    },
+    "note": ""
+  },
+  {
+    "id": "ltx25-msr-q4_k_s",
+    "title": "LTX 2.5 MSR V2 · Q4_K_S",
+    "kind": "multi-reference",
+    "family": "ltx25-msr",
+    "model_group": "LTX 2.5 Multiple Subject Reference V2",
+    "quantization": "Q4_K_S",
+    "format": "GGUF",
+    "repo": "Abiray/LTX-2.5-Distilled-GGUF",
+    "revision": "7b0c2025441f1bf12c18eac375ad21f5e3d3c9e0",
+    "directory": "video/Abiray-LTX-2.5-Distilled-GGUF",
+    "files": [
+      {
+        "path": "LTX-2.5-Distilled-Q4_K_S.gguf",
+        "bytes": 15327650240,
+        "sha256": "91ad1ccc9c909a2e021b20c3951b7a6299914bc35a2da07c5b4bd44024002c4b"
+      }
+    ],
+    "bytes": 15327650240,
+    "dependencies": [
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae",
+      "ltx25-msr-v2"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "sampler": "euler_ancestral",
+      "sigmas": [
+        1,
+        0.99375,
+        0.9875,
+        0.98125,
+        0.975,
+        0.909375,
+        0.725,
+        0.421875,
+        0
+      ],
+      "fps": 24,
+      "max_frames": 361,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/03061c18f8a79d26f3c63931dd8e28f5e5d872a6/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Eight-step distilled schedule; optional three-step spatial refinement."
+    },
+    "note": ""
+  },
+  {
+    "id": "ltx25-msr-q5_k_m",
+    "title": "LTX 2.5 MSR V2 · Q5_K_M",
+    "kind": "multi-reference",
+    "family": "ltx25-msr",
+    "model_group": "LTX 2.5 Multiple Subject Reference V2",
+    "quantization": "Q5_K_M",
+    "format": "GGUF",
+    "repo": "Abiray/LTX-2.5-Distilled-GGUF",
+    "revision": "7b0c2025441f1bf12c18eac375ad21f5e3d3c9e0",
+    "directory": "video/Abiray-LTX-2.5-Distilled-GGUF",
+    "files": [
+      {
+        "path": "LTX-2.5-Distilled-Q5_K_M.gguf",
+        "bytes": 18116120000,
+        "sha256": "9cc79799a7416be3aaa749c79879ca9a617dfab7d81400d0b24c01c94091039a"
+      }
+    ],
+    "bytes": 18116120000,
+    "dependencies": [
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae",
+      "ltx25-msr-v2"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "sampler": "euler_ancestral",
+      "sigmas": [
+        1,
+        0.99375,
+        0.9875,
+        0.98125,
+        0.975,
+        0.909375,
+        0.725,
+        0.421875,
+        0
+      ],
+      "fps": 24,
+      "max_frames": 361,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/03061c18f8a79d26f3c63931dd8e28f5e5d872a6/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Eight-step distilled schedule; optional three-step spatial refinement."
+    },
+    "note": ""
+  },
+  {
+    "id": "ltx25-msr-q6_k",
+    "title": "LTX 2.5 MSR V2 · Q6_K",
+    "kind": "multi-reference",
+    "family": "ltx25-msr",
+    "model_group": "LTX 2.5 Multiple Subject Reference V2",
+    "quantization": "Q6_K",
+    "format": "GGUF",
+    "repo": "Abiray/LTX-2.5-Distilled-GGUF",
+    "revision": "7b0c2025441f1bf12c18eac375ad21f5e3d3c9e0",
+    "directory": "video/Abiray-LTX-2.5-Distilled-GGUF",
+    "files": [
+      {
+        "path": "LTX-2.5-Distilled-Q6_K.gguf",
+        "bytes": 18624033216,
+        "sha256": "ee8835ff8f11e4f59fa4be7bf31b1200172659364e724de444d790ddf4869a58"
+      }
+    ],
+    "bytes": 18624033216,
+    "dependencies": [
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae",
+      "ltx25-msr-v2"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "sampler": "euler_ancestral",
+      "sigmas": [
+        1,
+        0.99375,
+        0.9875,
+        0.98125,
+        0.975,
+        0.909375,
+        0.725,
+        0.421875,
+        0
+      ],
+      "fps": 24,
+      "max_frames": 361,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/03061c18f8a79d26f3c63931dd8e28f5e5d872a6/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Eight-step distilled schedule; optional three-step spatial refinement."
+    },
+    "note": ""
+  },
+  {
+    "id": "ltx25-msr-q8_0",
+    "title": "LTX 2.5 MSR V2 · Q8_0",
+    "kind": "multi-reference",
+    "family": "ltx25-msr",
+    "model_group": "LTX 2.5 Multiple Subject Reference V2",
+    "quantization": "Q8_0",
+    "format": "GGUF",
+    "repo": "Abiray/LTX-2.5-Distilled-GGUF",
+    "revision": "7b0c2025441f1bf12c18eac375ad21f5e3d3c9e0",
+    "directory": "video/Abiray-LTX-2.5-Distilled-GGUF",
+    "files": [
+      {
+        "path": "LTX-2.5-Distilled-Q8_0.gguf",
+        "bytes": 23604666816,
+        "sha256": "524a1410c6476d942ed00a181d5cacd6f748aae4400c08298b2ab29eb32c26af"
+      }
+    ],
+    "bytes": 23604666816,
+    "dependencies": [
+      "ltx25-gemma-int8",
+      "ltx25-video-vae",
+      "ltx25-audio-vae",
+      "ltx25-msr-v2"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "sampler": "euler_ancestral",
+      "sigmas": [
+        1,
+        0.99375,
+        0.9875,
+        0.98125,
+        0.975,
+        0.909375,
+        0.725,
+        0.421875,
+        0
+      ],
+      "fps": 24,
+      "max_frames": 361,
+      "source": "https://github.com/liconstudio/ComfyUI-LTX2.5-MSR/blob/03061c18f8a79d26f3c63931dd8e28f5e5d872a6/LTX2.5-MSR-sample-workflow-V2.json",
+      "note": "Eight-step distilled schedule; optional three-step spatial refinement."
+    },
+    "note": ""
+  },
+  {
+    "id": "ltx25-spatial-upscaler",
+    "title": "LTX 2.5 · 2× latent upscaler",
+    "kind": "video-support",
+    "format": "BF16",
+    "repo": "Lightricks/LTX-2.5",
+    "revision": "5e6e71018ee1756ed329b697a7b4aedc934dfce9",
+    "directory": "video/Lightricks-LTX-2.5",
+    "files": [
+      {
+        "path": "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        "bytes": 995778752,
+        "sha256": "eb5a71fe4068ee87ccdb1c3aa635e547ca76bd2d30ae20ae889f2c325c0677e8"
+      }
+    ],
+    "bytes": 995778752,
+    "dependencies": []
   }
 ]

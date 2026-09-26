@@ -56,6 +56,14 @@ class ReferencePromptTests(unittest.TestCase):
         self.assertIn('Follow the movement',build_reference_prompt(self.request))
         self.assertEqual(reference_instructions(self.request),'')
 
+    def test_face_replacement_prioritizes_original_camera_after_enhancement(self):
+        self.request.update(camera_azimuth=90, camera_elevation=60, warp_video='stale-camera.mp4')
+        result = build_reference_prompt(self.request, 'Zoom in and move the camera.')
+        self.assertGreater(result.index('Scene preservation takes priority'), result.index('Zoom in'))
+        self.assertIn('exact source camera angle', result)
+        self.assertNotIn('supplied camera guide', result)
+        self.assertNotIn('crossview', result.lower())
+
     def test_no_detected_people_uses_first_reference(self):
         self.request.update(source_people=[],person_assignments={})
         self.assertIn('Replace the main person with the identity in <Picture 1>',build_reference_prompt(self.request))

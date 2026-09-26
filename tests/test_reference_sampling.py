@@ -47,6 +47,19 @@ class ReferenceSamplingTests(unittest.TestCase):
         self.assertEqual(turbo['lora_id'],'h3-ref-turbo-lora')
         self.assertNotIn('lora_id',reference_sampling(entry('h3-ref-turbo-int8')))
 
+    def test_every_reference_quantization_uses_its_own_schedule(self):
+        items = [item for item in catalog() if item.get('family') == 'minimax-h3-ref2va']
+        self.assertEqual(len(items), 21)
+        for item in items:
+            with self.subTest(model=item['id']):
+                expected = 8 if item['id'] == 'h3-ref-turbo-int8' else (
+                    25 if item['id'].startswith(('h3-ref-full-', 'h3-ref-eros-')) else 20)
+                profile = reference_sampling(item)
+                self.assertEqual(profile['steps'], expected)
+                self.assertEqual(item['generation_defaults']['steps'], expected)
+                self.assertTrue(profile['source'].startswith('https://'))
+                self.assertEqual(reference_sampling(item, steps=11)['steps'], 11)
+
     def test_new_gguf_variants_are_pinned_with_shared_companions(self):
         added=[item for item in catalog() if item['id'].startswith(('h3-ref-pruned-','h3-ref-full-'))]
         self.assertEqual(len(added),17)

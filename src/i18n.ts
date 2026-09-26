@@ -1,4 +1,5 @@
 export const en = {
+  downloading_models:'Downloading model files...',
   settings:'Settings',chooseModel:'Choose model',decoding:'Decoding image…',
   input:'Input images', result:'Result', drop:'Drop images here', uploadHint:'Up to 10 images · Optional', upload:'Select files',
   empty:'Your image will appear here', prompt:'Prompt', placeholder:'Describe what to generate or edit…', enhance:'Enhance prompt',
@@ -12,7 +13,7 @@ export const en = {
   download:'Download PNG', metadata:'Image details', editResult:'Use for editing', preview:'View full image', close:'Close', remove:'Remove image',
   clear:'Clear images', left:'Move earlier', right:'Move later', local:'Runs on this computer', history:'Saved images', openFolder:'Open images folder',
   retry:'Retry', saved:'Image saved', editMode:'Editing', createMode:'Text to image', uploadBusy:'Uploading images…',
-  maxImages:'You can use up to 10 input images.', enterPrompt:'Enter a prompt first.', modelsMissing:'A required model is not installed. Open Settings to download it.',
+  maxImages:'You can use up to 10 input images.', enterPrompt:'Enter a prompt first.', modelsMissing:'Missing model files download automatically when you generate.',
   help:'How to use', helpText:'Write a prompt to create an image. Add 1–10 images to edit or combine them, and refer to each image by its number. For transparent output, use the prompt format below.',
   transparent:'This is an RGBA image with transparency. [Describe your image]. The image has alpha channel and the background is transparent.',
   applyTransparent:'Use transparent image prompt', keyboard:'Ctrl + Enter to generate', generation:'Generation', details:'Details',
@@ -25,6 +26,7 @@ export const en = {
 };
 export type TextKey = keyof typeof en;
 export const he: Record<TextKey,string> = {
+  downloading_models:'מוריד את קובצי המודל...',
   settings:'הגדרות',chooseModel:'בחירת מודל',decoding:'מפענח את התמונה…',
   input:'תמונות קלט',result:'תוצאה',drop:'גררו תמונות לכאן',uploadHint:'עד 10 תמונות · לא חובה',upload:'בחירת קבצים',empty:'התמונה תופיע כאן',
   prompt:'פרומפט',placeholder:'תארו מה ליצור או לשנות בתמונה…',enhance:'שיפור הפרומפט',generate:'יצירת תמונה',cancel:'ביטול',rewritten:'הפרומפט המשופר',
@@ -35,7 +37,7 @@ export const he: Record<TextKey,string> = {
   fullPrompt:'הפרומפט המלא',reference:'תוצאה לדוגמה',download:'הורדת PNG',metadata:'פרטי התמונה',editResult:'שימוש לעריכה',preview:'פתיחת תמונה מלאה',close:'סגירה',remove:'הסרת תמונה',
   clear:'ניקוי תמונות',left:'הזזה אחורה',right:'הזזה קדימה',local:'פועל במחשב הזה',history:'תמונות שנשמרו',openFolder:'פתיחת תיקיית התמונות',retry:'ניסיון נוסף',saved:'התמונה נשמרה',
   editMode:'עריכת תמונה',createMode:'יצירה מטקסט',uploadBusy:'מעלה תמונות…',maxImages:'אפשר להשתמש בעד 10 תמונות קלט.',enterPrompt:'יש להזין פרומפט.',
-  modelsMissing:'חסר מודל נדרש. פתחו את ההגדרות כדי להוריד אותו.',help:'איך משתמשים',
+  modelsMissing:'קובצי מודל חסרים יירדו אוטומטית בתחילת היצירה.',help:'איך משתמשים',
   helpText:'כתבו פרומפט ליצירת תמונה. הוסיפו 1–10 תמונות כדי לערוך או לשלב אותן, והתייחסו אליהן לפי המספר. לתמונה שקופה, השתמשו בנוסח הבא.',
   transparent:en.transparent,applyTransparent:'שימוש בפרומפט לתמונה שקופה',keyboard:'Ctrl + Enter ליצירה',generation:'יצירה',details:'פרטים',steps:'שלבים',
   precisionHint:'גדלים שאינם כפולה של 32 נוצרים בגודל הנתמך הקרוב ומותאמים לגודל המדויק שביקשתם.',promptLoaded:'הדוגמה נטענה',noHistory:'התמונות שיושלמו יופיעו כאן.',
@@ -45,6 +47,7 @@ export const he: Record<TextKey,string> = {
   originalPrompt:'הפרומפט המקורי',reuseSettings:'שימוש בהגדרות האלה',sourceCount:'תמונות קלט',waiting:'טוען…',
 };
 export const zh: Record<TextKey,string> = {
+  downloading_models:'正在下载模型文件...',
   settings:'设置',chooseModel:'选择模型',decoding:'正在解码图片…',
   input:'输入图片',result:'生成结果',drop:'拖放图片到这里',uploadHint:'最多 10 张图片 · 可选',upload:'选择文件',empty:'生成的图片会显示在这里',prompt:'提示词',
   placeholder:'描述想生成或编辑的内容…',enhance:'智能改写提示词',generate:'生成图片',cancel:'取消',rewritten:'改写结果',rewriteEmpty:'生成后，改写提示词会显示在这里。',
@@ -53,7 +56,7 @@ export const zh: Record<TextKey,string> = {
   width:'宽度',height:'高度',customOption:'自定义',folder:'图片保存目录',examples:'示例',allExamples:'显示所有示例',fewerExamples:'收起示例',useExample:'使用此示例',
   exampleSource:'官方 Space 的参考图片',fullPrompt:'完整提示词',reference:'参考结果',download:'下载 PNG',metadata:'图片详情',editResult:'用于编辑',preview:'查看完整图片',
   close:'关闭',remove:'移除图片',clear:'清空图片',left:'向前移动',right:'向后移动',local:'在此电脑上运行',history:'已保存的图片',openFolder:'打开图片文件夹',retry:'重试',saved:'图片已保存',
-  editMode:'图片编辑',createMode:'文生图',uploadBusy:'正在上传图片…',maxImages:'最多支持 10 张输入图片。',enterPrompt:'请输入提示词。',modelsMissing:'模型尚未就绪。运行 Download Models.bat 完成或修复下载。',
+  editMode:'图片编辑',createMode:'文生图',uploadBusy:'正在上传图片…',maxImages:'最多支持 10 张输入图片。',enterPrompt:'请输入提示词。',modelsMissing:'开始生成时会自动下载所需的模型文件。',
   help:'使用说明',helpText:'输入提示词生成图片。添加 1–10 张图片进行编辑或组合，并按编号引用。生成透明图片时，请使用以下提示词格式。',
   transparent:'这是一张带有透明度的RGBA图像。[描述你的图片]。该图像具有alpha通道，背景是透明的。',applyTransparent:'使用透明图片提示词',keyboard:'Ctrl + Enter 生成',generation:'生成',details:'详情',
   steps:'步数',precisionHint:'不是 32 倍数的尺寸先按兼容尺寸生成，再缩放至指定大小。',promptLoaded:'示例已加载',noHistory:'完成的图片保存在这里。',language:'语言',copied:'已复制',copy:'复制提示词',

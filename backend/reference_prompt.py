@@ -47,6 +47,10 @@ def build_reference_prompt(request: dict, instructions: str | None = None, *, re
         base += '\n\nAdditional instructions: ' + extra
     if workflow == 'faceswap':
         base += '\n\nThe selected person assignments take priority over any conflicting identity instructions.'
+        base += (' Scene preservation takes priority over any conflicting additional instructions: '
+                 'retain the exact source camera angle, camera movement, framing, perspective, '
+                 'shot boundaries, subject positions and background. Do not introduce a new '
+                 'viewpoint, zoom, pan, crop, cut or camera motion. Change identities only.')
         return render_reference_prompt(base, request)
     return base
 

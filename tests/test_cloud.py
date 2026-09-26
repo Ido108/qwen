@@ -22,6 +22,11 @@ class CloudTests(unittest.TestCase):
             self.assertNotIn('request',safe)
         self.assertEqual(cloud.progress_details({'output':'Loading model'}),{})
 
+    def test_download_progress_survives_cloud_transport(self):
+        progress={'stage':'downloading_models','stage_started_at':1,
+                  'download_completed_bytes':100,'download_total_bytes':200}
+        self.assertEqual(cloud.progress_details({'output':progress}),progress)
+
     def test_remote_preview_is_saved_while_generation_continues(self):
         from PIL import Image
         with tempfile.TemporaryDirectory() as folder:

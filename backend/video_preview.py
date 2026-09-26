@@ -1,4 +1,4 @@
-"""Small animated previews of actual H3 denoising estimates, without a second VAE."""
+"""Small animated previews of denoising estimates, without a second VAE."""
 from __future__ import annotations
 
 import logging
@@ -23,7 +23,7 @@ class LiveVideoPreview:
             # ComfyUI's sampler callback unpacks joint video/audio latents.
             video = estimate.unbind()[0] if estimate.is_nested else estimate
             if video.ndim != 5 or video.shape[1] != len(self.factors):
-                raise ValueError('The sampler did not provide H3 video latents.')
+                raise ValueError('The sampler did not provide compatible video latents.')
             count = min(12, video.shape[2])
             indices = torch.linspace(0, video.shape[2]-1, count, device=video.device).round().long()
             # Copy only a few latent frames. Never decode the full clip or move

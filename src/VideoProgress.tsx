@@ -1,5 +1,6 @@
 import {Check,Loader2} from 'lucide-react';
 import type {SavedJob} from './JobQueue';
+import {ModelDownloadProgress} from './ModelDownloadProgress';
 
 const time=(seconds:number)=>seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`;
 export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
@@ -11,11 +12,12 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
   const step=job.step||0;
   const measured=generating?step:job.stage==='decoding_source'?job.input_frames_done:undefined;
   const maximum=generating?job.total_steps:job.input_frames_total;
+  if(job.stage==='downloading_models')return <div className="reference-job-progress" role="status"><div className="video-progress-heading"><Loader2 className="spin" size={18}/><strong>{job.message}</strong></div><ModelDownloadProgress job={job}/><div className="video-progress-times"><span>{time(total)} elapsed</span><span>Generation starts after the download finishes.</span></div></div>;
   return <div className="reference-job-progress" role="status" aria-live="polite">
     <ol className="video-stage-list" aria-label="Video creation stages">{['Prepare inputs','Generate','Decode','Save'].map((name,index)=><li key={name} className={index===phase?'current':index<phase?'done':''}>{index<phase?<Check size={12}/>:<span>{index+1}</span>}{name}</li>)}</ol>
     <div className="video-progress-heading"><Loader2 className="spin" size={18}/><strong>{job.message||'Waiting in queue'}</strong>{generating?<span>{step} / {job.total_steps} steps</span>:null}</div>
     <progress aria-label="Current stage progress" max={maximum||1} value={measured}/>
     <div className="video-progress-times"><span>{time(stageTime)} this stage</span><span>{time(total)} total</span></div>
-    {generating&&!step?<small>The first preview appears after the first generation step finishes.</small>:null}
+    {generating&&!step?<small>{job.preview_unavailable?'A live preview is unavailable for this run.':'The first preview appears after the first generation step finishes.'}</small>:null}
   </div>;
 }

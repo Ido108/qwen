@@ -13,10 +13,11 @@ MODELS_DIR = DATA_DIR / 'models'
 JOBS_DIR = DATA_DIR / 'jobs'
 UPLOADS_DIR = DATA_DIR / 'uploads'
 VIDEO_UPLOADS_DIR = UPLOADS_DIR / 'videos'
+AUDIO_UPLOADS_DIR = UPLOADS_DIR / 'audio'
 OUTPUTS_DIR = DATA_DIR / 'images'
 VIDEOS_DIR = DATA_DIR / 'videos'
 EXAMPLES_DIR = APP_DIR / 'public' / 'examples'
-for directory in (JOBS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, OUTPUTS_DIR, VIDEOS_DIR):
+for directory in (JOBS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, AUDIO_UPLOADS_DIR, OUTPUTS_DIR, VIDEOS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 def read_json(path: Path):
@@ -218,6 +219,15 @@ def resolve_video(video_id: str) -> Path:
     if path.suffix.lower() not in {'.mp4', '.mov', '.mkv', '.webm'}:
         raise ValueError('Unsupported input video.')
     return path
+
+def resolve_audio(audio_id: str) -> Path:
+    path = (AUDIO_UPLOADS_DIR / audio_id).resolve()
+    if not path.is_relative_to(AUDIO_UPLOADS_DIR.resolve()) or not path.is_file():
+        raise ValueError('Voice reference not found. Upload it again.')
+    if path.suffix.lower() not in {'.mp3', '.wav', '.m4a', '.flac', '.ogg'}:
+        raise ValueError('Unsupported audio file.')
+    return path
+
 
 def model_status() -> dict:
     manifest_path = DATA_DIR / 'model-manifest.json'

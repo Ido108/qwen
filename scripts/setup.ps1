@@ -67,5 +67,5 @@ try {
         @{ data_dir=$dataRoot; runtime_dir=$runtimeRoot } | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding UTF8
         @{ fingerprint=(Get-QwenSetupFingerprint); completed_at=(Get-Date -Format o) } | ConvertTo-Json | Set-Content -LiteralPath $setupStamp -Encoding UTF8
     } finally { Pop-Location }
-    Write-Host 'Setup complete. Choose and download models in Settings.'
+    Write-Host 'Setup complete. Choose a model and create; missing model files download automatically.'
 } finally { if ($setupLock) { $setupLock.Dispose() } }

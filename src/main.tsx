@@ -1,8 +1,10 @@
+import {ModelDownloadProgress} from './ModelDownloadProgress';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {UploadCloud, Image as ImageIcon, Download, X, ChevronDown, ChevronLeft, ChevronRight, Sparkles, FolderOpen, Expand, Copy, Check, RotateCcw, CircleHelp, Loader2, Plus, ArrowUpRight, Settings} from 'lucide-react';
 import {ModelSettings,type ModelState} from './ModelSettings';
 import {VideoTab} from './VideoTab';
+import {MultiReferenceTab} from './MultiReferenceTab';
 import {ReferenceTab} from './ReferenceTab';
 import {UpscaleTab} from './UpscaleTab';
 import {ImageSettings,type ImageOptions} from './ImageSettings';
@@ -19,18 +21,19 @@ import {apiRequest} from './session';
 
 type InputImage = {id:string; name:string; url:string};
 type Params = ImageOptions & {model_id:string;text_encoder:string;prompt:string; images:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string};
-type Job = Timing & {id:string; status:string; stage:TextKey; message:string; seed:number; step:number; total_steps:number; request:Params; rewritten_prompt:string; created_at:number; started_at?:number; stage_started_at?:number; finished_at?:number; elapsed_seconds?:number; image_url?:string; width?:number; height?:number; tokens?:number; has_transparency?:boolean};
+type Job = Timing & {download_completed_bytes?:number;download_total_bytes?:number;id:string; status:string; stage:TextKey; message:string; seed:number; step:number; total_steps:number; request:Params; rewritten_prompt:string; created_at:number; started_at?:number; stage_started_at?:number; finished_at?:number; elapsed_seconds?:number; image_url?:string; width?:number; height?:number; tokens?:number; has_transparency?:boolean};
 type Example = {id:string; title:string; title_en:string; prompt:string; prompt_extend:boolean; inputs:string[]; outputs:string[]; category:string};
 type Config = {token:string; models:Record<string,boolean>; output_dir:string; active_job:string|null; device:string};
-type VideoSection = 'create'|'reference'|'upscale';
+type VideoSection = 'create'|'reference'|'multi-reference'|'upscale';
 const defaults:Params = {model_id:'gguf-q8_0',text_encoder:'auto',prompt:'',images:[],enhance:true,custom_size:false,auto_resolution:2048,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:null};
 function loadDraft():Params {try {const saved=JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}');return {...defaults,...saved,steps:saved.auto_resolution===undefined&&saved.steps===40?null:(saved.steps??null)};} catch {return defaults;}}
 function App(){
-  const [tab,setTab]=useState<'image'|'video'|'gallery'>(()=>location.hash==='#gallery'?'gallery':['#video','#reference','#video-to-video','#upscale'].includes(location.hash)?'video':'image');
-  const [videoSection,setVideoSection]=useState<VideoSection>(()=>['#reference','#video-to-video'].includes(location.hash)?'reference':location.hash==='#upscale'?'upscale':'create');
+  const [tab,setTab]=useState<'image'|'video'|'gallery'>(()=>location.hash==='#gallery'?'gallery':['#video','#reference','#video-to-video','#multi-reference','#upscale'].includes(location.hash)?'video':'image');
+  const [videoSection,setVideoSection]=useState<VideoSection>(()=>['#reference','#video-to-video'].includes(location.hash)?'reference':location.hash==='#upscale'?'upscale':location.hash==='#multi-reference'?'multi-reference':'create');
   const [queueOpen,setQueueOpen]=useState(false);
   const [videoRestore,setVideoRestore]=useState<{job:SavedJob;key:number}|null>(null);
   const [referenceRestore,setReferenceRestore]=useState<{job:SavedJob;key:number}|null>(null);
+  const [multiRestore,setMultiRestore]=useState<{job:SavedJob;key:number}|null>(null);
   const [upscaleRestore,setUpscaleRestore]=useState<{job:SavedJob;key:number}|null>(null);
   const [galleryView,setGalleryView]=useState<{job:SavedJob;key:number}|null>(null);
   const [videoBusy,setVideoBusy]=useState(false);
@@ -60,15 +63,16 @@ function App(){
   const validSteps=params.steps===null||(Number.isInteger(params.steps)&&params.steps>=1&&params.steps<=80);
   const chosenEncoder=params.text_encoder==='auto'?(chosenModel?.format==='GGUF'?'encoder-int8':'encoder-bf16'):params.text_encoder;
   const requiredIds=[params.model_id,chosenEncoder,'vae'];
-  const imageReady=modelState?.remote?!!chosenModel?.ready:requiredIds.every(id=>modelState?.models.find(m=>m.id===id)?.installed);
+  const imageReady=modelState?.remote?!!chosenModel?.ready:!!chosenModel;
   const ready=imageReady&&!!chosenModel?.generation_defaults&&validSteps&&(!params.enhance||!!enhancement?.connected);
   const missingModels=modelState?.remote?[]:requiredIds.map(id=>modelState?.models.find(m=>m.id===id)).filter(m=>m&&!m.installed);
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
   const api=useCallback(apiRequest,[]);
   const queue=useQueue(api,!!config);
-  function showVideo(section:VideoSection){setTab('video');setVideoSection(section);window.history.replaceState(null,'',section==='create'?'#video':section==='reference'?'#video-to-video':'#upscale');}
+  function showVideo(section:VideoSection){setTab('video');setVideoSection(section);window.history.replaceState(null,'',section==='create'?'#video':section==='reference'?'#video-to-video':section==='multi-reference'?'#multi-reference':'#upscale');}
   function restoreJob(saved:SavedJob){
     if(saved.kind==='video'){setVideoRestore({job:saved,key:Date.now()});setVideoModel(saved.request.model_id);showVideo('create');}
+    else if(saved.kind==='multi-reference'){setMultiRestore({job:saved,key:Date.now()});showVideo('multi-reference');}
     else if(saved.kind==='reference-video'){setReferenceRestore({job:saved,key:Date.now()});showVideo('reference');}
     else if(saved.kind==='upscale'){setUpscaleRestore({job:saved,key:Date.now()});showVideo('upscale');}
     else{setParams({...defaults,...saved.request,seed:saved.seed,randomize_seed:false});setInputs((saved.request.images||[]).map(inputImage));if(saved.status==='succeeded')setResult(saved as Job);setTab('image');window.history.replaceState(null,'','#images');setNotice('Original prompt, input images, seed and settings loaded.');setError('');}
@@ -78,7 +82,6 @@ function App(){
     const [cfg,ex,old]=await Promise.all([api('/api/config'),api('/api/examples'),api('/api/history')]);
     if(!alive)return; token.current=cfg.token; setConfig(cfg);setModelState(cfg.catalog);setEnhancement(cfg.enhancement); setExamples(ex); setHistory(old);setResult(old[0]||null);
     setParams(p=>({...p,output_dir:p.output_dir||cfg.output_dir}));
-    if(tab==='image'&&!cfg.catalog.models.some((model:{kind:string;ready:boolean})=>model.kind==='image'&&model.ready))setShowSettings(true);
     if(cfg.active_job){
       const active:Job=await api(`/api/jobs/${cfg.active_job}`);if(!alive)return;
       if((active as Job&{kind?:string}).kind&&((active as Job&{kind?:string}).kind!=='image'))return;
@@ -109,7 +112,7 @@ function App(){
   }
   async function generate(){
     if(!validSteps){setError('Enter a whole number of steps from 1 to 80.');return;}
-    if(locked)return;if(!imageReady){setError(t('modelsMissing'));return;}if(params.enhance&&!enhancement?.connected){setShowSettings(true);return;}if(!params.prompt.trim()){setError(t('enterPrompt'));promptRef.current?.focus();return;}
+    if(locked)return;if(!imageReady){setError('Choose an available model first.');return;}if(params.enhance&&!enhancement?.connected){setShowSettings(true);return;}if(!params.prompt.trim()){setError(t('enterPrompt'));promptRef.current?.focus();return;}
     setSubmitting(true);setError('');setNotice('');setJob(null);
     try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,images:inputs.map(i=>i.id)})});setJob(created);setPollId(created.id);setNotice('Added to queue. You can keep editing and send another request.');queue.refresh();}
     catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
@@ -130,11 +133,12 @@ function App(){
     {tab==='video'?<nav className="video-workflow-nav" role="tablist" aria-label="Video tools">
       <button role="tab" aria-selected={videoSection==='create'} onClick={()=>showVideo('create')}>Create video</button>
       <button role="tab" aria-selected={videoSection==='reference'} onClick={()=>showVideo('reference')}>Video to video</button>
+      <button role="tab" aria-selected={videoSection==='multi-reference'} onClick={()=>showVideo('multi-reference')}>Reference images</button>
       <button role="tab" aria-selected={videoSection==='upscale'} onClick={()=>showVideo('upscale')}>Upscale</button>
     </nav>:null}
     <main hidden={tab!=='image'}>
 
-      {config&&!imageReady?<div className="message warning"><span>{t('modelsMissing')}<small className="missing-models" dir="auto">{missingModels.map(m=>m!.title).join(' · ')}</small></span><button className="text-button" onClick={()=>setShowSettings(true)}>{t('settings')}</button></div>:null}
+      {config&&missingModels.length?<div className="notice">Missing model files will download automatically when you generate.</div>:null}
       <div className="image-panels">
         <section className="panel input-panel"><div className="section-heading"><h2>{t('input')}</h2>{inputs.length>0?<><span className="count">{inputs.length}/10</span><button className="text-button" disabled={locked} onClick={()=>setInputs([])}>{t('clear')}</button></>:null}</div>
           <div className={`upload-area ${dragging?'dragging':''} ${inputs.length?'has-images':''}`} onDragOver={e=>{e.preventDefault();if(!locked)setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);upload(Array.from(e.dataTransfer.files));}}>
@@ -144,7 +148,7 @@ function App(){
         </section>
         <section className="panel result-panel"><div className="section-heading"><h2>{t('result')}</h2>{result?<span className="result-size" dir="ltr">{result.width} × {result.height} · PNG</span>:null}{result?<button className="icon-button" onClick={()=>setLightbox(result.image_url!)} aria-label={t('preview')}><Expand size={17}/></button>:null}</div>
           <div className="result-canvas checker">{result?<button className="result-image-button" onClick={()=>setLightbox(result.image_url!)} aria-label={t('preview')}><img className="result-image" src={result.image_url} alt={result.request.prompt}/></button>:<div className="result-empty"><ImageIcon size={42} strokeWidth={1.4}/><span>{t('empty')}</span></div>}
-            {busy?<div className="generation-overlay" aria-live="polite"><Loader2 className="spin" size={28}/><strong>{job?.status==='queued'?'Waiting in queue':job?job.message||t(job.stage):t('starting')}</strong>{job?.stage==='generating'?<><progress value={job.step} max={job.total_steps}/><span>{job.step} / {job.total_steps} · {elapsed} {t('seconds')}</span></>:<span>{elapsed>0?`${stageElapsed}s this step ? ${elapsed}s total`:''}{job?.stage==='rewriting'&&job.tokens?` · ${job.tokens} ${t('tokens')}`:''}</span>}</div>:null}
+            {busy?<div className="generation-overlay" aria-live="polite"><Loader2 className="spin" size={28}/><strong>{job?.status==='queued'?'Waiting in queue':job?job.message||t(job.stage):t('starting')}</strong>{job?.stage==='downloading_models'?<ModelDownloadProgress job={job}/>:job?.stage==='generating'?<><progress value={job.step} max={job.total_steps}/><span>{job.step} / {job.total_steps} · {elapsed} {t('seconds')}</span></>:<span>{elapsed>0?`${stageElapsed}s this step · ${elapsed}s total`:''}{job?.stage==='rewriting'&&job.tokens?` · ${job.tokens} ${t('tokens')}`:''}</span>}</div>:null}
           </div>
           {result?<div className="result-actions"><a className="button secondary" href={`${result.image_url}?download=true`}><Download size={15}/>{t('download')}</a><button disabled={locked} className="text-button" onClick={async()=>{try{setInputs([await api(`/api/jobs/${result.id}/reuse`,{method:'POST'})]);promptRef.current?.focus();}catch(e){setError(String(e));}}}><ArrowUpRight size={16}/>{t('editResult')}</button><a className="icon-button" href={`/api/jobs/${result.id}/metadata`} aria-label={t('metadata')} title={t('metadata')}><Download size={15}/></a></div>:null}{result?<GenerationTiming job={result}/>:null}
         </section>
@@ -174,13 +178,15 @@ function App(){
     </main>
     <VideoTab visible={tab==='video'&&videoSection==='create'} api={api} models={modelState} enhancement={enhancement} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)}/>
     <ReferenceTab visible={tab==='video'&&videoSection==='reference'} api={api} token={token.current} models={modelState} enhancement={enhancement} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
+    <MultiReferenceTab visible={tab==='video'&&videoSection==='multi-reference'} api={api} models={modelState} queue={queue.state} onQueued={queue.refresh} restoreRequest={multiRestore} onView={job=>setGalleryView({job,key:Date.now()})}/>
     <UpscaleTab visible={tab==='video'&&videoSection==='upscale'} api={api} token={token.current} models={modelState} restoreRequest={upscaleRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
     <Gallery api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>
     <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':'content-dialog'}><button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>
       {showSettings?<ModelSettings enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
       {lightbox?<img className="lightbox-image checker" src={lightbox} alt={t('preview')}/>:null}
-      {showHelp&&tab==='video'&&videoSection==='create'?<div className="help-content"><h2>Video help</h2><p>Describe the scene, movement, camera and sounds. FastH3 creates video from text. Choose MiniMax H3 to animate an image or move between a first and last frame.</p><p>Use Standard for more detail or Turbo for faster results. Duration follows the supported model frame grid at 24 fps. You can change the seed, size and output folder in Advanced settings.</p><p>Download models in Settings. Required encoders and VAEs are selected automatically. Enhance prompt uses your Antigravity connection.</p><a href="https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2" target="_blank" rel="noreferrer">FastH3 model details</a><a href="https://huggingface.co/MiniMaxAI/MiniMax-H3" target="_blank" rel="noreferrer">MiniMax H3 model details</a></div>:null}
-      {showHelp&&tab==='video'&&videoSection==='reference'?<div className="help-content"><h2>Video to video help</h2><p>Replace subjects uses ordered person images. Camera view changes the viewpoint without replacing people. Open the optional subject replacement section in Camera view to run both steps in order.</p><p>Choose the model and duration in this tab. Download missing model files in Settings.</p></div>:null}
+      {showHelp&&tab==='video'&&videoSection==='create'?<div className="help-content"><h2>Video help</h2><p>Describe the scene, movement, camera and sounds. FastH3 creates video from text. Choose MiniMax H3 to animate an image or move between a first and last frame.</p><p>Use Standard for more detail or Turbo for faster results. Duration follows the supported model frame grid at 24 fps. You can change the seed, size and output folder in Advanced settings.</p><p>Missing models download automatically when you add a job. Required encoders and VAEs are selected automatically. Enhance prompt uses your Antigravity connection.</p><a href="https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2" target="_blank" rel="noreferrer">FastH3 model details</a><a href="https://huggingface.co/MiniMaxAI/MiniMax-H3" target="_blank" rel="noreferrer">MiniMax H3 model details</a></div>:null}
+      {showHelp&&tab==='video'&&videoSection==='reference'?<div className="help-content"><h2>Video to video help</h2><p>Replace subjects uses ordered person images. Camera view changes the viewpoint without replacing people. Open the optional subject replacement section in Camera view to run both steps in order.</p><p>Choose the model and duration in this tab. Missing model files download automatically when you add a job.</p></div>:null}
+      {showHelp&&tab==='video'&&videoSection==='multi-reference'?<div className="help-content"><h2>Reference images to video</h2><p>Add up to four subjects and an optional background. Describe the action using Image 1, Image 2 and the remaining image labels. Optional voices correspond to the first two images. This creates a new video; use Video to video to edit an existing clip.</p><p>The selected LTX base model, MSR V2 LoRA, text encoder and video/audio files download together. LTX requires access from your Hugging Face account. Double resolution adds a second refinement pass.</p></div>:null}
       {showHelp&&tab==='video'&&videoSection==='upscale'?<div className="help-content"><h2>Upscale help</h2><p>Select a source video, model, and target short-side size. Frame batching and audio options are in Advanced settings.</p></div>:null}
       {showHelp&&tab==='image'?<div className="help-content"><h2>{t('help')}</h2><p>{t('helpText')}</p><blockquote dir="auto">{t('transparent')}</blockquote><button className="button primary" disabled={locked} onClick={()=>{change('prompt',t('transparent'));setShowHelp(false);promptRef.current?.focus();}}>{t('applyTransparent')}</button><a href="https://huggingface.co/spaces/Qwen/Qwen-Image-2.1" target="_blank" rel="noreferrer">Qwen-Image-2.1 · Hugging Face</a></div>:null}
       {activeExample?<div className="example-dialog"><h2>{activeExample.title_en}</h2><p className="muted">{t('exampleSource')}</p>{activeExample.inputs.length?<><h3>{t('input')}</h3><div className="example-inputs">{activeExample.inputs.map((name,i)=><figure key={name}><img src={`/examples/${name}`} alt={`${i+1}`}/><figcaption>{i+1}</figcaption></figure>)}</div></>:null}<h3>{t('reference')}</h3><div className="example-outputs">{activeExample.outputs.map(name=><img key={name} src={`/examples/${name}`} alt={t('reference')} className="checker"/>)}</div><h3>{t('fullPrompt')}</h3><p className="example-prompt" dir="auto">{activeExample.prompt}</p><button className="button primary" disabled={locked} onClick={()=>applyExample(activeExample)}>{t('useExample')}</button></div>:null}

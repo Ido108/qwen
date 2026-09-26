@@ -27,6 +27,9 @@ from .reference_timing import probe_video_duration, resolve_reference_clip
 from . import models, antigravity, cloud
 from .resident_worker import ImageWorker
 
+from .common import AUDIO_UPLOADS_DIR, resolve_audio
+from .ltx_settings import MultiReferenceRequest, required_ltx, media_inputs as ltx_media_inputs
+
 SESSION_TOKEN = secrets.token_urlsafe(32)
 active_lock = threading.Lock()
 active_job: str | None = None
@@ -38,7 +41,7 @@ recent_jobs: deque[str] = deque(maxlen=20)
 queue_paused = False
 shutting_down = False
 image_worker = ImageWorker()
-VIDEO_KINDS={'video','reference-video','upscale'}
+VIDEO_KINDS={'video','reference-video','multi-reference','upscale'}
 
 
 def start_next_locked():
@@ -123,6 +126,8 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
             input_ids = [('image', value) for value in request.get('images', [])]
         elif task_kind == 'video':
             input_ids = [('image', value) for value in (request.get('first_frame'), request.get('last_frame')) if value]
+        elif task_kind == 'multi-reference':
+            input_ids = ltx_media_inputs(request)
         elif task_kind == 'reference-video':
             input_ids = [('video', request['source_video'])]
             if request.get('warp_video'):
@@ -132,7 +137,7 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
             input_ids = [('video', request['source_video'])]
         else:
             raise ValueError('Unknown generation type.')
-        source_paths = [resolve_video(value) if media == 'video' else resolve_image(value)
+        source_paths = [resolve_video(value) if media == 'video' else resolve_audio(value) if media == 'audio' else resolve_image(value)
                         for media, value in input_ids]
         if request.get('enhance'):
             pictures = []
@@ -285,6 +290,7 @@ def run_job(job_id):
         if request.get('execution') == 'runpod':
             run_cloud_job(job_id, request, 'video' if is_video else 'image')
             return
+        prepare_job_models(job_id,request)
         with (directory / 'worker.log').open('a', encoding='utf-8') as log:
             with active_lock:
                 if job_id in cancelled_jobs:
@@ -313,7 +319,10 @@ def run_job(job_id):
                 write_json(directory / 'status.json', job)
     except Exception as exc:
         job = read_job(job_id)
-        if job.get('status') != 'cancelled' and job_id not in cancelled_jobs:
+        if isinstance(exc,models.DownloadCancelled) or job_id in cancelled_jobs:
+            job.update(status='cancelled',stage='cancelled',message=str(exc) or 'Generation cancelled.',finished_at=time.time())
+            write_json(directory/'status.json',job)
+        elif job.get('status') != 'cancelled':
             job.update(status='failed', message=str(exc), finished_at=time.time())
             write_json(directory / 'status.json', job)
     finally:
@@ -325,6 +334,37 @@ def run_job(job_id):
             recent_jobs.appendleft(job_id)
             save_queue_locked()
             start_next_locked()
+
+
+def prepare_job_models(job_id,request):
+    kind=request.get('kind','image')
+    if kind=='video':
+        needed=models.required_video(VideoRequest(**request))
+    elif kind=='multi-reference':
+        needed=required_ltx(MultiReferenceRequest(**request))
+    elif kind=='reference-video':
+        needed=models.required_reference(ReferenceVideoRequest(**request))
+    elif kind=='upscale':
+        needed=models.required_upscale(UpscaleRequest(**request))
+    else:
+        needed=models.required(request['model_id'],request.get('text_encoder','auto'))
+    def cancelled():
+        return job_id in cancelled_jobs or shutting_down
+    def progress(state):
+        if cancelled():
+            return
+        job=read_job(job_id)
+        stage=state.get('stage','preparing')
+        title=state.get('title') or models.entry(state.get('model_id',request['model_id']))['title']
+        message=f'Checking model access: {title}' if stage=='checking_access' else state.get('message') if stage=='waiting_for_download' else (
+            f'Checking model files: {title}' if stage=='verifying' else f'Downloading model files: {title}')
+        if job.get('stage')!='downloading_models':
+            job['stage_started_at']=time.time()
+        job.update(status='running',stage='downloading_models',message=message,
+                   download_completed_bytes=state.get('completed_bytes',0),download_total_bytes=state.get('total_bytes',0))
+        job.setdefault('started_at',time.time())
+        write_json(JOBS_DIR/job_id/'status.json',job)
+    models.ensure_installed(needed,owner=job_id,cancelled=cancelled,progress=progress)
 
 @asynccontextmanager
 async def lifespan(app):
@@ -443,7 +483,7 @@ def catalog_state():
         for item in state['models']:
             if item['kind'] == 'reference-video' and item.get('family') != 'minimax-h3-ref2va':
                 item['ready'] = False
-            elif item['kind'] in ('image', 'video', 'reference-video', 'upscale'):
+            elif item['kind'] in ('image', 'video', 'reference-video', 'multi-reference', 'upscale'):
                 item['ready'] = cloud.ready('image' if item['kind'] == 'image' else 'video')
         state['remote'] = True
     return state
@@ -724,8 +764,6 @@ def generate(body: GenerationRequest):
     remote = cloud.settings()['mode'] == 'runpod'
     if remote and not cloud.ready('image'):
         raise HTTPException(503, 'Connect a RunPod image endpoint and network volume in Settings.')
-    if not remote and not all(models.is_installed(name) for name in needed):
-        raise HTTPException(503, 'A required model is not installed. Open Settings to download it.')
     if body.enhance and not antigravity.status()['connected']:
         raise HTTPException(409, 'Connect Google Account in Settings → Prompt enhancement, or turn off Enhance prompt.')
     try:
@@ -746,8 +784,6 @@ def generate(body: GenerationRequest):
         remote = cloud.settings()['mode'] == 'runpod'
         if remote and not cloud.ready('image'):
             raise HTTPException(503, 'Connect a RunPod image endpoint and network volume in Settings.')
-        if not remote and not all(models.is_installed(name) for name in needed):
-            raise HTTPException(503, 'A required model is not installed. Open Settings to download it.')
         job_id = uuid.uuid4().hex
         data = body.model_dump()
         data['execution'] = 'runpod' if remote else 'local'
@@ -788,8 +824,6 @@ def generate_video(body: VideoRequest):
         remote = cloud.settings()['mode'] == 'runpod'
         if remote and not cloud.ready('video'):
             raise HTTPException(503, 'Connect a RunPod video endpoint and network volume in Settings.')
-        if not remote and not all(models.is_installed(name) for name in needed):
-            raise HTTPException(503,'A required video model is not installed. Open Settings to download it.')
         data=body.model_dump()
         data.update(kind='video',execution='runpod' if remote else 'local',output_dir=str(destination),enhancement_model=antigravity.selected_model())
         if body.randomize_seed:
@@ -845,8 +879,6 @@ def generate_reference_video(body: ReferenceVideoRequest):
         remote = cloud.settings()['mode'] == 'runpod'
         if remote and not cloud.ready('video'):
             raise HTTPException(503, 'Connect a RunPod video endpoint and network volume in Settings.')
-        if not remote and not all(models.is_installed(name) for name in needed):
-            raise HTTPException(503,'Required reference video files are missing. Download them in Settings.')
         selected=models.entry(body.model_id)
         from .reference_sampling import reference_sampling
         sampling=reference_sampling(selected,body.quality,body.steps)
@@ -884,8 +916,6 @@ def generate_upscale(body: UpscaleRequest):
         remote = cloud.settings()['mode'] == 'runpod'
         if remote and not cloud.ready('video'):
             raise HTTPException(503, 'Connect a RunPod video endpoint and network volume in Settings.')
-        if not remote and not all(models.is_installed(name) for name in needed):
-            raise HTTPException(503,'Required upscaling files are missing. Download them in Settings.')
         data=body.model_dump()
         data.update(kind='upscale',execution='runpod' if remote else 'local',output_dir=str(destination))
         job_id=uuid.uuid4().hex
@@ -893,6 +923,68 @@ def generate_upscale(body: UpscaleRequest):
              'created_at':time.time(),'seed':body.seed,'request':data,'rewritten_prompt':'','step':0,'total_steps':0}
         enqueue_locked(job,data)
     return public_job(job)
+
+
+@app.post('/api/multi-reference/generate', status_code=202)
+def generate_multi_reference(body: MultiReferenceRequest):
+    try:
+        required_ltx(body)
+        for media, value in ltx_media_inputs(body.model_dump()):
+            (resolve_audio if media == 'audio' else resolve_image)(value)
+        destination = Path(body.output_dir).expanduser().resolve()
+        destination.mkdir(parents=True, exist_ok=True)
+        probe = destination / ('.write-test-' + uuid.uuid4().hex)
+        probe.write_bytes(b''); probe.unlink()
+        if shutil.disk_usage(destination).free < 1024**3:
+            raise ValueError('The output drive needs at least 1 GB of free space.')
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc))
+    with active_lock:
+        remote = cloud.settings()['mode'] == 'runpod'
+        if remote and not cloud.ready('video'):
+            raise HTTPException(503, 'Connect a RunPod video endpoint and network volume in Settings.')
+        data = body.model_dump()
+        data.update(kind='multi-reference', execution='runpod' if remote else 'local', output_dir=str(destination))
+        if body.randomize_seed:
+            data['seed'] = secrets.randbelow(2147483648)
+        job = {'id': uuid.uuid4().hex, 'kind': 'multi-reference', 'status': 'queued',
+               'stage': 'queued', 'message': 'Waiting in queue', 'created_at': time.time(),
+               'seed': data['seed'], 'request': data, 'step': 0, 'total_steps': 11 if body.refine else 8}
+        enqueue_locked(job, data)
+    return public_job(job)
+
+
+@app.post('/api/audio-uploads')
+async def upload_audio(file: UploadFile = File(...)):
+    suffix = Path(file.filename or '').suffix.lower()
+    if suffix not in {'.mp3', '.wav', '.m4a', '.flac', '.ogg'}:
+        raise HTTPException(400, 'Choose an MP3, WAV, M4A, FLAC or OGG file.')
+    audio_id = uuid.uuid4().hex + suffix
+    destination = AUDIO_UPLOADS_DIR / audio_id
+    try:
+        total = 0
+        with destination.open('wb') as target:
+            while chunk := await file.read(1024*1024):
+                total += len(chunk)
+                if total > 100*1024**2:
+                    raise ValueError('Voice references must be under 100 MB.')
+                target.write(chunk)
+        import av
+        with av.open(str(destination)) as media:
+            stream = next(s for s in media.streams if s.type == 'audio')
+            next(media.decode(stream))
+        return {'id': audio_id, 'name': Path(file.filename).name, 'url': f'/api/audio-uploads/{audio_id}'}
+    except (OSError, ValueError, StopIteration):
+        destination.unlink(missing_ok=True)
+        raise HTTPException(400, 'Could not read this audio. Choose a valid audio file under 100 MB.')
+
+
+@app.get('/api/audio-uploads/{audio_id}')
+def audio_upload(audio_id: str):
+    try:
+        return FileResponse(resolve_audio(audio_id))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
 
 @app.post('/api/jobs/{job_id}/cancel')
 def cancel(job_id: str):
@@ -966,6 +1058,8 @@ def retry_job(job_id: str):
     kind=previous.get('kind','image')
     if kind=='video':
         return generate_video(VideoRequest(**data))
+    if kind=='multi-reference':
+        return generate_multi_reference(MultiReferenceRequest(**data))
     if kind=='reference-video':
         return generate_reference_video(ReferenceVideoRequest(**data))
     if kind=='upscale':

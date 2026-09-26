@@ -72,6 +72,23 @@ class AppTests(unittest.TestCase):
             self.assertEqual(read_json(Path('status.json')), {'step': 2})
             self.assertEqual(read.call_count, 2)
 
+    def test_audio_reference_upload_and_invalid_file_cleanup(self):
+        import wave
+        from backend.common import AUDIO_UPLOADS_DIR, resolve_audio
+        stream=io.BytesIO()
+        with wave.open(stream,'wb') as audio:
+            audio.setnchannels(1);audio.setsampwidth(2);audio.setframerate(16000)
+            audio.writeframes(b'\x00\x00'*1600)
+        response=self.client.post('/api/audio-uploads',files={'file':('voice.wav',stream.getvalue(),'audio/wav')},headers=self.headers)
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(self.client.get(response.json()['url']).content,stream.getvalue())
+        before=set(AUDIO_UPLOADS_DIR.iterdir())
+        bad=self.client.post('/api/audio-uploads',files={'file':('bad.wav',b'not audio','audio/wav')},headers=self.headers)
+        self.assertEqual(bad.status_code,400)
+        self.assertEqual(before,set(AUDIO_UPLOADS_DIR.iterdir()))
+        with self.assertRaises(ValueError):
+            resolve_audio('../voice.wav')
+
     def test_invalid_batch_leaves_no_partial_files(self):
         before = set(UPLOADS_DIR.iterdir())
         response = self.client.post('/api/uploads', files=[('files',('a.png',png(),'image/png')),('files',('bad.png',b'not an image','image/png'))], headers=self.headers)
@@ -118,10 +135,13 @@ class AppTests(unittest.TestCase):
                 saved=json.loads((Path(folder)/job['id']/'request.json').read_text())
                 self.assertEqual((job['total_steps'],saved['steps'],saved['steps_mode'],saved['auto_resolution']),(expected,expected,mode,1024))
 
-    def test_missing_model_does_not_start_job(self):
-        response = self.client.post('/api/generate', json={'prompt':'A flower'}, headers=self.headers)
-        self.assertEqual(response.status_code,503)
-        self.assertFalse(list(JOBS_DIR.iterdir()))
+    def test_missing_model_is_accepted_into_queue(self):
+        from backend import server
+        with tempfile.TemporaryDirectory() as folder, patch.multiple(server,JOBS_DIR=Path(folder),active_job=None,pending_jobs=[]), \
+             patch.object(server.models,'is_installed',return_value=False),patch.object(server,'threading',SimpleNamespace(Thread=Mock())):
+            response=self.client.post('/api/generate',json={'prompt':'A flower','enhance':False,'output_dir':folder},headers=self.headers)
+            self.assertEqual(response.status_code,202,response.text)
+            self.assertEqual(response.json()['status'],'queued')
 
     def test_video_duration_and_canvas_constraints(self):
         from backend.models import required_video
@@ -139,8 +159,11 @@ class AppTests(unittest.TestCase):
                        {'model_id':'h3-gguf-q4','first_frame':'../private.png'}):
             response=self.client.post('/api/video/generate',json={'prompt':'A beach',**values},headers=self.headers)
             self.assertEqual(response.status_code,400,response.text)
-        response=self.client.post('/api/video/generate',json={'prompt':'A beach'},headers=self.headers)
-        self.assertEqual(response.status_code,503,response.text)
+        from backend import server
+        with tempfile.TemporaryDirectory() as folder, patch.multiple(server,JOBS_DIR=Path(folder),active_job=None,pending_jobs=[]), \
+             patch.object(server.models,'is_installed',return_value=False),patch.object(server,'threading',SimpleNamespace(Thread=Mock())):
+            response=self.client.post('/api/video/generate',json={'prompt':'A beach','output_dir':folder},headers=self.headers)
+            self.assertEqual(response.status_code,202,response.text)
 
     def test_video_history_and_download_are_separate_from_images(self):
         job_id='b'*32;directory=JOBS_DIR/job_id;directory.mkdir(exist_ok=True)

@@ -137,6 +137,32 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(server.read_job(first['id'])['request']['steps'], 12)
         self.assertEqual(server.read_job(third['id'])['request']['steps'], 25)
 
+    def test_download_finishes_before_worker_and_queue_keeps_accepting(self):
+        gate=threading.Event(); entered=threading.Event();required=[]
+        def prepare(ids,*,owner,cancelled,progress):
+            required.extend(ids)
+            progress({'model_id':ids[0],'stage':'downloading','completed_bytes':30,'total_bytes':100})
+            entered.set();gate.wait(5)
+        with patch.object(server.models,'ensure_installed',side_effect=prepare):
+            first=self.add('Download first',text_encoder='encoder-bf16')
+            self.assertTrue(entered.wait(2))
+            second=self.add('Still accepts requests',video=True)
+            self.assertEqual(self.started,[])
+            current=server.read_job(first['id'])
+            self.assertEqual(current['stage'],'downloading_models')
+            self.assertEqual(current['download_completed_bytes'],30)
+            self.assertIn('encoder-bf16',required);self.assertNotIn('encoder-int8',required)
+            gate.set();self.finish(first['id']);self.finish(second['id'])
+            eventually(lambda:server.active_job is None)
+
+    def test_failed_or_cancelled_download_never_starts_worker(self):
+        for failure,status in [(RuntimeError('Disk is full'),'failed'),(server.models.DownloadCancelled('Cancelled'),'cancelled')]:
+            with patch.object(server.models,'ensure_installed',side_effect=failure):
+                job=self.add('No worker before verified files')
+                eventually(lambda:server.active_job is None)
+                self.assertNotIn(job['id'],self.started)
+                self.assertEqual(server.read_job(job['id'])['status'],status)
+
     def test_pause_reorder_cancel_and_model_removal_protection(self):
         self.post('/api/queue/control', {'paused': True})
         first, second, third = [self.add(name) for name in ('First', 'Second', 'Third')]

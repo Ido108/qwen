@@ -17,6 +17,7 @@ INSTALL_PATH=DATA_DIR/'installed-models.json'
 lock=threading.RLock()
 transfer={'status':'idle'}
 cancel_event=threading.Event()
+active_download=None
 
 def catalog():
     items=json.loads(CATALOG_PATH.read_text(encoding='utf-8'))
@@ -135,8 +136,8 @@ def state():
 
 class DownloadCancelled(Exception): pass
 
-def install(model_id):
-    from huggingface_hub import hf_hub_download
+def install(model_id, *, include_dependencies=True):
+    from huggingface_hub import hf_hub_download, hf_hub_url, get_hf_file_metadata
     from huggingface_hub.errors import GatedRepoError
     from tqdm.auto import tqdm
     # The app keeps its model cache on the roomy data drive. Hugging Face's
@@ -147,19 +148,28 @@ def install(model_id):
         default_token=Path.home()/'.cache'/'huggingface'/'token'
         if default_token.is_file():
             token=default_token.read_text(encoding='utf-8').strip() or None
-    item=entry(model_id)
-    if item.get('kind')=='enhancer':
+    items=[entry(name) for name in ([model_id] if isinstance(model_id,str) else model_id)]
+    if any(item.get('kind')=='enhancer' for item in items):
         raise ValueError('Prompt enhancement now uses Antigravity. Local prompt models are no longer downloaded.')
     queue=[]
     def add(model):
-        for dep in model['dependencies']:
-            add(entry(dep))
+        if include_dependencies:
+            for dep in model['dependencies']:
+                add(entry(dep))
         if model['id'] not in [m['id'] for m in queue] and not is_installed(model['id']):
             queue.append(model)
-    add(item)
+    for item in items:
+        add(item)
     total=sum(m['bytes'] for m in queue)
     completed=0
     try:
+        # Check access before downloading any of the accompanying large files.
+        for model in queue:
+            if model['repo'] == 'Lightricks/LTX-2.5':
+                if cancel_event.is_set(): raise DownloadCancelled()
+                with lock:
+                    transfer.update(model_id=model['id'], title=model['title'], stage='checking_access')
+                get_hf_file_metadata(hf_hub_url(model['repo'], model['files'][0]['path'], revision=model['revision']), token=token)
         if shutil.disk_usage(DATA_DIR).free<total+2*1024**3:
             raise RuntimeError('Not enough free space on the model drive.')
         for model in queue:
@@ -219,23 +229,91 @@ def install(model_id):
         with lock:
             transfer.update(status='failed',message=str(exc))
 
+def _download_running_locked():
+    return transfer.get('status')=='running' or (active_download is not None and not active_download['done'].is_set())
+
+
+def _begin_download_locked(ids, *, owner=None, include_dependencies=True):
+    """Caller holds lock; retain each result even if the next download starts."""
+    global active_download
+    task={'ids':list(ids),'owner':owner,'done':threading.Event(),'result':None}
+    active_download=task
+    transfer.clear()
+    transfer.update(status='running',requested_id=ids[0],model_id=ids[0],stage='preparing',completed_bytes=0,total_bytes=0)
+    cancel_event.clear()
+    def run():
+        try:
+            install(ids,include_dependencies=include_dependencies)
+        except Exception as exc:
+            with lock:
+                transfer.update(status='failed',message=str(exc))
+        finally:
+            with lock:
+                task['result']=dict(transfer)
+                task['done'].set()
+    threading.Thread(target=run,daemon=True).start()
+    return task
+
+
+def ensure_installed(ids, *, owner, cancelled=lambda:False, progress=lambda state:None):
+    """Download an exact validated dependency set before a queued job starts.
+
+    Manual and automatic transfers share the same lock/cache. A cancelled job
+    stops only its own download; another job can resume the cached partial file.
+    """
+    ids=list(dict.fromkeys(ids))
+    while True:
+        if cancelled():
+            raise DownloadCancelled('Download cancelled.')
+        with lock:
+            missing=[name for name in ids if not is_installed(name)]
+            if not missing:
+                return
+            if _download_running_locked():
+                task=active_download
+            else:
+                task=_begin_download_locked(missing,owner=owner,include_dependencies=False)
+        if task is None:
+            progress({'stage':'waiting_for_download','message':'Waiting for the current model download'})
+            time.sleep(.2)
+            continue
+        while not task['done'].is_set():
+            if cancelled():
+                with lock:
+                    if active_download is task and task['owner']==owner:
+                        cancel_event.set()
+                raise DownloadCancelled('Download cancelled.')
+            with lock:
+                current=dict(transfer) if active_download is task else dict(task['result'] or {})
+            if task['owner']==owner or set(task['ids']).intersection(ids):
+                progress(current)
+            else:
+                progress({'stage':'waiting_for_download','message':'Waiting for the current model download'})
+            task['done'].wait(.2)
+        result=task['result']
+        relevant=task['owner']==owner or (task['owner'] is None and bool(set(task['ids']).intersection(ids)))
+        if relevant and result['status']=='cancelled':
+            raise DownloadCancelled('Model download cancelled. Retry this job to resume.')
+        if relevant and result['status']=='failed':
+            raise RuntimeError(result.get('message','Model download failed. Retry this job to resume.'))
+        if task['owner']==owner and any(not is_installed(name) for name in ids):
+            raise RuntimeError('A required model file could not be verified. Retry this job to resume.')
+
+
 def start_download(model_id):
     if entry(model_id).get('kind')=='enhancer':
         raise ValueError('Prompt enhancement uses Antigravity. Local prompt models are no longer downloaded.')
     entry(model_id)
     with lock:
-        if transfer.get('status')=='running':
+        if _download_running_locked():
             raise ValueError('A model is already downloading.')
-        transfer.clear()
-        transfer.update(status='running',requested_id=model_id,model_id=model_id,stage='preparing',completed_bytes=0,total_bytes=0)
-        cancel_event.clear()
-        threading.Thread(target=install,args=(model_id,),daemon=True).start()
+        _begin_download_locked([model_id])
     return {'ok':True}
 
 def remove(model_id):
     item=entry(model_id)
     with lock:
-        if transfer.get('status')=='running':
+        if _download_running_locked():
             raise ValueError('Wait for the download to finish before removing a model.')
         # Only the pinned, allowlisted files can be removed. Generated images never live here.
         for file in item.get('removal_files',item['files']):

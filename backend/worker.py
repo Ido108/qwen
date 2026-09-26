@@ -40,6 +40,9 @@ def rewrite_prompt(images):
 
 def run():
     update(status='running', stage='loading', message='Loading generation tools…', started_at=time.time())
+    if request.get('kind') == 'multi-reference':
+        from .ltx_worker import run as run_ltx
+        return run_ltx(request, job, directory, update)
     if request.get('kind') in ('video','reference-video'):
         from .video_worker import run as run_video
         return run_video(request, job, directory, update)
