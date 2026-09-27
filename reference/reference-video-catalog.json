@@ -422,7 +422,19 @@
     "bytes": 3391544696,
     "dependencies": [
       "seedvr2-vae"
-    ]
+    ],
+    "model_group": "SeedVR2 3B",
+    "quantization": "FP8",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 3,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
   },
   {
     "id": "seedvr2-3b-q4",
@@ -443,7 +455,19 @@
     "bytes": 1995344224,
     "dependencies": [
       "seedvr2-vae"
-    ]
+    ],
+    "model_group": "SeedVR2 3B",
+    "quantization": "Q4_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 3,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
   },
   {
     "id": "seedvr2-7b-fp8",
@@ -464,7 +488,19 @@
     "bytes": 8239729704,
     "dependencies": [
       "seedvr2-vae"
-    ]
+    ],
+    "model_group": "SeedVR2 7B",
+    "quantization": "FP8",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
   },
   {
     "id": "h3-ref-pruned-q3_k_m",
@@ -1536,5 +1572,894 @@
     ],
     "bytes": 995778752,
     "dependencies": []
+  },
+  {
+    "id": "seedvr2-3b-fp16",
+    "title": "SeedVR2 3B · FP16",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "FP16",
+    "repo": "numz/SeedVR2_comfyUI",
+    "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_3b_fp16.safetensors",
+        "bytes": 6783018808,
+        "sha256": "2fd0e03a3dad24e07086750360727ca437de4ecd456f769856e960ae93e2b304"
+      }
+    ],
+    "bytes": 6783018808,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 3B",
+    "quantization": "FP16",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 3,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-fp16",
+    "title": "SeedVR2 7B · FP16",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "FP16",
+    "repo": "numz/SeedVR2_comfyUI",
+    "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_fp16.safetensors",
+        "bytes": 16479334424,
+        "sha256": "7b8241aa957606ab6cfb66edabc96d43234f9819c5392b44d2492d9f0b0bbe4a"
+      }
+    ],
+    "bytes": 16479334424,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B",
+    "quantization": "FP16",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-sharp-fp16",
+    "title": "SeedVR2 7B Sharp · FP16",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "FP16",
+    "repo": "numz/SeedVR2_comfyUI",
+    "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_sharp_fp16.safetensors",
+        "bytes": 16479334424,
+        "sha256": "20a93e01ff24beaeebc5de4e4e5be924359606c356c9c51509fba245bd2d77dd"
+      }
+    ],
+    "bytes": 16479334424,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B Sharp",
+    "quantization": "FP16",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Sharper detail; may emphasize existing edges."
+  },
+  {
+    "id": "seedvr2-7b-sharp-fp8",
+    "title": "SeedVR2 7B Sharp · FP8",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "FP8",
+    "repo": "numz/SeedVR2_comfyUI",
+    "revision": "09ced71023636e9bc8cdf9cdecfb2625d1e691e8",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_sharp_fp8_e4m3fn.safetensors",
+        "bytes": 8239729704,
+        "sha256": "4261d18fd9c331f4c8f14b475c9148bd8c3f1512240ace55fe31a179e0a960b0"
+      }
+    ],
+    "bytes": 8239729704,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B Sharp",
+    "quantization": "FP8",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Sharper detail; may emphasize existing edges."
+  },
+  {
+    "id": "seedvr2-3b-q3_k_m",
+    "title": "SeedVR2 3B · Q3_K_M",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_3b-Q3_K_M.gguf",
+        "bytes": 1553006944,
+        "sha256": "44b67c65b272cb778cef68c67370a5703a4e1ab09e2cd5b9a8e2a4eb4e3bdb8c"
+      }
+    ],
+    "bytes": 1553006944,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 3B",
+    "quantization": "Q3_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 3,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-3b-q5_k_m",
+    "title": "SeedVR2 3B · Q5_K_M",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_3b-Q5_K_M.gguf",
+        "bytes": 2411661664,
+        "sha256": "1d09f8894d1cc6c8545b8b5d29e337f2acf42cb14a0660539aea52acb0d22b28"
+      }
+    ],
+    "bytes": 2411661664,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 3B",
+    "quantization": "Q5_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 3,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-3b-q6_k",
+    "title": "SeedVR2 3B · Q6_K",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_3b-Q6_K.gguf",
+        "bytes": 2853998944,
+        "sha256": "67e49503a8c7fb1112adf1e15668efbdfee0a3950e8b4921726fd34d8356b0e0"
+      }
+    ],
+    "bytes": 2853998944,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 3B",
+    "quantization": "Q6_K",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 3,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-3b-q8_0",
+    "title": "SeedVR2 3B · Q8_0",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_3b-Q8_0.gguf",
+        "bytes": 3660613984,
+        "sha256": "be0d60083a2051a265eb4b77f28edf494e6db67ffc250216f32b72292e5cbd96"
+      }
+    ],
+    "bytes": 3660613984,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 3B",
+    "quantization": "Q8_0",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 3,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-q3_k_m",
+    "title": "SeedVR2 7B · Q3_K_M",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b-Q3_K_M.gguf",
+        "bytes": 3675389728,
+        "sha256": "1791ab8fa1973db490166b6800ab1cb903e099676f55bf7db610fc96b858023d"
+      }
+    ],
+    "bytes": 3675389728,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B",
+    "quantization": "Q3_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-q4_k_m",
+    "title": "SeedVR2 7B · Q4_K_M",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b-Q4_K_M.gguf",
+        "bytes": 4758306592,
+        "sha256": "db9cb2ad90ebd40d2e8c29da2b3fc6fd03ba87cd58cbadceccca13ad27162789"
+      }
+    ],
+    "bytes": 4758306592,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B",
+    "quantization": "Q4_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-q5_k_m",
+    "title": "SeedVR2 7B · Q5_K_M",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b-Q5_K_M.gguf",
+        "bytes": 5777522464,
+        "sha256": "30cf3359ff06293e021d6f21705a9b82c2a38b3dd03fa5c585b8c9234db6cb1d"
+      }
+    ],
+    "bytes": 5777522464,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B",
+    "quantization": "Q5_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-q6_k",
+    "title": "SeedVR2 7B · Q6_K",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b-Q6_K.gguf",
+        "bytes": 6860439328,
+        "sha256": "86c43b686b28d3db7d461610ed68cc2969bbdd7ec5ec96999087004d2bdcb77d"
+      }
+    ],
+    "bytes": 6860439328,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B",
+    "quantization": "Q6_K",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-q8_0",
+    "title": "SeedVR2 7B · Q8_0",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b-Q8_0.gguf",
+        "bytes": 8835170080,
+        "sha256": "669788655e8f15f306284f267a444e9766c8a421869577b16a961e43029c737b"
+      }
+    ],
+    "bytes": 8835170080,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B",
+    "quantization": "Q8_0",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-sharp-q3_k_m",
+    "title": "SeedVR2 7B Sharp · Q3_K_M",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_sharp-Q3_K_M.gguf",
+        "bytes": 3675389728,
+        "sha256": "7cfbf57474369ab0bf06102279f61f09bc07dd1312d4a9b08db07c71428f7436"
+      }
+    ],
+    "bytes": 3675389728,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B Sharp",
+    "quantization": "Q3_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Sharper detail; may emphasize existing edges."
+  },
+  {
+    "id": "seedvr2-7b-sharp-q4_k_m",
+    "title": "SeedVR2 7B Sharp · Q4_K_M",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_sharp-Q4_K_M.gguf",
+        "bytes": 4758306592,
+        "sha256": "7aed800ac4eb8e0d18569a954c0ff35f5a1caa3ed5d920e66cc31405f75b6e69"
+      }
+    ],
+    "bytes": 4758306592,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B Sharp",
+    "quantization": "Q4_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Sharper detail; may emphasize existing edges."
+  },
+  {
+    "id": "seedvr2-7b-sharp-q5_k_m",
+    "title": "SeedVR2 7B Sharp · Q5_K_M",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_sharp-Q5_K_M.gguf",
+        "bytes": 5777522464,
+        "sha256": "709db1c6f19c2e5a49cdf46141aab5b849731b36536464acaaabceaf61773e3f"
+      }
+    ],
+    "bytes": 5777522464,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B Sharp",
+    "quantization": "Q5_K_M",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Sharper detail; may emphasize existing edges."
+  },
+  {
+    "id": "seedvr2-7b-sharp-q6_k",
+    "title": "SeedVR2 7B Sharp · Q6_K",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_sharp-Q6_K.gguf",
+        "bytes": 6860439328,
+        "sha256": "89ab72e527a96cf16644797fa73c1e0580bff4970e587f77b5d561e5331e48b1"
+      }
+    ],
+    "bytes": 6860439328,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B Sharp",
+    "quantization": "Q6_K",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Sharper detail; may emphasize existing edges."
+  },
+  {
+    "id": "seedvr2-7b-sharp-q8_0",
+    "title": "SeedVR2 7B Sharp · Q8_0",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "GGUF",
+    "repo": "cmeka/SeedVR2-GGUF",
+    "revision": "de058a1261f2fc4bb41f39e9ddf313877e4ebf0d",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_sharp-Q8_0.gguf",
+        "bytes": 8835170080,
+        "sha256": "b1f81cb5700b0b1f432f2c785528356c952c41c74d03d205c6f14b0bd6da303d"
+      }
+    ],
+    "bytes": 8835170080,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B Sharp",
+    "quantization": "Q8_0",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Sharper detail; may emphasize existing edges."
+  },
+  {
+    "id": "seedvr2-7b-fp8-mixed",
+    "title": "SeedVR2 7B · FP8 Mixed",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "FP8 Mixed",
+    "repo": "AInVFX/SeedVR2_comfyUI",
+    "revision": "ac66d6d98fa49975d893b58c55bff7677191c862",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+        "bytes": 8466296338,
+        "sha256": "3d68b5ec0b295ae28092e355c8cad870edd00b817b26587d0cb8f9dd2df19bb2"
+      }
+    ],
+    "bytes": 8466296338,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B",
+    "quantization": "FP8 Mixed",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Temporal restoration with one diffusion step."
+  },
+  {
+    "id": "seedvr2-7b-sharp-fp8-mixed",
+    "title": "SeedVR2 7B Sharp · FP8 Mixed",
+    "kind": "upscale",
+    "family": "seedvr2",
+    "format": "FP8 Mixed",
+    "repo": "AInVFX/SeedVR2_comfyUI",
+    "revision": "ac66d6d98fa49975d893b58c55bff7677191c862",
+    "directory": "upscale/SeedVR2",
+    "files": [
+      {
+        "path": "seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+        "bytes": 8466296338,
+        "sha256": "0d2c5b8be0fda94351149c5115da26aef4f4932a7a2a928c6f184dda9186e0be"
+      }
+    ],
+    "bytes": 8466296338,
+    "dependencies": [
+      "seedvr2-vae"
+    ],
+    "model_group": "SeedVR2 7B Sharp",
+    "quantization": "FP8 Mixed",
+    "upscale_defaults": {
+      "steps": 1,
+      "batch_size": 5,
+      "chunk_size": 100,
+      "temporal_overlap": 1,
+      "color_correction": "lab",
+      "parameters_billion": 7,
+      "source": "https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler"
+    },
+    "note": "Sharper detail; may emphasize existing edges."
+  },
+  {
+    "id": "flashvsr-lq-proj-in",
+    "title": "Flashvsr · LQ_proj_in.safetensors",
+    "kind": "upscale-support",
+    "family": "flashvsr",
+    "format": "Supporting files",
+    "repo": "pizzawookiee/FlashVSR-1.1",
+    "revision": "df98f526a8bbbff72ee40555b6c34f1ee9bec598",
+    "directory": "upscale/flashvsr",
+    "files": [
+      {
+        "path": "LQ_proj_in.safetensors",
+        "bytes": 575692496,
+        "sha256": "b6b98d11ff78202d88bdb06bd9fc3b6e5c76dde18ac9a59922c16e194807b998"
+      }
+    ],
+    "bytes": 575692496,
+    "dependencies": []
+  },
+  {
+    "id": "flashvsr-prompt",
+    "title": "Flashvsr · Prompt.safetensors",
+    "kind": "upscale-support",
+    "family": "flashvsr",
+    "format": "Supporting files",
+    "repo": "pizzawookiee/FlashVSR-1.1",
+    "revision": "df98f526a8bbbff72ee40555b6c34f1ee9bec598",
+    "directory": "upscale/flashvsr",
+    "files": [
+      {
+        "path": "Prompt.safetensors",
+        "bytes": 4194392,
+        "sha256": "306b35796ddd406a635da753a815ee9a7d5a84fcd211974018329fe82df5bdb9"
+      }
+    ],
+    "bytes": 4194392,
+    "dependencies": []
+  },
+  {
+    "id": "flashvsr-tcdecoder-fp16",
+    "title": "Flashvsr · TCDecoder-fp16.safetensors",
+    "kind": "upscale-support",
+    "family": "flashvsr",
+    "format": "Supporting files",
+    "repo": "pizzawookiee/FlashVSR-1.1",
+    "revision": "df98f526a8bbbff72ee40555b6c34f1ee9bec598",
+    "directory": "upscale/flashvsr",
+    "files": [
+      {
+        "path": "TCDecoder-fp16.safetensors",
+        "bytes": 90683014,
+        "sha256": "4bd0b4f8de78b5b2260a29664f048b5dfedbf4419a58ec79726df8de9a37d689"
+      }
+    ],
+    "bytes": 90683014,
+    "dependencies": []
+  },
+  {
+    "id": "flashvsr11-int8",
+    "title": "FlashVSR 1.1 · INT8",
+    "kind": "upscale",
+    "family": "flashvsr",
+    "format": "INT8",
+    "repo": "pizzawookiee/FlashVSR-1.1",
+    "revision": "df98f526a8bbbff72ee40555b6c34f1ee9bec598",
+    "directory": "upscale/flashvsr",
+    "files": [
+      {
+        "path": "FlashVSR1_1-int8_convrot.safetensors",
+        "bytes": 1448886048,
+        "sha256": "f811e2847800a22510f640d411a4079c8c2f76e04250fc9564434fb6307fb502"
+      }
+    ],
+    "bytes": 1448886048,
+    "dependencies": [
+      "flashvsr-lq-proj-in",
+      "flashvsr-prompt",
+      "flashvsr-tcdecoder-fp16"
+    ],
+    "model_group": "FlashVSR 1.1",
+    "note": "Streaming restoration with a lightweight decoder. One-step model.",
+    "upscale_defaults": {
+      "steps": 1,
+      "clip_len": 33,
+      "source": "https://github.com/Pizzawookiee/ComfyUI-FlashVSR-Stock"
+    },
+    "quantization": "INT8"
+  },
+  {
+    "id": "swiftvr-config",
+    "title": "Swiftvr · config.json",
+    "kind": "upscale-support",
+    "family": "swiftvr",
+    "format": "Supporting files",
+    "repo": "H-oliday/SwiftVR",
+    "revision": "5e89ae51d17b564b40cb14029002b48a83c2ff50",
+    "directory": "upscale/swiftvr",
+    "files": [
+      {
+        "path": "transformer/config.json",
+        "bytes": 495,
+        "sha256": "dc00d9866e72cf77db6b531aaa33be4dc7148fef9338442bd0ae9181f7075e9b"
+      }
+    ],
+    "bytes": 495,
+    "dependencies": []
+  },
+  {
+    "id": "swiftvr-reae",
+    "title": "Swiftvr · reae.safetensors",
+    "kind": "upscale-support",
+    "family": "swiftvr",
+    "format": "Supporting files",
+    "repo": "H-oliday/SwiftVR",
+    "revision": "5e89ae51d17b564b40cb14029002b48a83c2ff50",
+    "directory": "upscale/swiftvr",
+    "files": [
+      {
+        "path": "reae.safetensors",
+        "bytes": 163797568,
+        "sha256": "c915205d1833677b6887e2fdf675499d3fc781af0c644c99330f7d22fd855514"
+      }
+    ],
+    "bytes": 163797568,
+    "dependencies": []
+  },
+  {
+    "id": "swiftvr-prompt-embedding",
+    "title": "Swiftvr · prompt_embedding.safetensors",
+    "kind": "upscale-support",
+    "family": "swiftvr",
+    "format": "Supporting files",
+    "repo": "H-oliday/SwiftVR",
+    "revision": "5e89ae51d17b564b40cb14029002b48a83c2ff50",
+    "directory": "upscale/swiftvr",
+    "files": [
+      {
+        "path": "prompt_embedding.safetensors",
+        "bytes": 4202976,
+        "sha256": "cc4cf7b9aa9def4026bb5952b8aaec846ffc83eee43cafff0d3796b7e9fdf922"
+      }
+    ],
+    "bytes": 4202976,
+    "dependencies": []
+  },
+  {
+    "id": "swiftvr-bf16",
+    "title": "SwiftVR · BF16",
+    "kind": "upscale",
+    "family": "swiftvr",
+    "format": "BF16",
+    "repo": "H-oliday/SwiftVR",
+    "revision": "5e89ae51d17b564b40cb14029002b48a83c2ff50",
+    "directory": "upscale/swiftvr",
+    "files": [
+      {
+        "path": "transformer/diffusion_pytorch_model.safetensors",
+        "bytes": 19999235584,
+        "sha256": "f7ade5b8f7f4ff8b4e26a581772ebe5bcfb6a619ece2dd3483c5395c2d7e1a31"
+      }
+    ],
+    "bytes": 19999235584,
+    "dependencies": [
+      "swiftvr-config",
+      "swiftvr-reae",
+      "swiftvr-prompt-embedding"
+    ],
+    "model_group": "SwiftVR",
+    "note": "Streaming restoration with a lightweight autoencoder. One-step model.",
+    "upscale_defaults": {
+      "steps": 1,
+      "clip_len": 8,
+      "source": "https://github.com/H-oliday/SwiftVR"
+    },
+    "quantization": "BF16"
+  },
+  {
+    "id": "flashvsr11-fp32",
+    "title": "FlashVSR 1.1 · FP32",
+    "kind": "upscale",
+    "family": "flashvsr",
+    "format": "FP32",
+    "repo": "1038lab/FlashVSR",
+    "revision": "f1bc675696d43f05d183d9b7c49e44d84c843caf",
+    "directory": "upscale/flashvsr",
+    "files": [
+      {
+        "path": "FlashVSR1_1.safetensors",
+        "bytes": 5676070392,
+        "sha256": "bd28180edcf3446c028e32fc6b731a80bf7e4da2ab4caac3186b9499964d37be"
+      }
+    ],
+    "bytes": 5676070392,
+    "dependencies": [
+      "flashvsr-lq-proj-in",
+      "flashvsr-prompt",
+      "flashvsr-tcdecoder-fp16"
+    ],
+    "model_group": "FlashVSR 1.1",
+    "note": "Streaming restoration with a lightweight decoder. One-step model.",
+    "upscale_defaults": {
+      "steps": 1,
+      "clip_len": 33,
+      "source": "https://github.com/Pizzawookiee/ComfyUI-FlashVSR-Stock"
+    },
+    "quantization": "FP32"
+  },
+  {
+    "id": "flashvsr-wan-vae",
+    "title": "FlashVSR full decoder",
+    "kind": "upscale-support",
+    "family": "flashvsr",
+    "format": "FP16",
+    "repo": "1038lab/FlashVSR",
+    "revision": "f1bc675696d43f05d183d9b7c49e44d84c843caf",
+    "directory": "upscale/flashvsr",
+    "files": [
+      {
+        "path": "Wan2.1_VAE.safetensors",
+        "bytes": 253815318,
+        "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b"
+      }
+    ],
+    "bytes": 253815318,
+    "dependencies": [],
+    "model_group": "FlashVSR 1.1",
+    "note": "Streaming restoration with a lightweight decoder. One-step model.",
+    "quantization": "FP16"
   }
 ]

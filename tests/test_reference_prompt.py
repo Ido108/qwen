@@ -75,3 +75,44 @@ class ReferencePromptTests(unittest.TestCase):
         self.request['person_assignments']={'person-1':'deleted.png'}
         with self.assertRaisesRegex(ValueError,'removed reference'):
             build_reference_prompt(self.request)
+
+    def grouped(self):
+        return ReferenceVideoRequest(source_video='source.mp4',
+            reference_people=[{'id':'ref-person-a','images':['front.png','side.png']},
+                              {'id':'ref-person-b','images':['other.png']}],
+            source_people=self.request['source_people'],source_start_seconds=2,source_end_seconds=8,
+            person_assignments={'person-1':'ref-person-a','person-2':None}).model_dump()
+
+    def test_person_selection_uses_all_views_without_merging_identities(self):
+        request=self.grouped()
+        self.assertEqual(request['reference_images'],['front.png','side.png','other.png'])
+        prompt=build_reference_prompt(request)
+        self.assertIn('identity in <Picture 1> and <Picture 2>',prompt)
+        self.assertIn('Person 2: <Picture 3>',prompt)
+        self.assertIn('Keep the source person first seen at 2.0s',prompt)
+        self.assertNotIn('identity in <Picture 1> and <Picture 2> and <Picture 3>',prompt)
+
+    def test_person_and_source_tags_have_separate_meanings(self):
+        request=self.grouped();request['prompt']='Use @Person1 for @Source2. Keep @Person2 separate.'
+        prompt=reference_instructions(request)
+        self.assertIn('person shown in <Picture 1> and <Picture 2>',prompt)
+        self.assertIn('source person first seen at 2.0s',prompt)
+        self.assertIn('person shown in <Picture 3>',prompt)
+        self.assertNotIn('Reference people:',prompt)
+
+    def test_fallback_uses_only_first_group_and_camera_uses_no_groups(self):
+        request=self.grouped();request['person_assignments']={}
+        prompt=build_reference_prompt(request)
+        self.assertIn('Replace the main person with the identity in <Picture 1> and <Picture 2>',prompt)
+        request.update(workflow='crossview',replace_subjects_first=True)
+        self.assertNotIn('<Picture',build_reference_prompt(request))
+        self.assertIn('<Picture 1> and <Picture 2>',build_reference_prompt(request,replacement=True))
+
+    def test_group_image_limit_duplicates_and_flat_order_are_validated(self):
+        for groups,images in [([{'id':'ref-person-a','images':[]}],[]),
+            ([{'id':'ref-person-a','images':['same.png','same.png']}],[]),
+            ([{'id':'ref-person-a','images':['a.png']},{'id':'ref-person-a','images':['b.png']}],[]),
+            ([{'id':'ref-person-a','images':['a.png']}],['wrong.png']),
+            ([{'id':'ref-person-a','images':[f'{i}.png' for i in range(9)]},{'id':'ref-person-b','images':['last.png']}],[])]:
+            with self.subTest(groups=groups),self.assertRaises(ValueError):
+                ReferenceVideoRequest(source_video='v.mp4',reference_people=groups,reference_images=images)

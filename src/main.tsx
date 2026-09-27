@@ -11,6 +11,8 @@ import {ImageSettings,type ImageOptions} from './ImageSettings';
 import {Gallery,inputImage} from './Gallery';
 import {JobQueue,useQueue,type SavedJob} from './JobQueue';
 import {promptSettingsCopy,type EnhancementState} from './PromptSettings';
+import type {SendVideo,VideoInput} from './SendVideoTo';
+import type {UploadedVideo} from './mediaUpload';
 import {GenerationTiming,type Timing} from './GenerationTiming';
 import {en,type TextKey} from './i18n';
 import './style.css';
@@ -36,6 +38,7 @@ function App(){
   const [multiRestore,setMultiRestore]=useState<{job:SavedJob;key:number}|null>(null);
   const [upscaleRestore,setUpscaleRestore]=useState<{job:SavedJob;key:number}|null>(null);
   const [galleryView,setGalleryView]=useState<{job:SavedJob;key:number}|null>(null);
+  const [videoInput,setVideoInput]=useState<VideoInput|null>(null);
   const [videoBusy,setVideoBusy]=useState(false);
   const [videoModel,setVideoModel]=useState(()=>{try{return JSON.parse(localStorage.getItem('qwen-video-draft')||'{}').model_id||'fasth3-q4_k_m';}catch{return 'fasth3-q4_k_m';}});
   const lang='en';
@@ -70,6 +73,12 @@ function App(){
   const api=useCallback(apiRequest,[]);
   const queue=useQueue(api,!!config);
   function showVideo(section:VideoSection){setTab('video');setVideoSection(section);window.history.replaceState(null,'',section==='create'?'#video':section==='reference'?'#video-to-video':section==='multi-reference'?'#multi-reference':'#upscale');}
+  const sendVideo:SendVideo=async(jobId,target,part='final')=>{
+    const video:UploadedVideo=await api(`/api/jobs/${encodeURIComponent(jobId)}/reuse-video?part=${part}`,{method:'POST'});
+    setVideoInput({video,target,key:Date.now()});
+    showVideo(target==='upscale'?'upscale':'reference');
+    window.scrollTo({top:0,behavior:'instant'});
+  };
   function restoreJob(saved:SavedJob){
     if(saved.kind==='video'){setVideoRestore({job:saved,key:Date.now()});setVideoModel(saved.request.model_id);showVideo('create');}
     else if(saved.kind==='multi-reference'){setMultiRestore({job:saved,key:Date.now()});showVideo('multi-reference');}
@@ -150,7 +159,7 @@ function App(){
           <div className="result-canvas checker">{result?<button className="result-image-button" onClick={()=>setLightbox(result.image_url!)} aria-label={t('preview')}><img className="result-image" src={result.image_url} alt={result.request.prompt}/></button>:<div className="result-empty"><ImageIcon size={42} strokeWidth={1.4}/><span>{t('empty')}</span></div>}
             {busy?<div className="generation-overlay" aria-live="polite"><Loader2 className="spin" size={28}/><strong>{job?.status==='queued'?'Waiting in queue':job?job.message||t(job.stage):t('starting')}</strong>{job?.stage==='downloading_models'?<ModelDownloadProgress job={job}/>:job?.stage==='generating'?<><progress value={job.step} max={job.total_steps}/><span>{job.step} / {job.total_steps} · {elapsed} {t('seconds')}</span></>:<span>{elapsed>0?`${stageElapsed}s this step · ${elapsed}s total`:''}{job?.stage==='rewriting'&&job.tokens?` · ${job.tokens} ${t('tokens')}`:''}</span>}</div>:null}
           </div>
-          {result?<div className="result-actions"><a className="button secondary" href={`${result.image_url}?download=true`}><Download size={15}/>{t('download')}</a><button disabled={locked} className="text-button" onClick={async()=>{try{setInputs([await api(`/api/jobs/${result.id}/reuse`,{method:'POST'})]);promptRef.current?.focus();}catch(e){setError(String(e));}}}><ArrowUpRight size={16}/>{t('editResult')}</button><a className="icon-button" href={`/api/jobs/${result.id}/metadata`} aria-label={t('metadata')} title={t('metadata')}><Download size={15}/></a></div>:null}{result?<GenerationTiming job={result}/>:null}
+          {result?<GenerationTiming job={result} models={modelState}/>:null}{result?<div className="result-actions"><a className="button secondary" href={`${result.image_url}?download=true`}><Download size={15}/>{t('download')}</a><button disabled={locked} className="text-button" onClick={async()=>{try{setInputs([await api(`/api/jobs/${result.id}/reuse`,{method:'POST'})]);promptRef.current?.focus();}catch(e){setError(String(e));}}}><ArrowUpRight size={16}/>{t('editResult')}</button><a className="icon-button" href={`/api/jobs/${result.id}/metadata`} aria-label={t('metadata')} title={t('metadata')}><Download size={15}/></a></div>:null}
         </section>
       </div>
       <section className="panel controls-panel">
@@ -176,11 +185,11 @@ function App(){
       </section>
       <footer><span className="local-status"><i/>{modelState?.remote?'Runs on RunPod GPU':t('local')}</span><span>{modelState?.remote?'Results saved on this computer':config?.device||''}</span></footer>
     </main>
-    <VideoTab visible={tab==='video'&&videoSection==='create'} api={api} models={modelState} enhancement={enhancement} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)}/>
-    <ReferenceTab visible={tab==='video'&&videoSection==='reference'} api={api} token={token.current} models={modelState} enhancement={enhancement} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
-    <MultiReferenceTab visible={tab==='video'&&videoSection==='multi-reference'} api={api} models={modelState} queue={queue.state} onQueued={queue.refresh} restoreRequest={multiRestore} onView={job=>setGalleryView({job,key:Date.now()})}/>
-    <UpscaleTab visible={tab==='video'&&videoSection==='upscale'} api={api} token={token.current} models={modelState} restoreRequest={upscaleRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
-    <Gallery api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>
+    <VideoTab onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='create'} api={api} models={modelState} enhancement={enhancement} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)}/>
+    <ReferenceTab onSendVideo={sendVideo} videoInput={videoInput?.target!=='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='reference'} api={api} token={token.current} models={modelState} enhancement={enhancement} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
+    <MultiReferenceTab onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='multi-reference'} api={api} models={modelState} queue={queue.state} onQueued={queue.refresh} restoreRequest={multiRestore} onView={job=>setGalleryView({job,key:Date.now()})}/>
+    <UpscaleTab onSendVideo={sendVideo} videoInput={videoInput?.target==='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='upscale'} api={api} token={token.current} models={modelState} restoreRequest={upscaleRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
+    <Gallery onSendVideo={sendVideo} api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>
     <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':'content-dialog'}><button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>
       {showSettings?<ModelSettings enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
       {lightbox?<img className="lightbox-image checker" src={lightbox} alt={t('preview')}/>:null}

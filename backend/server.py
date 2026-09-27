@@ -192,9 +192,11 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
         elif task_kind == 'reference-video':
             old_images = request.get('reference_images', [])
             work['reference_images'] = [f'cloud-ref-{index}.png' for index in range(len(old_images))]
+            image_map=dict(zip(old_images,work['reference_images']))
+            if work.get('reference_people'):
+                work['reference_people']=[{**person,'images':[image_map[image] for image in person['images']]} for person in work['reference_people']]
             if work.get('person_assignments'):
-                image_map=dict(zip(old_images,work['reference_images']))
-                work['person_assignments']={person:(image_map[image] if image else None)
+                work['person_assignments']={person:(image_map.get(image,image) if image else None)
                                             for person,image in work['person_assignments'].items()}
         work['output_dir'] = '/runpod-volume/qwen-transfer/' + job_id
         write_json(directory / 'remote-request.json', work)
@@ -1171,6 +1173,24 @@ def reuse(job_id: str):
     image_id = uuid.uuid4().hex + '.png'
     shutil.copy2(path, UPLOADS_DIR / image_id)
     return {'id': image_id, 'name': path.name, 'url': f'/api/uploads/{image_id}'}
+
+@app.post('/api/jobs/{job_id}/reuse-video')
+def reuse_video(job_id: str, part: Literal['final', 'subject'] = 'final'):
+    job = read_job(job_id)
+    path = Path(job.get('output_path', ''))
+    if part == 'subject':
+        path = JOBS_DIR / job_id / 'subject-replacement.mp4'
+        available = job.get('kind') == 'reference-video' and job.get('subject_replacement_ready')
+    else:
+        available = job.get('kind') in VIDEO_KINDS and job.get('status') == 'succeeded'
+    if not available or not path.is_file():
+        raise HTTPException(404, 'Saved video not found.')
+    from .video_reuse import reuse_video_file
+    try:
+        return reuse_video_file(path, VIDEO_UPLOADS_DIR, JOBS_DIR / job_id, part)
+    except (OSError, ValueError, StopIteration):
+        raise HTTPException(422, 'Could not prepare this video. Check that the saved file is available and try again.')
+
 
 @app.post('/api/open-output')
 def open_output(kind: str = 'image'):

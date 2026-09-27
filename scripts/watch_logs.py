@@ -58,11 +58,13 @@ def watch(url, data_dir, *, once=False, stop_event=None):
                     worker.read()
                 active_id=active.get('id')
                 worker=LogTail(data_dir/'jobs'/active_id/'worker.log','Generation') if active_id else None
-            state=(active_id,active.get('stage'),active.get('step'),len(queue.get('pending') or []))
+            state=(active_id,active.get('stage'),active.get('step'),active.get('message'),len(queue.get('pending') or []))
             if state!=last_state:
                 if active_id:
+                    unit='batches' if active.get('kind')=='upscale' else 'steps'
+                    progress=f"| {active.get('step',0)}/{active['total_steps']} {unit} " if active.get('total_steps') else ''
                     print(f'\n[{time.strftime("%H:%M:%S")}] {active.get("message","Working")} '
-                          f'| {active.get("step",0)}/{active.get("total_steps",0)} steps '
+                          f'{progress}'
                           f'| {state[-1]} queued | Job {active_id[:8]}',flush=True)
                 else:
                     print(f'\n[{time.strftime("%H:%M:%S")}] Ready | {state[-1]} queued',flush=True)

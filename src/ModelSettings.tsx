@@ -3,7 +3,7 @@ import {PromptSettings,promptSettingsCopy,type EnhancementState} from './PromptS
 import {Check,Download,Trash2,Loader2,HardDrive,ChevronDown} from 'lucide-react';
 import {CloudSettings} from './CloudSettings';
 
-export type ModelEntry={id:string;title:string;kind:string;format:string;repo:string;bytes:number;disk_bytes?:number;dependencies:string[];installed:boolean;ready:boolean;family?:string;model_group?:string;quantization?:string;modes?:string[];note?:string;generation_defaults?:{steps:number;max_frames?:number;source:string;note:string;quality?:'standard'|'turbo';profiles?:Partial<Record<'standard'|'turbo',{steps:number;sampler:string;scheduler:string;source:string;lora_id?:string}>>}};
+export type ModelEntry={id:string;title:string;kind:string;format:string;repo:string;bytes:number;disk_bytes?:number;dependencies:string[];installed:boolean;ready:boolean;family?:string;model_group?:string;quantization?:string;modes?:string[];note?:string;upscale_defaults?:{steps:number;batch_size?:number;chunk_size?:number;temporal_overlap?:number;color_correction?:string;clip_len?:number;source:string};generation_defaults?:{steps:number;max_frames?:number;source:string;note:string;quality?:'standard'|'turbo';profiles?:Partial<Record<'standard'|'turbo',{steps:number;sampler:string;scheduler:string;source:string;lora_id?:string}>>}};
 export type ModelState={remote?:boolean;resident?:{loaded:boolean;model_id:string|null;text_encoder_id:string|null}|null;models:ModelEntry[];free_bytes:number;transfer:{status:string;requested_id?:string;model_id?:string;stage?:string;completed_bytes?:number;total_bytes?:number;message?:string;title?:string}};
 export type Api=(path:string,init?:RequestInit)=>Promise<any>;
 const translations={

@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 import uuid
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 APP_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get('QWEN_DATA_DIR', 'E:/AI/qwen-image-studio' if os.name == 'nt' else str(Path.home() / 'Library/Application Support/Qwen'))).resolve()
@@ -124,6 +124,11 @@ class SourcePerson(BaseModel):
     box: tuple[float,float,float,float] | None = None
 
 
+class ReferencePerson(BaseModel):
+    id: str = Field(pattern=r'^ref-person-[A-Za-z0-9_-]{1,80}$')
+    images: list[str] = Field(min_length=1, max_length=9)
+
+
 class ReferenceVideoRequest(BaseModel):
     workflow: Literal['faceswap', 'crossview', 'reference'] = 'faceswap'
     model_id: str = 'h3-ref-turbo-int8'
@@ -131,6 +136,7 @@ class ReferenceVideoRequest(BaseModel):
     source_start_seconds: float = Field(default=0, ge=0)
     source_end_seconds: float | None = Field(default=None, gt=0)
     reference_images: list[str] = Field(default_factory=list, max_length=9)
+    reference_people: list[ReferencePerson] = Field(default_factory=list, max_length=9)
     source_people: list[SourcePerson] = Field(default_factory=list, max_length=12)
     person_assignments: dict[str, str | None] = Field(default_factory=dict)
     replace_subjects_first: bool = False
@@ -156,6 +162,20 @@ class ReferenceVideoRequest(BaseModel):
     enhance: bool = False
     output_dir: str = str(VIDEOS_DIR)
 
+    @model_validator(mode='after')
+    def grouped_references(self):
+        if self.reference_people:
+            ids=[person.id for person in self.reference_people]
+            images=[image for person in self.reference_people for image in person.images]
+            if len(set(ids))!=len(ids) or len(images)>9 or len(set(images))!=len(images):
+                raise ValueError('Use unique people and up to nine images in total.')
+            if self.reference_images and self.reference_images!=images:
+                raise ValueError('Reference images do not match the selected people.')
+            self.reference_images=images
+            owners={image:person.id for person in self.reference_people for image in person.images}
+            self.person_assignments={key:owners.get(value,value) for key,value in self.person_assignments.items()}
+        return self
+
     @field_validator('width', 'height')
     @classmethod
     def valid_size(cls, value):
@@ -175,6 +195,19 @@ class UpscaleRequest(BaseModel):
     model_id: str = 'seedvr2-3b-fp8'
     source_video: str
     resolution: int = Field(default=1080, ge=480, le=4320)
+    size_mode: Literal['short_side', 'scale'] = 'short_side'
+    scale: Literal[2, 4] = 2
+    memory_mode: Literal['auto', 'low_memory', 'gpu'] = 'auto'
+    color_correction: Literal['lab', 'wavelet', 'wavelet_adaptive', 'hsv', 'adain', 'none'] = 'lab'
+    clip_len: int = Field(default=8, ge=4, le=32)
+    flash_chunk_size: int = Field(default=33, ge=9, le=129)
+    flash_sampling: Literal['streaming_faithful_lowvram', 'streaming_faithful_full', 'streaming'] = 'streaming_faithful_lowvram'
+    flash_sparse_ratio: float = Field(default=2.0, ge=1, le=4)
+    flash_local_range: Literal[3, 5, 7, 9, 11, 13, 15] = 11
+    flash_conditioning: float = Field(default=1.0, ge=0, le=2)
+    flash_cache_format: Literal['int8', 'hybrid', 'float'] = 'int8'
+    flash_decoder: Literal['tiny', 'full'] = 'tiny'
+    flash_color: Literal['off', 'adain', 'wavelet_quarter_res', 'wavelet_full_res'] = 'off'
     batch_size: int = Field(default=5, ge=5, le=33)
     chunk_size: int = Field(default=100, ge=5, le=1000)
     temporal_overlap: int = Field(default=1, ge=0, le=32)
@@ -185,8 +218,15 @@ class UpscaleRequest(BaseModel):
     @field_validator('resolution')
     @classmethod
     def valid_resolution(cls, value):
-        if value % 8:
-            raise ValueError('Target resolution must be a multiple of 8.')
+        if value % 2:
+            raise ValueError('Target resolution must be an even number.')
+        return value
+
+    @field_validator('clip_len')
+    @classmethod
+    def valid_clip_len(cls, value):
+        if value % 4:
+            raise ValueError('SwiftVR frame batch must be a multiple of 4.')
         return value
 
     @field_validator('batch_size')

@@ -98,7 +98,7 @@ def run(request, job, directory, update):
         instructions=reference_instructions(request)
         if request['enhance'] and instructions:
             from .prompt_enhancer import enhance_reference
-            camera_request={**request,'reference_images':[]} if request['workflow']=='crossview' else request
+            camera_request={**request,'reference_images':[],'reference_people':[]} if request['workflow']=='crossview' else request
             instructions=enhance_reference(instructions,images,camera_request,update)
         prompt=build_reference_prompt(request,instructions)
     else:
@@ -142,7 +142,7 @@ def run(request, job, directory, update):
             second_images['warp_video']=images['warp_video']
         if request['source_audio'] and source_audio is not None:
             second_images['source_audio']=source_audio
-        camera_request={**request,'reference_images':[]}
+        camera_request={**request,'reference_images':[],'reference_people':[]}
         del first_frames,images
         frames,audio=generate(camera_request,prompt,second_images,stage_progress(1),preview_directory=directory)
     else:

@@ -52,7 +52,8 @@ class CloudTests(unittest.TestCase):
 
     def test_remote_catalog_offers_supported_video_workflows_only(self):
         with patch.object(cloud, 'settings', return_value={'mode': 'runpod'}), \
-             patch.object(cloud, 'ready', return_value=True):
+             patch.object(cloud, 'ready', return_value=True), \
+             patch.object(server.models, 'is_installed', return_value=False):
             state = server.catalog_state()
         by_id = {item['id']: item for item in state['models']}
         self.assertTrue(by_id['h3-ref-turbo-int8']['ready'])
@@ -133,6 +134,12 @@ class CloudTests(unittest.TestCase):
             ready.assert_any_call('video')
 
     def test_remote_two_stage_result_transfers_the_intermediate_video(self):
+        self.check_remote_reference_transfer(grouped=False)
+
+    def test_remote_person_group_transfers_all_views_and_keeps_assignment(self):
+        self.check_remote_reference_transfer(grouped=True)
+
+    def check_remote_reference_transfer(self, grouped):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             source = root / ('a' * 32 + '.mp4')
@@ -150,6 +157,10 @@ class CloudTests(unittest.TestCase):
                 person_assignments={'person-1':reference.name},
             ).model_dump()
             request.update(kind='reference-video', execution='runpod', steps=8)
+            if grouped:
+                request['reference_images']=[reference.name,'side.png']
+                request['reference_people']=[{'id':'ref-person-a','images':request['reference_images']}]
+                request['person_assignments']={'person-1':'ref-person-a'}
             (job_folder / 'status.json').write_text(json.dumps({
                 'id': job_id, 'kind': 'reference-video', 'status': 'queued',
                 'request': request, 'created_at': 1, 'seed': 0,
@@ -173,11 +184,19 @@ class CloudTests(unittest.TestCase):
             saved = json.loads((job_folder / 'status.json').read_text(encoding='utf-8'))
             self.assertEqual(saved['status'], 'succeeded')
             self.assertTrue(saved['subject_replacement_ready'])
-            self.assertEqual(len(uploads), 2)
+            self.assertEqual(len(uploads), 3 if grouped else 2)
             self.assertEqual(submitted[0][0], 'video')
             self.assertEqual(submitted[0][1]['kind'], 'reference-video')
-            self.assertEqual(submitted[0][1]['request']['reference_images'], ['cloud-ref-0.png'])
-            self.assertEqual(submitted[0][1]['request']['person_assignments'], {'person-1':'cloud-ref-0.png'})
+            transferred=submitted[0][1]['request']
+            if grouped:
+                self.assertEqual(transferred['reference_images'], ['cloud-ref-0.png','cloud-ref-1.png'])
+                self.assertEqual(transferred['reference_people'], [{'id':'ref-person-a','images':transferred['reference_images']}])
+                self.assertEqual(transferred['person_assignments'], {'person-1':'ref-person-a'})
+                from backend.reference_prompt import build_reference_prompt
+                self.assertIn('identity in <Picture 1> and <Picture 2>',build_reference_prompt(transferred,replacement=True))
+            else:
+                self.assertEqual(transferred['reference_images'], ['cloud-ref-0.png'])
+                self.assertEqual(transferred['person_assignments'], {'person-1':'cloud-ref-0.png'})
             self.assertTrue((job_folder / 'subject-replacement.mp4').is_file())
             self.assertTrue(Path(saved['output_path']).is_file())
 

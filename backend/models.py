@@ -111,15 +111,18 @@ def required_reference(request):
 
 def required_upscale(request):
     item=entry(request.model_id)
-    if item['kind']!='upscale' or item['family']!='seedvr2':
-        raise ValueError('Choose a SeedVR2 upscaling model.')
-    if request.temporal_overlap>=request.chunk_size:
+    if item['kind']!='upscale' or item['family'] not in ('seedvr2','flashvsr','swiftvr'):
+        raise ValueError('Choose a video upscaling model.')
+    if item['family']=='seedvr2' and request.temporal_overlap>=request.chunk_size:
         raise ValueError('Temporal overlap must be smaller than the chunk size.')
-    if request.temporal_overlap>=request.batch_size:
+    if item['family']=='seedvr2' and request.temporal_overlap>=request.batch_size:
         raise ValueError('Temporal overlap must be smaller than the frame batch size.')
-    if request.batch_size>request.chunk_size:
+    if item['family']=='seedvr2' and request.batch_size>request.chunk_size:
         raise ValueError('Frame batch size must not exceed the chunk size.')
-    return [item['id'],*item['dependencies']]
+    dependencies=list(item['dependencies'])
+    if item['family']=='flashvsr' and request.flash_decoder=='full':
+        dependencies=[model for model in dependencies if model!='flashvsr-tcdecoder-fp16']+['flashvsr-wan-vae']
+    return [item['id'],*dependencies]
 
 
 def state():

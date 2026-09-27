@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-TAG = re.compile(r'@(?:Person\d+|Ref\d+|SourceVideo)\b', re.IGNORECASE)
+TAG = re.compile(r'@(?:Person\d+|Ref\d+|Source\d+|SourceVideo)\b', re.IGNORECASE)
 
 
 def reference_instructions(request: dict, *, replacement=False) -> str:
@@ -12,7 +12,8 @@ def reference_instructions(request: dict, *, replacement=False) -> str:
     context = {**request, 'person_assignments': {}}
     if request['workflow'] == 'crossview' and not replacement:
         context['reference_images'] = []
-    return render_reference_prompt((request.get(field) or '').strip(), context)
+        context['reference_people'] = []
+    return render_reference_prompt((request.get(field) or '').strip(), context, include_groups=False)
 
 
 def build_reference_prompt(request: dict, instructions: str | None = None, *, replacement=False) -> str:
@@ -29,9 +30,13 @@ def build_reference_prompt(request: dict, instructions: str | None = None, *, re
         if not request.get('reference_images'):
             raise ValueError('Add a reference image for subject replacement.')
         if not request.get('person_assignments'):
-            base += (' Replace the main person with the identity in <Picture 1>. '
-                     'Use additional reference images as views of that same identity. '
-                     'Keep all other people unchanged.')
+            if request.get('reference_people'):
+                pictures=group_pictures(request['reference_people'][0],request['reference_images'])
+                base += f' Replace the main person with the identity in {pictures}. Keep all other people unchanged.'
+            else:
+                base += (' Replace the main person with the identity in <Picture 1>. '
+                         'Use additional reference images as views of that same identity. '
+                         'Keep all other people unchanged.')
         elif not any(request['person_assignments'].values()):
             raise ValueError('Choose a reference image for at least one detected person.')
     elif workflow == 'crossview':
@@ -52,13 +57,21 @@ def build_reference_prompt(request: dict, instructions: str | None = None, *, re
                  'shot boundaries, subject positions and background. Do not introduce a new '
                  'viewpoint, zoom, pan, crop, cut or camera motion. Change identities only.')
         return render_reference_prompt(base, request)
-    return base
+    return render_reference_prompt(base,request) if workflow=='reference' else base
 
 
-def render_reference_prompt(prompt: str, request: dict) -> str:
+def group_pictures(person:dict,images:list[str])->str:
+    if any(image not in images for image in person['images']):
+        raise ValueError('A person has a removed reference image. Add the image again.')
+    return ' and '.join(f'<Picture {images.index(image)+1}>' for image in person['images'])
+
+
+def render_reference_prompt(prompt: str, request: dict, *, include_groups=True) -> str:
     images = request.get('reference_images') or []
     people = {person['id']: person for person in (request.get('source_people') or [])}
     assignments = request.get('person_assignments') or {}
+    groups=request.get('reference_people') or []
+    groups_by_id={person['id']:person for person in groups}
     clip_start = float(request.get('source_start_seconds') or 0)
     def source_person(person: dict) -> str:
         location = ''
@@ -71,7 +84,7 @@ def render_reference_prompt(prompt: str, request: dict) -> str:
     for person_id, image_id in assignments.items():
         if person_id not in people:
             raise ValueError(f'Person {person_id} was not detected in this source segment. Scan people again.')
-        if image_id is not None and image_id not in images:
+        if image_id is not None and image_id not in groups_by_id and image_id not in images:
             raise ValueError('A person is linked to a removed reference image. Choose a reference again.')
 
     def replace(match: re.Match) -> str:
@@ -83,6 +96,11 @@ def render_reference_prompt(prompt: str, request: dict) -> str:
             if index < 1 or index > len(images):
                 raise ValueError(f'{match.group()} has no uploaded reference image.')
             return f'<Picture {index}>'
+        if tag.startswith('@person') and groups:
+            index=int(tag[7:])
+            if not 1<=index<=len(groups):
+                raise ValueError(f'{match.group()} has no uploaded person.')
+            return 'the person shown in '+group_pictures(groups[index-1],images)
         index = int(tag[7:])
         person = people.get(f'person-{index}')
         if not person:
@@ -90,8 +108,10 @@ def render_reference_prompt(prompt: str, request: dict) -> str:
         return source_person(person)
 
     resolved = TAG.sub(replace, prompt)
-    if not assignments:
-        return resolved
+    if groups and include_groups:
+        descriptions=[f'Person {index+1}: {group_pictures(person,images)} show different views of the same identity.' for index,person in enumerate(groups)]
+        resolved+='\n\nReference people: '+' '.join(descriptions)+' Each person group is a separate identity. Use all images within a group together, not as separate people.'
+    if not assignments:return resolved
     directions = []
     for person_id, image_id in assignments.items():
         person = people[person_id]
@@ -99,7 +119,7 @@ def render_reference_prompt(prompt: str, request: dict) -> str:
         if image_id is None:
             directions.append(f'Keep {location} unchanged.')
         else:
-            index = images.index(image_id) + 1
-            directions.append(f'Replace only {location} with the identity in <Picture {index}>. Preserve that person\'s motion, clothing and position.')
+            pictures=group_pictures(groups_by_id[image_id],images) if image_id in groups_by_id else f'<Picture {images.index(image_id)+1}>'
+            directions.append(f'Replace only {location} with the identity in {pictures}. Preserve that person\'s motion, clothing and position.')
     directions.append('Keep all other people in <Video 1> unchanged. Preserve the source video timing, camera and background.')
     return resolved.strip() + '\n\nPerson assignments: ' + ' '.join(directions)

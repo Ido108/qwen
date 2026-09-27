@@ -1,3 +1,5 @@
+import {SendVideoTo,type SendVideo} from './SendVideoTo';
+import {GenerationTiming} from './GenerationTiming';
 import {useEffect,useRef,useState} from 'react';
 import {Download,Film,ImagePlus,Loader2,Plus,Sparkles,X} from 'lucide-react';
 import type {Api,ModelState} from './ModelSettings';
@@ -11,7 +13,7 @@ const initial:Params={model_id:'ltx25-msr-q4_k_m',prompt:'',reference_images:[],
 function loadDraft():Params{try{return {...initial,...JSON.parse(localStorage.getItem('qwen-multi-reference-v1')||'{}')};}catch{return initial;}}
 const sizes=[['Draft landscape',768,448],['Draft portrait',448,768],['Draft square',640,640],['Standard landscape',1024,576],['Standard portrait',576,1024],['Standard square',768,768],['Large landscape',1280,704],['Large portrait',704,1280],['Large square',1024,1024]] as const;
 
-export function MultiReferenceTab({api,visible,models,queue,onQueued,restoreRequest,onView}:{api:Api;visible:boolean;models:ModelState|null;queue:QueueState;onQueued:()=>void;restoreRequest:{job:SavedJob;key:number}|null;onView:(job:SavedJob)=>void}){
+export function MultiReferenceTab({api,onSendVideo,visible,models,queue,onQueued,restoreRequest,onView}:{api:Api;onSendVideo:SendVideo;visible:boolean;models:ModelState|null;queue:QueueState;onQueued:()=>void;restoreRequest:{job:SavedJob;key:number}|null;onView:(job:SavedJob)=>void}){
   const [params,setParams]=useState<Params>(loadDraft);
   const [uploading,setUploading]=useState(false),[submitting,setSubmitting]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [history,setHistory]=useState<SavedJob[]>([]),[clock,setClock]=useState(Date.now()),[job,setJob]=useState<SavedJob|null>(null);
@@ -67,7 +69,8 @@ export function MultiReferenceTab({api,visible,models,queue,onQueued,restoreRequ
       {!validSize?<p className="message error">Use multiples of 32, 256–1536 pixels per side, up to one megapixel before refinement.</p>:null}
     </section><section className="panel msr-viewer"><div className="section-heading"><h2>{running?.preview_url?'Live preview':'Result'}</h2><span>{running?'In progress':result?'MP4':'LTX 2.5'}</span></div>
       <div className="msr-result">{running?<div className="msr-draft">{running.preview_url?<img src={`${running.preview_url}?v=${running.preview_updated_at}`} alt="Live generation preview"/>:<><Film size={38}/><p>{running.stage==='downloading_models'?'Downloading required model files':running.status==='queued'?'Waiting in queue':running.preview_unavailable?'Preview is unavailable for this run.':'The preview appears after the first generation step.'}</p></>}</div>:result?<video src={result.video_url} poster={result.poster_url} controls playsInline/>:<div className="msr-draft"><Film size={38}/><strong>Your video will appear here</strong><p>Add references and describe their action.</p></div>}</div>
-      {running?<VideoProgress job={running} clock={clock}/>:null}{!running&&result?<a className="button secondary" href={`${result.video_url}?download=true`}><Download size={15}/>Download video</a>:null}
+      {!running&&result?<GenerationTiming job={result} models={models}/>:null}
+      {running?<VideoProgress job={running} clock={clock}/>:null}{!running&&result?<div className="result-actions"><SendVideoTo jobId={result.id} onSend={onSendVideo}/><a className="button secondary" href={`${result.video_url}?download=true`}><Download size={15}/>Download video</a></div>:null}
       {job?.status==='failed'?<div role="alert" className="message error">{job.message}</div>:null}
       {missing.length?<p className="msr-download-note">Required model files download automatically when you add a job. <a href="https://huggingface.co/Lightricks/LTX-2.5" target="_blank" rel="noreferrer">LTX model access</a></p>:null}
     </section></div>

@@ -1,0 +1,6 @@
+.send-video-control{display:inline-flex;flex-direction:column;gap:5px;max-width:100%;vertical-align:middle}
+.send-video-select{display:flex;align-items:center;gap:5px;color:var(--muted,#6e668c);border:1px solid var(--border,#e0dcef);border-radius:8px;padding:0 8px;background:var(--panel,#fff)}
+.send-video-select select{background:transparent;border:0;box-shadow:none;color:inherit;min-width:110px;width:auto;max-width:210px;padding:7px 22px 7px 2px;font-size:12px;cursor:pointer}
+.send-video-select:focus-within{outline:2px solid var(--accent,#7453e9);outline-offset:2px}
+.send-video-error{font-size:11px;color:#b13b4b;max-width:260px}
+.reference-intermediate .send-video-control,.gallery-intermediate .send-video-control{margin:8px}

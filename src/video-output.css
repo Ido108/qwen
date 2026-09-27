@@ -1,0 +1,7 @@
+.shared-video-output{background:#ede9f4;border-radius:10px;min-height:240px;height:clamp(260px,42vh,460px);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.shared-video-output>video,.shared-video-output>img{width:100%;height:100%;object-fit:contain}
+.shared-video-output~.result-actions{display:flex;flex-wrap:wrap;gap:10px;min-width:0}
+.shared-video-output~.result-actions>*{max-width:100%}
+.shared-video-output .video-empty{padding:24px;text-align:center}.shared-video-output .video-empty span{max-width:320px}
+.upscale-page .reference-result>.reference-job-progress,.video-page .result-panel>.reference-job-progress{margin-top:12px}
+@media(max-width:600px){.shared-video-output{height:300px}.shared-video-output .video-empty{padding:16px}}
