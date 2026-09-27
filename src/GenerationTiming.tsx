@@ -27,12 +27,12 @@ export function GenerationTiming({job,models}:{job:Run;models?:ModelState|null})
   const seed=job.seed_used===false?null:valid(job.seed)?job.seed:job.request.randomize_seed===false&&valid(job.request.seed)?job.request.seed:null;
   const steps=job.kind==='upscale'?job.total_chunks:[job.actual_steps,job.total_steps,job.request.steps].find(positive);
   const twoPasses=job.request.workflow==='crossview'&&job.request.replace_subjects_first;
-  const countLabel=job.kind==='upscale'?'chunks':twoPasses?'steps/pass':'steps';
+  const countLabel=job.kind==='upscale'?'sections':twoPasses?'steps/pass':'steps';
   const size=positive(job.width)&&positive(job.height)?`${job.width} × ${job.height}`:null;
   const facts:[string,string][]=[];
   if(elapsed!==null)facts.push(['Run time',time(elapsed)]);
   if(model)facts.push(['Model',model]);
-  if(steps)facts.push([job.kind==='upscale'?'Processed chunks':twoPasses?'Steps per pass':'Steps',String(steps)]);
+  if(steps)facts.push([job.kind==='upscale'?'Processed sections':twoPasses?'Steps per pass':'Steps',String(steps)]);
   if(twoPasses)facts.push(['Passes','2 — subject replacement, then camera view']);
   if(job.request.refine&&job.kind==='multi-reference')facts.push(['Passes','8 generation steps + 3 refinement steps']);
   if(seed!==null)facts.push(['Seed',String(seed)]);

@@ -15,11 +15,11 @@ export const ASPECT_OPTIONS:{value:AspectMode;label:string;ratio?:number}[]=[
   {value:'custom',label:'Custom ratio'},
 ];
 
-export const SIZE_OPTIONS:{value:SizeTier;label:string;pixels:number}[]=[
-  {value:'draft',label:'Draft · faster',pixels:350_000},
-  {value:'standard',label:'Standard',pixels:590_000},
-  {value:'high',label:'High · more detail',pixels:980_000},
-  {value:'custom',label:'Custom width and height',pixels:0},
+export const SIZE_OPTIONS:{value:SizeTier;pixels:number}[]=[
+  {value:'draft',pixels:350_000},
+  {value:'standard',pixels:590_000},
+  {value:'high',pixels:980_000},
+  {value:'custom',pixels:0},
 ];
 
 export const REFERENCE_MAX_PIXELS=1344*768;

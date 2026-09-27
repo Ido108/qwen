@@ -89,10 +89,10 @@ try:
     assert state['images']==2
     area.get_by_label('LTX model',exact=True).select_option('ltx25-msr-q8_0')
     area.get_by_label('LTX output size').select_option('custom')
-    area.get_by_label('Width',exact=True).fill('736')
-    area.get_by_label('Height',exact=True).fill('416')
+    area.get_by_label('Width (px)',exact=True).fill('736')
+    area.get_by_label('Height (px)',exact=True).fill('416')
     area.locator('.msr-options>summary').click()
-    area.get_by_label('Double resolution',exact=True).check()
+    area.get_by_label('Double width and height (2×)',exact=True).check()
     area.get_by_label('Random seed',exact=True).uncheck()
     area.get_by_label('Seed',exact=True).fill('713')
     area.locator('.msr-voices>summary').click()

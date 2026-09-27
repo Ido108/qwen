@@ -162,7 +162,7 @@ try:
     assert state['requests'][-1]['source_start_seconds']==2
     page.locator('.reference-workbench').get_by_label('Aspect ratio',exact=True).select_option('1:1')
     assert page.locator('.reference-resolution-result strong').inner_text().split(' × ')[0]==page.locator('.reference-resolution-result strong').inner_text().split(' × ')[1]
-    page.locator('.reference-workbench').get_by_label('Resolution',exact=True).select_option('draft')
+    page.locator('.reference-workbench').get_by_label('Resolution (px)',exact=True).select_option('draft')
     page.get_by_role('tab',name='Reference-guided',exact=True).click()
     assert prompt.input_value()==''
     button.click()
