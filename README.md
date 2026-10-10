@@ -1,96 +1,150 @@
+<div align="center">
+
+<img src="public/branding/icon-128.png" width="96" alt="Qwen icon">
+
 # Qwen - Images & Video
 
-Create and edit images and videos on your own computer with Qwen-Image-2.1, MiniMax H3, FastH3, LTX 2.5 and SeedVR2/FlashVSR upscaling.
+**Create and edit images and videos on your own computer.**
+One double-click to install. No API keys, no subscription, no cloud required.
+
+<img src=".github/assets/images.png" alt="Qwen creating an image from a prompt" width="100%">
+
+<img src=".github/assets/samples.jpg" alt="Three images made with Qwen: a watercolor fox, a perfume bottle, a cafe sign" width="100%">
+<sub>Made locally with the Q8_0 model, prompt enhancement off.</sub>
+
+</div>
+
+## What it does
+
+- **Create images** from a prompt with Qwen-Image-2.1. It writes clear text inside images, too.
+- **Edit images**: add up to 10 images, then describe the change.
+- **Create videos** from a prompt or from a first and last frame.
+- **Change videos**: replace people, change the camera angle, or build a new scene from reference images.
+- **Upscale videos** to a higher resolution.
+- **Queue and gallery**: add many jobs, close the app, and find every result with its settings later.
+
+Everything runs on your NVIDIA graphics card. Your images and videos stay on your computer.
 
 ## Requirements
 
-- Windows 10 or 11
-- An NVIDIA graphics card with a current driver
-- At least 40 GB of free disk space (more for video models)
+- **Windows** 10 or 11
+- **NVIDIA graphics card** with a current driver (tested on an RTX 4090 with 24 GB)
+- **40 GB of free disk space** for images, more for video models
 
-## Install and start
+## Install
 
-1. Clone the repository:
+1. Download the app:
    ```
    git clone https://github.com/Ido108/qwen.git
    ```
-2. Double-click **Start Qwen.bat**.
-3. On the first start, choose where Qwen stores its files. Press Enter for drive C, or type another drive letter (for example `D`) or a folder (for example `D:\Qwen`).
-4. Wait for the installation to finish. The app then opens in its own window.
+   No Git? Click **Code → Download ZIP** on this page and unzip it.
+2. Double-click **`Start Qwen.bat`**.
+3. Choose where Qwen keeps its files. Press **Enter** for drive C, or type another drive letter, for example `D`.
 
-The first start installs everything automatically: Python, Node.js (if missing) and all packages. You do not need administrator rights. Later starts open the app immediately. Setup also creates a **Qwen** shortcut next to the repository folder.
+The first start installs everything automatically and takes about **20 minutes**. Most of this time is the download of the graphics libraries (several GB). You do not need to install Python or anything else, and you do not need administrator rights.
 
-Models are not part of the installation. Choose a model in **Settings** and download it, or just start a job: missing model files download automatically.
+When the installation is done, Qwen opens in its own window. To open it later, double-click **`Start Qwen.bat`** again, or the **Qwen** shortcut next to the app folder. Later starts take a few seconds.
 
-## Create images
+## Create your first image
 
-1. Write a prompt. To edit or combine images, drag, select or paste up to 10 images.
-2. Keep **Enhance prompt** on, or turn it off to use your text exactly as written.
-3. Choose **Auto 1K** (faster) or **Auto 2K** (more detail). Both choose the aspect ratio automatically. **Custom size** gives an exact size.
-4. Click **Generate image**. The result is saved as a PNG.
+1. Write a prompt, for example: `A small coffee shop with a wooden sign that reads "QWEN CAFE"`.
+2. Turn **Enhance prompt** off, or connect a Google account to use it (see below).
+3. Click **Generate image**.
 
-You can write prompts in any language. **Advanced settings** has the seed, a negative prompt, the step count and the output folder. **Examples** has 37 ready-made prompts with their input images.
+The first image also downloads the model (about 18 GB). The progress shows in **Queue**. After that, a 1K image takes about 1–2 minutes on an RTX 4090.
 
-For a transparent background, use the prompt from **How to use**:
-`This is an RGBA image with transparency. [Description]. The image has alpha channel and the background is transparent.`
+To **edit** an image, drop it into **Input images** and describe the change, for example `Make it a rainy night with neon reflections`. You can also click **Use for editing** under any result.
 
-## Choose models
+> **Tip:** For a transparent background, open **How to use** (the **?** icon) and click **Use transparent image prompt**.
 
-Click the model button in the header or the gear icon to open **Settings**. Each model has **Download**, **Select** and **Remove**. A download includes all files that the model needs. Removing a model does not delete your images or videos.
+## Choose a model
 
-| Image model | Size | Notes |
+Open **Settings** (the gear icon). Click **Select** on any model. If it is not downloaded yet, it downloads when you start your next job. You can also click **Download** to get it now.
+
+<img src=".github/assets/models.png" alt="Image models in Settings" width="70%">
+
+| Image model | Size | Choose it when |
 | --- | --- | --- |
-| Q8_0 | 7.59 GB | Recommended |
-| Q6_K | 5.88 GB | |
-| Q5_K_M | 5.22 GB | |
-| Q4_K_M | 4.60 GB | Less memory |
-| Q4_0 | 4.05 GB | Least memory |
-| Official BF16 | 14.23 GB | Full precision |
+| **Q8_0** | 7.6 GB | You want the best quality. Recommended. |
+| Q6_K / Q5_K_M | 5.9 / 5.2 GB | You want a smaller download. |
+| Q4_K_M / Q4_0 | 4.6 / 4.1 GB | Your graphics card has less memory. |
+| BF16 | 14.2 GB | You want the original full-precision model. |
 
-The text encoder and VAE are shared by all image models and download once (about 10 GB; BF16 uses a 17.5 GB encoder).
+All image models also use a shared text encoder and VAE (about 10 GB, downloaded once).
 
-## Prompt enhancement
+## Prompt enhancement (optional)
 
-Prompt enhancement uses Gemini through your Google account. No API key is necessary.
+Prompt enhancement rewrites your short prompt into a detailed one, which usually gives better images. It uses Gemini through your Google account, so you do not need an API key.
 
 1. Open **Settings**.
 2. Click **Connect Google Account** and sign in.
 
-When enhancement is on, the prompt and input images go to Google. When it is off, nothing leaves your computer. Image and video generation always runs locally.
+When enhancement is on, your prompt and input images go to Google. When it is off, nothing leaves your computer.
 
 ## Video
 
-Open the **Video** tab.
+Open the **Video** tab. It has four workflows:
 
-- **Text to video / Image to video**: write a prompt, choose duration and size, and click **Generate video**. Image mode accepts a first frame and an optional last frame.
-- **Video to video**: replace people in a clip, change the camera view, or edit with reference images.
-- **Reference images**: create a new scene from up to four subject images and an optional background (LTX 2.5).
-- **Upscale**: increase the resolution of a video with SeedVR2, FlashVSR or SwiftVR.
+<table>
+<tr>
+<td width="50%"><b>Create video</b>: write a prompt, or add a first and last frame. Choose the duration and size, then click <b>Generate video</b>.</td>
+<td width="50%"><b>Video to video</b>: replace people in a clip, change the camera view, or edit it with reference images.</td>
+</tr>
+<tr>
+<td><img src=".github/assets/video.png" alt="Create video"></td>
+<td><img src=".github/assets/video-to-video.png" alt="Video to video"></td>
+</tr>
+<tr>
+<td><b>Reference images</b>: create a new scene from up to four photos of people or objects and an optional background.</td>
+<td><b>Upscale</b>: increase the resolution of a video and keep its sound.</td>
+</tr>
+</table>
 
-Every result has **Send to**, which opens it as the input of another video workflow.
+Every video result has **Send to**, which opens it in another workflow. For example, create a video and then upscale it.
 
-Some LTX files need access to the gated [Lightricks model](https://huggingface.co/Lightricks/LTX-2.5). Accept its terms on Hugging Face, then set the `HF_TOKEN` environment variable to an access token of that account.
+Video models are large (4–20 GB each). Each one downloads the first time you use it.
+
+> **Reference images** uses LTX 2.5. Its files require access to the [Lightricks model](https://huggingface.co/Lightricks/LTX-2.5) on Hugging Face. Accept the terms there, then set the `HF_TOKEN` environment variable to a token of that account.
 
 ## Queue and gallery
 
-- You can add jobs while other jobs run. **Queue** shows the active job and the waiting jobs. You can move, cancel or pause them.
-- Waiting jobs stay saved when you close the app.
-- **Gallery** shows all images and videos. **Use settings** loads a result's settings into the form. **Run again** adds the same job to the queue.
+<img src=".github/assets/gallery.png" alt="Gallery" width="100%">
+
+- Click **Generate** as many times as you want. Each click adds a job to the **Queue**, and you can keep working.
+- In **Queue**, you can reorder, pause or cancel jobs. Waiting jobs stay saved when you close the app.
+- **Gallery** shows all your images and videos. **Use settings** loads the prompt and settings of a result. **Run again** makes a new version.
 
 ## Other tools
 
 These are in the `scripts` folder:
 
-- **Restart Qwen.bat**: closes Qwen and opens it again.
-- **Show Qwen Logs.bat**: opens a log viewer.
-- **Download Models.bat**: downloads the recommended Q8 and Q4_K_M image models without opening the app.
+| File | What it does |
+| --- | --- |
+| `Restart Qwen.bat` | Closes Qwen and opens it again. |
+| `Show Qwen Logs.bat` | Shows what Qwen is doing. Use it when something goes wrong. |
+| `Download Models.bat` | Downloads the recommended image models without opening the app. |
 
-Closing the Qwen window or its activity terminal stops Qwen.
+To close Qwen, close its window.
+
+## Troubleshooting
+
+| Problem | Solution |
+| --- | --- |
+| The installation stopped | Double-click `Start Qwen.bat` again. It continues from where it stopped. |
+| "NVIDIA CUDA is unavailable" | Update your NVIDIA driver, restart Windows, then start Qwen again. |
+| Generation is very slow | Close other programs that use the graphics card, or choose a smaller model (Q4_K_M). |
+| Out of memory | Choose **Auto 1K** or a smaller model. |
+| "Connect the drive containing ..." | Connect the drive you chose during installation. |
+
+## Uninstall
+
+1. Delete the app folder.
+2. Delete the data folder that you chose during installation (by default `C:\AI\qwen-image-studio`).
 
 ## Mac
 
-Open `quickStart.command`. On a Mac, generation runs on RunPod Serverless. See [RUNPOD.md](RUNPOD.md).
+On a Mac, open `quickStart.command`. Generation runs on a RunPod cloud GPU instead of your computer. See [RUNPOD.md](RUNPOD.md).
 
 ## License
 
-The Qwen models and code are under the Qwen Research License (`reference/Qwen-Research-LICENSE.txt`). Third-party code licenses are in the `vendor` folders.
+The Qwen models and code are under the [Qwen Research License](reference/Qwen-Research-LICENSE.txt). Other models have their own licenses on their Hugging Face pages. Third-party code licenses are in the `vendor` folder.
