@@ -1,174 +1,96 @@
 # Qwen - Images & Video
 
-אפליקציה מקומית ליצירה ועריכת תמונות, עם Qwen-Image-2.1 ב־BF16 וב־GGUF, ובחירת מודלים דרך חלון ההגדרות.
+Create and edit images and videos on your own computer with Qwen-Image-2.1, MiniMax H3, FastH3, LTX 2.5 and SeedVR2/FlashVSR upscaling.
 
-## הפעלה
+## Requirements
 
-להתקנה מלאה ולהפעלה: לחיצה כפולה על **Setup.bat**. בהפעלות הבאות: **Start Qwen.bat**, או **Qwen** בתיקיית REPOS.
-החלון נפתח כמו אפליקציה. הפעלה נוספת משתמשת בשרת שכבר פועל.
+- Windows 10 or 11
+- An NVIDIA graphics card with a current driver
+- At least 40 GB of free disk space (more for video models)
 
-המתקין מכין סביבת Python נפרדת, מתקין Node.js מקומי אם חסר, בונה את הממשק, מאמת את תמונות הדוגמה ובודק CUDA. אין צורך להתקין Python, Node.js או uv ידנית ואין צורך בהרשאות מנהל. נדרש כרטיס NVIDIA ודרייבר תואם. ההתקנה שומרת את מיקומי הקבצים ב־`local-settings.json`; במחשב חדש נבחר כונן עם מקום פנוי. הורדת משקלי המודלים מתבצעת **מתוך Settings בממשק**, עם התקדמות, ביטול, ניסיון נוסף ואימות SHA-256. Missing model files also download automatically when a queued job starts. המתקין אינו מוריד מודלי תמונה או LLM מקומי ברקע.
+## Install and start
 
-1. כתבו פרומפט. אפשר לגרור, לבחור או להדביק עד 10 תמונות כדי לערוך או לשלב אותן.
-2. השאירו את שיפור הפרומפט פעיל, או כבו כדי להשתמש ישירות בטקסט שכתבתם.
-3. בחרו **Auto 1K** ליצירה מהירה יותר או **Auto 2K** לפירוט גבוה יותר. בשניהם יחס התמונה אוטומטי. **Custom size** מאפשר גודל מדויק.
-4. בשדה **Steps** אפשר לשנות את מספר הצעדים (1–80), או לחזור לברירת המחדל של המודל. לחצו על יצירת תמונה. התוצאה נשמרת כ־PNG, כולל שקיפות ופרטי היצירה.
+1. Clone the repository:
+   ```
+   git clone https://github.com/Ido108/qwen.git
+   ```
+2. Double-click **Start Qwen.bat**.
+3. On the first start, choose where Qwen stores its files. Press Enter for drive C, or type another drive letter (for example `D`) or a folder (for example `D:\Qwen`).
+4. Wait for the installation to finish. The app then opens in its own window.
 
-הממשק כולו באנגלית. אפשר לכתוב פרומפטים בשפות שונות ולשמור טקסט מדויק בשפת המקור. הגודל והצעדים גלויים ליד הפרומפט; גודל מותאם כולל את כל 10 גדלי 1K/2K של הספייס. ההגדרות המתקדמות כוללות Seed, Seed אקראי, פרומפט שלילי ותיקיית שמירה. כל 37 הדוגמאות המקוריות זמינות עם תמונות הקלט והתוצאה והפרומפט המלא. טעינת דוגמה שומרת על סדר התמונות ועל הגדרת שיפור הפרומפט המקורית.
+The first start installs everything automatically: Python, Node.js (if missing) and all packages. You do not need administrator rights. Later starts open the app immediately. Setup also creates a **Qwen** shortcut next to the repository folder.
 
-ברירת המחדל לתמונות היא **25 צעדים**, לפי קובצי ComfyUI הרשמיים ל[יצירה](https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json) ול[עריכה](https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json), שאליהם מפנה גם [מאגר GGUF](https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF). דוגמאות Diffusers משתמשות ב־40, אבל האפליקציה משתמשת ב־ComfyUI עם Euler/simple. לכל מודל רשומה ברירת מחדל ומקור בקטלוג, עם קישור ליד Steps. בחירת מודל אחר מחזירה לברירת המחדל שלו; אפשר לשנות ידנית. בווידאו: MiniMax H3 רגיל 20, Turbo עם LoRA שמונה, ו־FastH3 V2 שמונה. פחות צעדים יכולים לפגוע בפרטים או בנאמנות לפרומפט. Auto 1K מכוון לכמיליון פיקסלים ו־Auto 2K לכארבעה מיליון, עם עיגול לממדים הנתמכים. הגדרות ישנות נשארות ב־Auto 2K.
+Models are not part of the installation. Choose a model in **Settings** and download it, or just start a job: missing model files download automatically.
 
-## קבצים במחשב
+## Create images
 
-- אפליקציה וקוד: `C:\Users\ido\REPOS\qwen-image-studio`
-- מודלים: `E:\AI\qwen-image-studio\models`
-- סביבת Python על ה־SSD הפנימי: `D:\AI\qwen-image-studio\venv`
-- תמונות: `E:\AI\qwen-image-studio\images`
-- פרטי משימות ותמונות המקור: `E:\AI\qwen-image-studio\jobs`
-- רשימת מודלים מותקנים ואימות הורדות: `E:\AI\qwen-image-studio\installed-models.json`
-- תקלות הפעלה: `E:\AI\qwen-image-studio\logs\server.err.log`
+1. Write a prompt. To edit or combine images, drag, select or paste up to 10 images.
+2. Keep **Enhance prompt** on, or turn it off to use your text exactly as written.
+3. Choose **Auto 1K** (faster) or **Auto 2K** (more detail). Both choose the aspect ratio automatically. **Custom size** gives an exact size.
+4. Click **Generate image**. The result is saved as a PNG.
 
-כונן E חייב להיות מחובר בזמן השימוש. יצירת התמונות פועלת מקומית. שיפור הפרומפט משתמש ב־Gemini דרך Antigravity לאחר התחברות לחשבון Google, ללא API Key. כשהשיפור פעיל, הפרומפט ותמונות הקלט נשלחים ל־Google; כשהוא כבוי אין קריאה לענן. `Download Models.bat` מוריד Q8 ו־Q4_K_M עם הקבצים הנדרשים להם, משלים הורדות שנקטעו ובודק SHA-256 מול Hugging Face. מודלי תמונה נוספים זמינים בהגדרות. אין הורדה או טעינה של LLM מקומי לשיפור הפרומפט. `Setup.bat` מתקן את סביבת ההרצה המבודדת. אין שינויים בסביבות Python של אפליקציות אחרות. אפשר להגדיר `QWEN_DATA_DIR` ו־`QWEN_RUNTIME_DIR` להתקנה במיקום אחר.
+You can write prompts in any language. **Advanced settings** has the seed, a negative prompt, the step count and the output folder. **Examples** has 37 ready-made prompts with their input images.
 
-## חיבור שיפור הפרומפט
+For a transparent background, use the prompt from **How to use**:
+`This is an RGBA image with transparency. [Description]. The image has alpha channel and the background is transparent.`
 
-פתחו הגדרות ולחצו **התחברות עם Google**. ההתחברות נפתחת בחלון Google ומסתיימת אוטומטית באפליקציה. אם אפליקציה אחרת תופסת את פורט החזרה, אפשר להדביק את כתובת ה־localhost המלאה בשדה שמופיע בהגדרות. יש בחירת מודל, בדיקת חיבור וניתוק.
+## Choose models
 
-החיבור נשמר מוצפן באמצעות Windows DPAPI, עבור משתמש Windows הנוכחי. אין אסימוני גישה בפרונט, במשימות או בקובצי התמונות. רענון ההתחברות מתבצע לפני כל בקשה כשצריך. מודלי ה־PE המקומיים אינם נטענים. מקודד הטקסט של מודל התמונה עדיין נחוץ ליצירת תמונות מקומית.
+Click the model button in the header or the gear icon to open **Settings**. Each model has **Download**, **Select** and **Remove**. A download includes all files that the model needs. Removing a model does not delete your images or videos.
 
-## בחירת מודלים
-
-כפתור המודל בכותרת או גלגל השיניים פותחים את ההגדרות. לכל מודל יש הורדה, בחירה והסרה עם אישור. הורדה כוללת את הקבצים הנדרשים; הסרה אינה מוחקת תמונות שנוצרו.
-
-| מודל תמונה | גודל קובץ | מקודד אוטומטי |
+| Image model | Size | Notes |
 | --- | --- | --- |
-| Q8_0 | 7.59GB | Qwen3-VL 8B INT8 |
-| Q4_K_M | 4.60GB | Qwen3-VL 8B INT8 |
-| Q6_K | 5.88GB | Qwen3-VL 8B INT8 |
-| Q5_K_M | 5.22GB | Qwen3-VL 8B INT8 |
-| Q4_0 | 4.05GB | Qwen3-VL 8B INT8 |
-| BF16 רשמי | 14.23GB | Qwen3-VL 8B BF16 |
+| Q8_0 | 7.59 GB | Recommended |
+| Q6_K | 5.88 GB | |
+| Q5_K_M | 5.22 GB | |
+| Q4_K_M | 4.60 GB | Less memory |
+| Q4_0 | 4.05 GB | Least memory |
+| Official BF16 | 14.23 GB | Full precision |
 
-הורדה חדשה של BF16 כוללת רק את משקלי יצירת התמונה, עם המקודד וה־VAE המשותפים כתלויות. לא מורידים את העותקים הכפולים שהיו בחבילת Diffusers המקורית. בהתקנה ישנה מוצג הנפח שקיים בפועל, והסרה מאושרת מסירה גם את הקבצים הישנים של אותה חבילה.
+The text encoder and VAE are shared by all image models and download once (about 10 GB; BF16 uses a 17.5 GB encoder).
 
-קובצי ה־GGUF מגיעים מהמאגר `abenzerps/Qwen-Image-2.1-Uncensored-GGUF`. המקודד INT8 שוקל 9.35GB; BF16 שוקל 17.53GB. ה־VAE התואם, `qwen_image_2.1_vae_bf16.safetensors`, שוקל 0.68GB ונבחר אוטומטית. אפשר לשנות את המקודד בהגדרות. Q8 ו־Q4_K_M עם INT8 ו־VAE יחד דורשים כ־22.2GB. שני משפרי הפרומפט המקומיים הישנים, 18.84GB כל אחד, אינם בשימוש. אפשר להסיר אותם מתוך ההגדרות לאחר אישור, בלי לפגוע בשיפור הפרומפט דרך Google.
+## Prompt enhancement
 
-המאגר מזהיר מתקלה ב־Q8: וקטורי RMSNorm של 128 ערכים נשמרו כ־136 בתים. המתאם המקומי מפענח את 64 הווקטורים האלה לפני הטעינה. המטריצות הגדולות נשארות מקוונטטות; קובצי המודל המקוריים אינם משתנים.
+Prompt enhancement uses Gemini through your Google account. No API key is necessary.
 
-## ההבדל מהספייס
+1. Open **Settings**.
+2. Click **Connect Google Account** and sign in.
 
-הספייס הרשמי משתמש בשרת Alibaba ובמודל `pre-qwen-image-2.1-pro-yunqi`. כאן רצים המשקלים הפתוחים הרשמיים של Qwen מקומית. לכן אותו Seed אינו הבטחה לאותה תמונה בדיוק. שיפור הפרומפט משתמש ב־Gemini דרך Antigravity, עם הוראות הכתיבה המקוריות של Qwen ליצירה ולעריכה.
-
-- מנוע התמונה הוא ComfyUI בגרסה קבועה, ללא ממשק ComfyUI או גרף שצריך לערוך. GGUF נטען באמצעות ComfyUI-GGUF; BF16 משתמש במשקלי ה־Transformer הרשמיים. CUDA 13 מפעיל את ההאצות המתאימות ל־RTX 4090.
-- Image models remain available between compatible jobs. Video/model changes release the image worker; there is no heavy model load while opening the interface.
-- הגודל האוטומטי נקבע לפי פלט שיפור הפרומפט, או לפי תמונת קלט; ברירת המחדל ללא אלה היא 2048×2048.
-- גדלים מותאמים שאינם כפולה של 32 נוצרים בגודל הנתמך הקרוב כלפי מעלה ומותאמים לגודל המדויק. הפעולה מתועדת בפרטי התמונה.
-- פרומפט שלילי מפעיל CFG=2; ללא פרומפט שלילי נשמרת ברירת המחדל הרשמית CFG=1. פרומפט שלילי מוסיף חישוב.
-- ברירת המחדל לתמונות: 25 צעדים, לפי תהליכי ComfyUI הרשמיים שבהם האפליקציה משתמשת. אפשר לשנות את מספר הצעדים בממשק.
-- ליצירת רקע שקוף יש להשתמש בנוסח המופיע בעזרה: `This is an RGBA image with transparency. [Description]. The image has alpha channel and the background is transparent.` עצם שמירת PNG ב־RGBA אינה מבטיחה שהמודל ייצור רקע שקוף.
-- אין הבטחה שכל גודל וכל שילוב של 10 תמונות ייכנסו בזיכרון הפנוי בכל רגע. כשל מדווח במסך, עם אפשרות להקטין את הגודל ולנסות שוב. תמונות שכבר הושלמו נשמרות.
-
-## מקור וגרסאות
-
-- [Space](https://huggingface.co/spaces/Qwen/Qwen-Image-2.1), revision `e4eefeaed9b527f9b7bd98c0e3d3d29e1180606f`
-- [המודל הראשי](https://huggingface.co/Qwen/Qwen-Image-2.1), revision `790c92633540aa0cb11d9abf19eb46d861714758`
-- [שיפור פרומפט ליצירה](https://huggingface.co/Qwen/Qwen-Image-2.1-PE-T2I), revision `f3ed7985c788ad75b3ab7223e0c4c51e2a43545b`
-- [שיפור פרומפט לעריכה](https://huggingface.co/Qwen/Qwen-Image-2.1-PE-I2I), revision `72927bc08afc99b7888ceb7d7d51a12db3700bbd`
-- [קוד רשמי](https://github.com/QwenLM/Qwen-Image-2.1), קבצי שיפור הפרומפט נשמרו ב־`reference/`.
-- [מאגר GGUF](https://huggingface.co/abenzerps/Qwen-Image-2.1-Uncensored-GGUF), revision `e92386d3b86fd77ae1650534815ab3f6b85d46ba`.
-- [ComfyUI](https://github.com/Comfy-Org/ComfyUI), revision `b0f4b7b294ce482a2e071d9d762c133d38c7aa07`; [ComfyUI-GGUF](https://github.com/leejet/ComfyUI-GGUF), revision `f912d5e5c25921e41eae2c0131eeb4d350e7c165`. רישיונות הקוד נכללים בתיקיות `vendor`. קוד Diffusers ב־`reference` נשמר להשוואה בלבד.
-- הגרסאות המותקנות מופיעות ב־`requirements-lock.txt` וב־`package-lock.json`. תיעוד התאמת OAuth למואיז ול־Weboss נמצא ב־`reference/oauth-integration.md`.
-- המודלים וקוד Qwen כפופים ל־Qwen Research License. נוסח הרישיון נמצא ב־`reference/Qwen-Research-LICENSE.txt` ובתיקיות המודלים.
-
-## עיצוב
-
-הקונספט נמצא ב־`reference/design-concept.png`. האייקון נמצא ב־`public/branding/`. שניהם נוצרו בכלי Image Gen המובנה; התמונות בדוגמאות הן תמונות המקור מהספייס ואינן מוצגות כתוצאות מקומיות.
-
-כיוון העיצוב: אותם אזורי עבודה ואותו סדר פעולות, רקע לבן ולבנדר בהיר, טיפוגרפיית Segoe UI, כפתור יצירה סגול, אזור תוצאה עם תצוגת שקיפות. אין מסכי ניווט מיותרים. האייקון: שלושה סרטים סגולים שלובים כצמצם מצלמה, על רקע שקוף.
-
-## פיתוח ובדיקות
-
-```powershell
-npm run build
-D:\AI\qwen-image-studio\venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-השרת מקשיב רק ב־`127.0.0.1`, ונפתח בפורט 47821 או בפורט פנוי עד 47840. פעולות כתיבה דורשות אסימון מקומי. אי אפשר לקבל דרך נתיבי התמונות קובץ שרירותי מהמחשב.
-
+When enhancement is on, the prompt and input images go to Google. When it is off, nothing leaves your computer. Image and video generation always runs locally.
 
 ## Video
 
-Open the **Video** tab in the same app. Choose **Text to video** or **Image to video**, write a prompt, choose duration and size, and click **Generate video**. Image mode accepts a first frame and an optional last frame; its size initially follows the first image. The player supports playback and MP4 download. History restores previous settings and keeps video outputs separate from images.
+Open the **Video** tab.
 
-- **FastH3 8-Step V2 Q4_K_M**: fast text-to-video with native audio. Uses the real VSA-H3 CUDA kernels. Eight sampling steps are fixed to the distilled model's schedule.
-- **MiniMax H3 Q4_0**: text-to-video and first/last-frame image-to-video. Standard mode uses 20 steps; **Turbo** uses the official 8-step LoRA. Both follow the official CFG 1 workflow.
-- Settings also offers FastH3 Q5_K_M / Q6_K / INT8 and MiniMax H3 Q8_0 / INT8. Required H3 text encoder and video/audio VAEs are selected automatically and shared across the models.
-- Every MiniMax H3 variant supports first/last-frame images. FastH3 V2 variants support text only, as documented by their authors. The model selector labels these capabilities; choosing image mode keeps the selected model and offers an explicit switch to MiniMax H3 when needed.
-- On Windows, video inference checks NVIDIA dedicated VRAM as well as the CUDA budget, accounts for other applications, and streams weights from RAM when necessary. The conditioning encoder is released before keyframe VAE encoding. This preserves the requested frame count and resolution.
-- Video models and shared files occupy about 48.45 GB for both installed Q4 models plus Turbo. No duplicate text encoder or VAE is downloaded for each video model. Missing model weights download and verify when a queued job starts; **Settings** also supports manual downloads.
-- Output is H.264 MP4 at 24 fps, with optional AAC stereo audio. Durations follow the model's supported frame grid; the exact duration is shown in the interface. Smaller Draft sizes are available. The models jointly generate audio/video even when audio is excluded from the saved MP4.
-- Video prompt enhancement uses the same Antigravity connection. The required H3 conditioning encoder is not a prompt-enhancement LLM.
+- **Text to video / Image to video**: write a prompt, choose duration and size, and click **Generate video**. Image mode accepts a first frame and an optional last frame.
+- **Video to video**: replace people in a clip, change the camera view, or edit with reference images.
+- **Reference images**: create a new scene from up to four subject images and an optional background (LTX 2.5).
+- **Upscale**: increase the resolution of a video with SeedVR2, FlashVSR or SwiftVR.
 
-See [video research and exact model contracts](reference/video-research.md) and [validation results](reference/validation.md). FastH3 is limited to the upstream distilled text-to-video task; image inputs use MiniMax H3. The separate H3 reference-to-video checkpoint is not included in the first/last-frame model.
+Every result has **Send to**, which opens it as the input of another video workflow.
 
-## Video to video and upscaling
-
-Open **Video → Video to video** in the main Qwen app. It has three separate workflows. **Replace subjects** uses the MiniMax H3 Ref2VA FaceSwap LoRA and ordered person reference images. **Camera view** uses the CrossView Warp LoRA, MoGe 2 depth estimation, and the camera controls. It does not require or apply FaceSwap. **Reference-guided** uses the Ref2VA model with the source video and reference images without either specialized LoRA.
-
-In Camera view, open **Replace subjects before changing camera view** only if both changes are wanted. The checkbox creates a complete subject-replacement MP4 first, then uses that generated video as the source for CrossView. The intermediate MP4 can be viewed and downloaded from the result and gallery. Optional controls, including this checkbox, camera options, and the manual camera guide, start collapsed. A generative replacement or viewpoint change may alter details outside the intended subject or reveal areas absent from the source; it cannot guarantee unchanged pixels.
-
-The source timeline selects the full uploaded duration by default, up to the model limit; drag or type start/end to choose another segment. **Add person** creates a replacement identity; its **+** adds more views of that same person. Selecting that person in a detected source person's thumbnail dropdown sends every uploaded view together. The combined limit remains nine reference images. Uploaded identities use `@Person1`, `@Person2`, etc.; detections use `@Source1`, `@Source2`. Typing `@` inserts these tags. The worker builds the replacement instructions from the selections even when **Additional instructions** is empty. **Keep** asks the model to preserve a source person; this is generative editing, so unchanged pixels are not guaranteed.
-
-**Aspect ratio** matches the source video by default. You can choose a preset or a custom ratio independently of **Resolution** (Draft, Standard, High), or enter custom width and height. The result shows the actual 32-pixel-aligned dimensions. This app currently caps H3 output at 1,032,192 pixels and 256–1344 pixels per side, with a supported ratio range from 1:4 to 4:1. The app also shows available dedicated GPU memory before submission; when another process occupies VRAM, 20 GB INT8/Q8 weights can stream through RAM and become much slower. Choose Q4_K_M or free VRAM when that warning appears.
-
-Settings offers MiniMax H3 Ref2VA Turbo INT8, standard INT8, all seven Pruned GGUF and ten full GGUF quantizations, plus the existing 10Eros-Max Q4_K_M / Q8_0 models. Each model selects its matching H3 text encoder, video/audio VAEs, FaceSwap or CrossView LoRA, and MoGe 2 model when needed. Turbo defaults to eight steps; standard INT8 and Pruned GGUF use 20, while full GGUF and 10Eros-Max use 25. Advanced settings shows the selected model default, its source, an editable step count and Reset. Video and image models use the same Settings download, verification, and removal controls.
-
-Open **Video → Upscale** for SeedVR2 3B / 7B / 7B Sharp in FP16, FP8 and Q3–Q8 GGUF, FlashVSR 1.1 INT8 or original precision, and SwiftVR. The model selector sits above the input. Advanced settings change with the selected family; all three are one-step models. Choose a target short side or 2×/4× size; the output follows the input aspect ratio and frame rate, with only even-pixel codec rounding. Missing weights and the correct decoder/companions download when the queued job starts. Source audio stays enabled by default. Live previews show completed upscaled sections; the previous result remains available separately. See [exact model contracts, sources and verification limits](reference/upscaling-2026-09-27.md).
-
-Every completed image/video output has a compact time/model/settings line underneath, with an expandable **Details** view. Every video output and gallery overlay has **Send to** for Replace subjects, Camera view, Reference-guided and Upscale. It opens that workflow with the saved output as its input, without starting another generation or re-uploading/transcoding the video.
-
-Open **Video → Reference images** for [LTX 2.5 Multiple Subject Reference V2](https://huggingface.co/LiconStudio/LTX-2.5-Multiple-Subject-Reference). Choose the distilled INT8 base or one of seven GGUF variants (including Q4_K_M and Q8_0), add up to four ordered subject/object images and an optional background image, and describe a new scene. Image 1 and Image 2 can each have an optional voice reference; the first five seconds are used. The pipeline automatically selects the MSR V2 LoRA, matching Gemma 4 INT8 text encoder, and separate LTX video/audio VAEs. It uses the publisher's eight-step sigma sequence at CFG 1, with an optional 2× spatial refinement pass using three additional steps. This workflow creates a new scene from image references; use **Video to video → Replace subjects** to edit an existing clip.
-
-All generation tabs accept a job before its models are installed. The queue downloads and verifies only the selected model and required companions, shows download progress, and starts generation after verification. Existing files are reused; Settings still offers manual downloads and removal. LTX support files require access to the [gated Lightricks model](https://huggingface.co/Lightricks/LTX-2.5). Accept its terms using the Hugging Face account whose token is available through `HF_TOKEN` or the normal Hugging Face CLI login on this computer. Access is checked before any large companion download. RunPod needs that account's `HF_TOKEN` on the video endpoint. See the [LTX integration and verification notes](reference/ltx25-msr-audit-2026-09-26.md) for exact artifacts and validation limits.
+Some LTX files need access to the gated [Lightricks model](https://huggingface.co/Lightricks/LTX-2.5). Accept its terms on Hugging Face, then set the `HF_TOKEN` environment variable to an access token of that account.
 
 ## Queue and gallery
 
-Image and video requests share a persistent queue. The form stays editable while jobs are running or waiting; each click saves a separate snapshot of the prompt, input images, model, dimensions, steps, output folder and resolved seed. Only one worker uses the GPU at a time. Image jobs with the same model and encoder reuse that worker; video and model changes release it before starting the next worker.
+- You can add jobs while other jobs run. **Queue** shows the active job and the waiting jobs. You can move, cancel or pause them.
+- Waiting jobs stay saved when you close the app.
+- **Gallery** shows all images and videos. **Use settings** loads a result's settings into the form. **Run again** adds the same job to the queue.
 
-- **Queue** shows the active job, waiting order and recent results/errors. Waiting jobs can move up or be cancelled individually. **Pause queue** lets the active job finish while preserving waiting jobs; **Resume queue** continues processing. A failed or cancelled job does not stall the queue.
-- Waiting jobs, their order and the paused state survive server restarts. A job interrupted during inference is shown as failed with a retry action. Queued model files cannot be removed until the jobs finish or are cancelled.
-- **Gallery** combines existing and new images and videos, with type filters, prompt/model search, pagination, lightweight previews and full-size playback. **Use settings** loads the original prompt, input images, model, dimensions, steps and actual seed into the relevant form. **Run again** submits those settings directly to the queue with the seed fixed. Prompt enhancement, when enabled in the saved request, runs again and may produce a different rewrite.
-- The details view includes source images, parameters, the enhanced prompt, media download and full JSON settings. Image/video drafts, including uploaded input references, survive browser refresh. Original uploads and generated files stay on the local data drive.
+## Other tools
 
-## Consecutive images
+These are in the `scripts` folder:
 
-The image model, conditioning encoder and VAE stay constructed between jobs. GPU weights remain resident when memory permits; ComfyUI can evict a component to its retained CPU weights when more working memory is needed. On Windows, this restores the original read-only CPU views instead of copying GPU data into mapped weights. Changing image model/encoder or starting video closes the image worker first. Cancellation and inference errors discard the worker; the next job starts fresh.
+- **Restart Qwen.bat**: closes Qwen and opens it again.
+- **Show Qwen Logs.bat**: opens a log viewer.
+- **Download Models.bat**: downloads the recommended Q8 and Q4_K_M image models without opening the app.
 
-The most recent prompt/input conditioning is also reused when the actual prompt, negative prompt and ordered image pixels are unchanged. Changing the seed, step count or output dimensions does not require repeating that processing. New text or images are processed normally. An empty negative prompt no longer incurs an unused negative encoding pass at CFG 1; nonempty negatives retain the official CFG 2 behavior. Prompt enhancement remains a separate optional cloud operation.
+Closing the Qwen window or its activity terminal stops Qwen.
 
-Progress shows the current stage's time and the total job time separately. **Details** under each result shows model setup, prompt/input processing, generation, decoding and saving time when recorded by that job. **Settings → Release model memory** frees the idle image worker without deleting any files. It is disabled while jobs are running or waiting.
-# macOS and RunPod Serverless
+## Mac
 
-Clone the default `main` branch (`git clone https://github.com/Ido108/qwen.git`) and open `quickStart.command`. The same branch includes the Windows installer and the Video to video, Upscale, and image workflows for both platforms. The Mac launcher installs into `.venv` inside the repository and creates an icon-bearing `Qwen.app` for later Finder or Dock launches. Image and video generation on macOS uses RunPod Serverless; see [RUNPOD.md](RUNPOD.md) for endpoint, network volume and in-app connection setup.
+Open `quickStart.command`. On a Mac, generation runs on RunPod Serverless. See [RUNPOD.md](RUNPOD.md).
 
+## License
 
-## Ref2VA controls and activity
-
-Person/reference selections generate the replacement instructions automatically.
-**Additional instructions** is optional. The source player includes the trim timeline;
-one thumbnail dropdown assigns a reference or **Keep person**. **Live preview** shows
-an approximate animated draft from each completed generation step, alongside actual
-stages and step counts. It is separate from the source and final result.
-
-On Windows, `Start Qwen.bat` and `Qwen.lnk` open one Qwen window and its activity
-terminal. Closing either stops the server and all local processing immediately.
-Opening the shortcut again shows the existing window. `Restart Qwen.bat` closes
-the managed instance before opening a new one; an interrupted local job can be
-retried from the queue. Waiting jobs remain saved. Qwen uses its own browser profile
-so closing it never closes unrelated Edge/Chrome windows. The one-time upgrade
-from the old detached launcher requires its jobs to finish or be cancelled first.
-`Show Qwen Logs.bat` opens an additional read-only viewer; closing that extra viewer
-does not stop Qwen. RunPod jobs run remotely and may continue after the local app
-closes. An open browser tab renews its connection automatically after server restarts.
-See the [Ref2VA model and performance audit](reference/ref2va-audit-2026-09-26.md)
-for exact sampling sources and verification limits.
+The Qwen models and code are under the Qwen Research License (`reference/Qwen-Research-LICENSE.txt`). Third-party code licenses are in the `vendor` folders.

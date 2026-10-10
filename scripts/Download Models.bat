@@ -1,8 +1,8 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 title Qwen - Download and verify models
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\download_models.ps1" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0download_models.ps1" %*
 if errorlevel 1 goto failed
 echo.
 echo Q8 and Q4_K_M with their matching files are verified. More models: Settings.

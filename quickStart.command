@@ -25,9 +25,9 @@ fi
 if [ ! -x .venv/bin/python ]; then
   python3.12 -m venv .venv
 fi
-if [ ! -f .venv/.qwen-mac-ready ] || [ requirements-mac.txt -nt .venv/.qwen-mac-ready ]; then
+if [ ! -f .venv/.qwen-mac-ready ] || [ requirements/mac.txt -nt .venv/.qwen-mac-ready ]; then
   .venv/bin/python -m pip install --upgrade pip
-  .venv/bin/python -m pip install -r requirements-mac.txt
+  .venv/bin/python -m pip install -r requirements/mac.txt
   touch .venv/.qwen-mac-ready
 fi
 if [ ! -d node_modules ]; then npm ci --no-audit --no-fund; fi

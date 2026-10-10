@@ -168,7 +168,7 @@ def generate(request, prompt, images, progress, preview_directory=None):
     if fast:
         import comfy_kitchen as ck
         if not ck.sol_attn_is_available(torch.device('cuda')):
-            raise RuntimeError('FastH3 requires the CUDA sparse attention kernel. Run Setup.bat to repair the runtime.')
+            raise RuntimeError('FastH3 requires the CUDA sparse attention kernel. Run Start Qwen.bat to repair the runtime.')
         model = BlockSparseAttention.execute(model, {'selection': 'vsa', 'keep_percent': 10.0},
             0.2, 1.0, min_tokens=12288, extra_tokens=256, verbose=True)[0]
         progress(attention='VSA-H3', sparse_kernel_available=True, video_sigma_shift=10.0, audio_sigma_shift=3.0)

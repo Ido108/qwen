@@ -1,11 +1,12 @@
 """Create a pinned, allowlisted catalogue and checksum-verify already installed models."""
 import hashlib
 import json
+import os
 from pathlib import Path
 from huggingface_hub import HfApi
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = Path('E:/AI/qwen-image-studio')
+DATA = Path(os.environ['QWEN_DATA_DIR'])
 api = HfApi()
 catalog = []
 for model_id, name, revision, title, kind in [

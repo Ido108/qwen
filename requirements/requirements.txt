@@ -20,5 +20,5 @@ rotary-embedding-torch>=0.5.3
 opencv-python-headless>=4.11
 matplotlib>=3.10
 imageio-ffmpeg>=0.6.0
--r requirements-comfy.txt
--r vendor/ComfyUI-GGUF/requirements.txt
+-r comfy.txt
+-r ../vendor/ComfyUI-GGUF/requirements.txt

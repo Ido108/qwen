@@ -91,14 +91,14 @@ class OAuthTests(unittest.TestCase):
         with self.assertRaises(auth.ConnectionError):
             auth._read_stream(httpx.Response(200,text='data: {"response":{"candidates":[{"finishReason":"SAFETY"}]}}'))
 
-    def test_edit_prompt_images_keep_order_and_hebrew_text(self):
-        output=json.dumps({'rewritten_prompt':'Change the label on <image1> to "שלום". Keep <image2> as the background.','wh_ratio':'','ratio_follow':'<image1>'},ensure_ascii=False)
+    def test_edit_prompt_images_keep_order_and_unicode_text(self):
+        output=json.dumps({'rewritten_prompt':'Change the label on <image1> to "Café Zürich". Keep <image2> as the background.','wh_ratio':'','ratio_follow':'<image1>'},ensure_ascii=False)
         with patch.object(auth,'generate_text',return_value=output) as call:
-            result=enhance('שנה כיתוב לשלום',[Image.new('RGBA',(20,30),'red'),Image.new('RGBA',(30,20),'blue')],'gemini-3.7-flash')
+            result=enhance('Change the label to Café Zürich',[Image.new('RGBA',(20,30),'red'),Image.new('RGBA',(30,20),'blue')],'gemini-3.7-flash')
         parts=call.call_args.args[2]
         self.assertEqual([parts[0]['text'],parts[2]['text']],['<image1>','<image2>'])
         self.assertIn('inlineData',parts[1])
-        self.assertIn('שלום',result['positive_prompt'])
+        self.assertIn('Café Zürich',result['positive_prompt'])
         self.assertEqual(result['ratio_follow'],'<image1>')
 
     def test_transparency_contract_survives_rewrite(self):

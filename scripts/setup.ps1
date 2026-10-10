@@ -16,7 +16,7 @@ try {
     function Get-VerifiedArchive([string]$Url,[string]$Name,[string]$Sha256) {
         $archive = Join-Path $toolsRoot $Name
         if (-not (Test-Path -LiteralPath $archive) -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $Sha256) { Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $archive }
-        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $Sha256) { throw "Download verification failed: $Name. Run Setup.bat again to retry." }
+        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $Sha256) { throw "Download verification failed: $Name. Run Start Qwen.bat again to retry." }
         return $archive
     }
     $uvPath = (Get-Command uv -ErrorAction SilentlyContinue).Source
@@ -31,13 +31,13 @@ try {
     Write-Host '[2/5] Preparing Python 3.12...'
     if (-not (Test-Path -LiteralPath $pythonPath)) {
         & $uvPath venv --python 3.12.10 (Join-Path $runtimeRoot 'venv')
-        if ($LASTEXITCODE -ne 0) { throw 'Could not create the Python environment. Check the connection and free disk space, then run Setup.bat again.' }
+        if ($LASTEXITCODE -ne 0) { throw 'Could not create the Python environment. Check the connection and free disk space, then run Start Qwen.bat again.' }
     }
     Write-Host '[3/5] Installing the generation tools...'
     Push-Location $appRoot
     try {
-        & $uvPath pip install --python $pythonPath -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match
-        if ($LASTEXITCODE -ne 0) { throw 'Dependency installation did not finish. Run Setup.bat again to resume.' }
+        & $uvPath pip install --python $pythonPath -r requirements\lock.txt --extra-index-url https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match
+        if ($LASTEXITCODE -ne 0) { throw 'Dependency installation did not finish. Run Start Qwen.bat again to resume.' }
         & $uvPath pip check --python $pythonPath
         if ($LASTEXITCODE -ne 0) { throw 'Some installed dependencies are incompatible. See the package names above.' }
         Write-Host '[4/5] Building the interface...'
@@ -55,9 +55,9 @@ try {
             $env:PATH = $nodeDir + ';' + $env:PATH
         }
         & npm.cmd ci --no-audit --no-fund
-        if ($LASTEXITCODE -ne 0) { throw 'Could not install the interface packages. Run Setup.bat again to retry.' }
+        if ($LASTEXITCODE -ne 0) { throw 'Could not install the interface packages. Run Start Qwen.bat again to retry.' }
         & $pythonPath -u (Join-Path $PSScriptRoot 'download_examples.py')
-        if ($LASTEXITCODE -ne 0) { throw 'Some example images could not be downloaded. Run Setup.bat again to retry.' }
+        if ($LASTEXITCODE -ne 0) { throw 'Some example images could not be downloaded. Run Start Qwen.bat again to retry.' }
         & npm.cmd run build
         if ($LASTEXITCODE -ne 0) { throw 'Could not build the interface. See the error above.' }
         Write-Host '[5/5] Checking the graphics card and creating the shortcut...'

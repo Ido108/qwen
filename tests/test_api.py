@@ -109,7 +109,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(GenerationRequest(prompt=' x ',width=1000).prompt,'x')
 
     def test_path_traversal_cannot_read_files(self):
-        for image_id in ('../secret.png', 'example:../../requirements.txt', str(Path(temporary.name)/'secret.png')):
+        for image_id in ('../secret.png', 'example:../../package.json', str(Path(temporary.name)/'secret.png')):
             with self.assertRaises(ValueError):
                 resolve_image(image_id)
 

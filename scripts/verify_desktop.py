@@ -58,7 +58,7 @@ def main():
             duplicate=launch('Start Qwen.bat');assert duplicate.wait(20)==0
             assert json.loads(state.read_text())['owner_pid']==saved['owner_pid']
             print('PASS: actual Start BAT, one app window, duplicate launch reuses it',flush=True)
-            restart=launch('Restart Qwen.bat')
+            restart=launch('scripts/Restart Qwen.bat')
             assert first.wait(30)==0
             wait_for(lambda:ready() and json.loads(state.read_text())['owner_pid']!=saved['owner_pid'],60)
             assert not alive(saved['pid']) and not alive(saved['browser_pid'])

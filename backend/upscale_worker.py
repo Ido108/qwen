@@ -38,7 +38,7 @@ def run(request, job, directory, update):
     model_dir=local_path(selected,selected['files'][0]).parent
     cli=APP_DIR/'vendor'/'SeedVR2'/'inference_cli.py'
     if not cli.is_file():
-        raise RuntimeError('The SeedVR2 inference package is missing. Run Setup.bat again.')
+        raise RuntimeError('The SeedVR2 inference package is missing. Run Start Qwen.bat again.')
     raw=directory/'upscaled_raw.mp4'
     cmd=[sys.executable,'-u','-m','backend.seedvr2_cli',str(source),
          '--output',str(raw),'--output_format','mp4',
