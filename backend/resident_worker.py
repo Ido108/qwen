@@ -6,7 +6,24 @@ import sys
 import time
 
 from .common import APP_DIR
-from .models import required
+from .models import required_image
+
+
+def stop_process(process, timeout=30):
+    """Wait for a worker to exit; end the whole process tree if it hangs.
+
+    On Windows the venv python.exe is a launcher with a child interpreter that
+    holds the GPU memory, so the tree must be ended, not only the launcher.
+    """
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == 'nt':
+            subprocess.run(['taskkill', '/T', '/F', '/PID', str(process.pid)], capture_output=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            process.kill()
+        process.wait(timeout=30)
 
 
 class ImageWorker:
@@ -31,12 +48,16 @@ class ImageWorker:
             except (BrokenPipeError, OSError):
                 pass
             # Only called while idle or after a finished job. Never overlap GPUs.
-            process.wait(timeout=30)
-        process.stdin.close()
+            stop_process(process)
+        try:
+            process.stdin.close()
+        except OSError:
+            pass
         self.process = self.key = None
 
     def start(self, directory, request):
-        key = tuple(required(request['model_id'], request.get('text_encoder', 'auto')))
+        # The worker keeps model, encoder and VAE loaded; tool LoRAs are applied per job.
+        key = tuple(required_image(request)[:3])
         if self.process is not None and (self.key != key or self.process.poll() is not None):
             self.close()
         if self.process is None:
@@ -59,7 +80,8 @@ class ImageWorker:
             if complete.exists():
                 code = json.loads(complete.read_text(encoding='utf-8'))['returncode']
                 if code:
-                    process.wait(timeout=30)
+                    # A failed worker exits; a CUDA error can leave it hanging on exit.
+                    stop_process(process)
                     self.close()
                 return code
             code = process.poll()
