@@ -18,17 +18,19 @@ One double-click to install. No API keys, no subscription, no cloud required.
 
 - **Create images** from a prompt with Qwen-Image-2.1. It writes clear text inside images, too.
 - **Edit images**: add up to 10 images, then describe the change.
+- **Turbo models**: the official 8-step Qwen-Image-2.1 Turbo, about 3 times faster.
+- **Tools**: outfit swap, photo restore, expand image, new camera angle, remove object and character swap.
 - **Create videos** from a prompt or from a first and last frame.
 - **Change videos**: replace people, change the camera angle, or build a new scene from reference images.
 - **Upscale videos** to a higher resolution.
-- **Queue and gallery**: add many jobs, close the app, and find every result with its settings later.
+- **Queue, recent results and gallery**: add many jobs, keep working, and find every result with its settings later.
 
 Everything runs on your NVIDIA graphics card. Your images and videos stay on your computer.
 
 ## Requirements
 
 - **Windows** 10 or 11
-- **NVIDIA graphics card** with a current driver (tested on an RTX 4090 with 24 GB)
+- **NVIDIA graphics card** with a current driver (tested on an RTX 4090 and an RTX 5090)
 - **40 GB of free disk space** for images, more for video models
 
 ## Install
@@ -51,26 +53,65 @@ When the installation is done, Qwen opens in its own window. To open it later, d
 2. Turn **Enhance prompt** off, or connect a Google account to use it (see below).
 3. Click **Generate image**.
 
-The first image also downloads the model (about 18 GB). The progress shows in **Queue**. After that, a 1K image takes about 1–2 minutes on an RTX 4090.
+The first image also downloads the model (about 18 GB). The progress shows in the **Recent** panel and in **Queue**. After that, a 1K image takes about 20 seconds with a standard model and about 8 seconds with Turbo (RTX 5090, model already loaded).
 
-To **edit** an image, drop it into **Input images** and describe the change, for example `Make it a rainy night with neon reflections`. You can also click **Use for editing** under any result.
+To **edit** an image, add it to **Input images** and describe the change, for example `Make it a rainy night with neon reflections`. Ways to add an image:
+
+- Drag it in, or click **Select files**.
+- Press **Ctrl + V** anywhere on the page to paste a copied image.
+- Click **Recent** to pick an image you used before, or one of your results.
+- Click **Use as input** on a result in the **Recent** panel, or **Use for editing** under the result.
+
+Turn on **Compare** above the result to slide between the input and the result.
 
 > **Tip:** For a transparent background, open **How to use** (the **?** icon) and click **Use transparent image prompt**.
 
-## Choose a model
+## Model, tool, size and steps
 
-Open **Settings** (the gear icon). Click **Select** on any model. If it is not downloaded yet, it downloads when you start your next job. You can also click **Download** to get it now.
+All image settings are in one row under the prompt.
+
+<img src=".github/assets/tools.png" alt="Model, Tool, Output size and Steps under the prompt" width="100%">
+
+**Model.** Choose a standard model or a Turbo model. A model that is not downloaded yet shows its size; it downloads when you generate.
+
+| Image model | Size | Steps | Choose it when |
+| --- | --- | --- | --- |
+| **Standard Q8_0** | 7.6 GB | 25 | You want the best quality. Recommended. |
+| Standard Q6_K / Q5_K_M | 5.9 / 5.2 GB | 25 | You want a smaller download. |
+| Standard Q4_K_M / Q4_0 | 4.6 / 4.1 GB | 25 | Your graphics card has less memory. |
+| Standard BF16 | 14.2 GB | 25 | You want the original full-precision model. |
+| **Turbo Q8_0** | 7.6 GB | 8 | You want speed. Recommended Turbo. |
+| Turbo Q6_K / Q5_K_M / Q4_K_M | 5.9 / 4.9 / 4.1 GB | 8 | You want a smaller Turbo. |
+| Turbo BF16 | 14.2 GB | 8 | You want the original full-precision Turbo. |
+
+All image models share one text encoder and VAE (about 10 GB, downloaded once). Turbo always uses exactly 8 steps with the schedule it was trained on, so its **Steps** field is locked. Turbo does not use the negative prompt.
+
+**Tool.** A tool adds a small add-on model (LoRA, 80–320 MB) and writes the right prompt for you. The input chips show which picture goes where.
+
+| Tool | Inputs | What it does |
+| --- | --- | --- |
+| **Outfit swap** | 1 person, 2 outfit | Dresses the person in the outfit. Face, pose and background stay the same. |
+| **Restore photo** | 1 photo | Removes blur, noise, compression artifacts or old-print damage, and enlarges it. |
+| **Expand image** | 1 image | Extends the picture to the sides you choose. The original part stays unchanged. |
+| **New camera angle** | 1 subject | Shows the subject from another side or height. |
+| **Remove object** (experimental) | 1 image | Click **Mark object**, draw a box around the object, then generate. |
+| **Character swap** (experimental, Turbo only) | 1 scene, 2 character | Puts the character from picture 2 into picture 1. Results vary. |
+
+Every tool has an **Effect strength** slider. Prompt enhancement turns off while a tool is selected, because each tool needs its own exact wording.
+
+**Output size.** One list: **Auto 1K**, **Auto 2K**, the fixed sizes, and **Custom…** for any width and height.
+
+**Advanced settings** has the seed, the negative prompt, the output folder, and **Image decoder (VAE)**. Choose **Texture fix** there for fewer checkerboard artifacts (0.7 GB download).
+
+## Settings
+
+Open **Settings** (the gear icon). It has three tabs:
+
+- **Models**: download or remove any model, tool or video model. Removing a model does not delete your images or videos.
+- **Prompt enhancement**: connect your Google account.
+- **Processing**: run on this computer or on a RunPod cloud GPU.
 
 <img src=".github/assets/models.png" alt="Image models in Settings" width="70%">
-
-| Image model | Size | Choose it when |
-| --- | --- | --- |
-| **Q8_0** | 7.6 GB | You want the best quality. Recommended. |
-| Q6_K / Q5_K_M | 5.9 / 5.2 GB | You want a smaller download. |
-| Q4_K_M / Q4_0 | 4.6 / 4.1 GB | Your graphics card has less memory. |
-| BF16 | 14.2 GB | You want the original full-precision model. |
-
-All image models also use a shared text encoder and VAE (about 10 GB, downloaded once).
 
 ## Prompt enhancement (optional)
 
@@ -112,7 +153,8 @@ Video models are large (4–20 GB each). Each one downloads the first time you u
 
 - Click **Generate** as many times as you want. Each click adds a job to the **Queue**, and you can keep working.
 - In **Queue**, you can reorder, pause or cancel jobs. Waiting jobs stay saved when you close the app.
-- **Gallery** shows all your images and videos. **Use settings** loads the prompt and settings of a result. **Run again** makes a new version.
+- **Recent** (the panel on the right of the Images page) shows your latest results and the running jobs. Hover a result to use it as input or to load its settings. Click **>>** to hide the panel.
+- **Gallery** shows all your images and videos. Open one, then press **←** and **→** to browse. Turn on **Compare with input** to slide between the input and the result. **Use settings** loads the prompt and settings of a result. **Run again** makes a new version.
 
 ## Other tools
 

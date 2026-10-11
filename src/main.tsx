@@ -1,14 +1,18 @@
 import {ModelDownloadProgress} from './ModelDownloadProgress';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {UploadCloud, Image as ImageIcon, Download, X, ChevronDown, ChevronLeft, ChevronRight, Sparkles, FolderOpen, Expand, Copy, Check, RotateCcw, CircleHelp, Loader2, Plus, ArrowUpRight, Settings} from 'lucide-react';
+import {UploadCloud, Image as ImageIcon, Download, X, ChevronDown, ChevronLeft, ChevronRight, Sparkles, Expand, Copy, Check, CircleHelp, History, SquareDashed, Loader2, Plus, ArrowUpRight, Settings} from 'lucide-react';
 import {ModelSettings,type ModelState} from './ModelSettings';
 import {VideoTab} from './VideoTab';
 import {MultiReferenceTab} from './MultiReferenceTab';
 import {ReferenceTab} from './ReferenceTab';
 import {UpscaleTab} from './UpscaleTab';
-import {ImageSettings,type ImageOptions} from './ImageSettings';
+import {ImageSettings,toolPrompt,toolStrength,type ImageOptions,type ToolState} from './ImageSettings';
 import {Gallery,inputImage} from './Gallery';
+import {RecentInputs} from './RecentInputs';
+import {CompareView} from './CompareView';
+import {BoxEditor} from './BoxEditor';
+import {ResultsRail} from './ResultsRail';
 import {JobQueue,useQueue,type SavedJob} from './JobQueue';
 import {promptSettingsCopy,type EnhancementState} from './PromptSettings';
 import type {SendVideo,VideoInput} from './SendVideoTo';
@@ -19,15 +23,17 @@ import './style.css';
 import './workspace.css';
 import './reference.css';
 import './reference-workbench.css';
+import './studio.css';
 import {apiRequest} from './session';
+import {formatDuration} from './duration';
 
 type InputImage = {id:string; name:string; url:string};
-type Params = ImageOptions & {model_id:string;text_encoder:string;prompt:string; images:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string};
+type Params = ImageOptions & ToolState & {vae_id:'vae'|'vae-texture-fix';model_id:string;text_encoder:string;prompt:string; images:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string};
 type Job = Timing & {download_completed_bytes?:number;download_total_bytes?:number;id:string; status:string; stage:TextKey; message:string; seed:number; step:number; total_steps:number; request:Params; rewritten_prompt:string; created_at:number; started_at?:number; stage_started_at?:number; finished_at?:number; elapsed_seconds?:number; image_url?:string; width?:number; height?:number; tokens?:number; has_transparency?:boolean};
 type Example = {id:string; title:string; title_en:string; prompt:string; prompt_extend:boolean; inputs:string[]; outputs:string[]; category:string};
 type Config = {token:string; models:Record<string,boolean>; output_dir:string; active_job:string|null; device:string};
 type VideoSection = 'create'|'reference'|'multi-reference'|'upscale';
-const defaults:Params = {model_id:'gguf-q8_0',text_encoder:'auto',prompt:'',images:[],enhance:true,custom_size:false,auto_resolution:2048,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:null};
+const defaults:Params = {tool_id:null,tool_options:{},lora_strength:null,vae_id:'vae',model_id:'gguf-q8_0',text_encoder:'auto',prompt:'',images:[],enhance:true,custom_size:false,auto_resolution:2048,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:null};
 function loadDraft():Params {try {const saved=JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}');return {...defaults,...saved,steps:saved.auto_resolution===undefined&&saved.steps===40?null:(saved.steps??null)};} catch {return defaults;}}
 function App(){
   const [tab,setTab]=useState<'image'|'video'|'gallery'>(()=>location.hash==='#gallery'?'gallery':['#video','#reference','#video-to-video','#multi-reference','#upscale'].includes(location.hash)?'video':'image');
@@ -47,7 +53,8 @@ function App(){
   const [inputs,setInputs]=useState<InputImage[]>(()=>loadDraft().images.map(inputImage));
   const [config,setConfig]=useState<Config|null>(null);
   const [modelState,setModelState]=useState<ModelState|null>(null);
-  const [showSettings,setShowSettings]=useState(()=>window.location.hash==='#settings');
+  const [showSettings,setShowSettings]=useState(()=>window.location.hash==='#settings');const [settingsView,setSettingsView]=useState<'models'|'enhance'|'location'>('models');
+  const openSettings=(view:'models'|'enhance'|'location'='models')=>{setSettingsView(view);setShowSettings(true);};
   const [enhancement,setEnhancement]=useState<EnhancementState|null>(null);
   const [examples,setExamples]=useState<Example[]>([]);
   const [history,setHistory]=useState<Job[]>([]);
@@ -58,16 +65,20 @@ function App(){
   const [submitting,setSubmitting]=useState(false); const [uploading,setUploading]=useState(false);
   const [allExamples,setAllExamples]=useState(false); const [activeExample,setActiveExample]=useState<Example|null>(null);
   const [lightbox,setLightbox]=useState<string|null>(null); const [showHelp,setShowHelp]=useState(false);
+  const [railOpen,setRailOpen]=useState(()=>localStorage.getItem('qwen-results-rail')!=='closed');const [recentOpen,setRecentOpen]=useState(false);const [compareResult,setCompareResult]=useState(false);const [boxOpen,setBoxOpen]=useState(false);
   const [copied,setCopied]=useState(false); const [dragging,setDragging]=useState(false); const [clock,setClock]=useState(Date.now());
   const uploadRef=useRef<HTMLInputElement>(null); const promptRef=useRef<HTMLTextAreaElement>(null);
   const token=useRef(''); const modal=useRef<HTMLDialogElement>(null);
   const busy=!!pollId; const locked=submitting||uploading;
   const chosenModel=modelState?.models.find(m=>m.id===params.model_id);
   const validSteps=params.steps===null||(Number.isInteger(params.steps)&&params.steps>=1&&params.steps<=80);
+  const tools=modelState?.tools||[];
+  const activeTool=tools.find(t=>t.id===params.tool_id&&t.families.includes(chosenModel?.family||'qwen-image-2.1'));
   const chosenEncoder=params.text_encoder==='auto'?(chosenModel?.format==='GGUF'?'encoder-int8':'encoder-bf16'):params.text_encoder;
-  const requiredIds=[params.model_id,chosenEncoder,'vae'];
+  const requiredIds=[params.model_id,chosenEncoder,params.vae_id,...(activeTool?[activeTool.lora]:[])];
+  const enhanceOn=params.enhance&&!activeTool;
   const imageReady=modelState?.remote?!!chosenModel?.ready:!!chosenModel;
-  const ready=imageReady&&!!chosenModel?.generation_defaults&&validSteps&&(!params.enhance||!!enhancement?.connected);
+  const ready=imageReady&&!!chosenModel?.generation_defaults&&validSteps&&(!enhanceOn||!!enhancement?.connected);
   const missingModels=modelState?.remote?[]:requiredIds.map(id=>modelState?.models.find(m=>m.id===id)).filter(m=>m&&!m.installed);
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
   const api=useCallback(apiRequest,[]);
@@ -112,6 +123,11 @@ function App(){
     async function refresh(){try{const [next,connection]=await Promise.all([api('/api/models'),api('/api/oauth/antigravity/status')]);if(alive){setModelState(next);setEnhancement(connection);}}catch{}if(alive)timer=window.setTimeout(refresh,modelState?.transfer.status==='running'?1500:5000);}
     timer=window.setTimeout(refresh,1500);return()=>{alive=false;clearTimeout(timer);};
   },[showSettings,modelState?.transfer.status,api]);
+  useEffect(()=>{if(!config)return;api('/api/history').then(setHistory).catch(()=>{});},[queue.revision,config,api]);
+  useEffect(()=>{localStorage.setItem('qwen-results-rail',railOpen?'open':'closed');},[railOpen]);
+  // Ctrl+V anywhere on the Images page adds copied images as inputs.
+  useEffect(()=>{if(tab!=='image')return;function paste(e:ClipboardEvent){if(e.defaultPrevented||modal.current?.open||document.querySelector('dialog[open]'))return;const files=Array.from(e.clipboardData?.files||[]).filter(f=>f.type.startsWith('image/'));if(!files.length)return;e.preventDefault();upload(files);}
+    document.addEventListener('paste',paste);return()=>document.removeEventListener('paste',paste);});
   useEffect(()=>{if(!busy)return;const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[busy]);
   useEffect(()=>{if(lightbox||activeExample||showHelp||showSettings){if(!modal.current?.open)modal.current?.showModal();}else modal.current?.close();},[lightbox,activeExample,showHelp,showSettings]);
   async function upload(files:File[]){
@@ -121,9 +137,9 @@ function App(){
   }
   async function generate(){
     if(!validSteps){setError('Enter a whole number of steps from 1 to 80.');return;}
-    if(locked)return;if(!imageReady){setError('Choose an available model first.');return;}if(params.enhance&&!enhancement?.connected){setShowSettings(true);return;}if(!params.prompt.trim()){setError(t('enterPrompt'));promptRef.current?.focus();return;}
+    if(locked)return;if(!imageReady){setError('Choose an available model first.');return;}if(activeTool&&(inputs.length<activeTool.inputs.min||inputs.length>activeTool.inputs.max)){setError(`${activeTool.title} needs ${activeTool.inputs.labels.map((l,i)=>`image ${i+1}: ${l}`).join(', ')}.`);return;}if(enhanceOn&&!enhancement?.connected){openSettings('enhance');return;}if(!params.prompt.trim()){setError(t('enterPrompt'));promptRef.current?.focus();return;}
     setSubmitting(true);setError('');setNotice('');setJob(null);
-    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,images:inputs.map(i=>i.id)})});setJob(created);setPollId(created.id);setNotice('Added to queue. You can keep editing and send another request.');queue.refresh();}
+    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,tool_id:activeTool?.id??null,lora_strength:activeTool?(params.lora_strength??toolStrength(activeTool,params.tool_options)):null,enhance:enhanceOn,images:inputs.map(i=>i.id)})});setJob(created);setPollId(created.id);setNotice('Added to queue. You can keep editing and send another request.');queue.refresh();}
     catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
   }
   function reorder(index:number,delta:number){setInputs(old=>{const next=[...old];[next[index],next[index+delta]]=[next[index+delta],next[index]];return next;});}
@@ -135,9 +151,11 @@ function App(){
   const featured=[examples.find(e=>e.title_en==='Transparent anime bride'),examples.find(e=>e.inputs.length>0),examples.find(e=>e.title_en==='Product photography')].filter(Boolean) as Example[];
   const displayed=allExamples?examples:(featured.length===3?featured:examples.slice(0,3));
   return <>
-    <header className="header"><div className="brand"><img src="/branding/icon-64.png" alt=""/><strong>Qwen</strong><span className="brand-divider"/><nav className="app-tabs" aria-label="Generation type"><button aria-current={tab==='image'?'page':undefined} onClick={()=>{setTab('image');window.history.replaceState(null,'','#images');}}><ImageIcon size={17}/>Images</button><button aria-current={tab==='video'?'page':undefined} onClick={()=>showVideo(videoSection)}><span className="video-tab-icon" aria-hidden="true">▷</span>Video{videoBusy?<Loader2 className="spin" size={13}/>:null}</button><button aria-current={tab==='gallery'?'page':undefined} onClick={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}>Gallery</button></nav><span className="brand-divider model-divider"/>{tab==='image'?<button className="model-name model-choice" dir="ltr" onClick={()=>setShowSettings(true)} aria-label={t('chooseModel')}>Qwen-Image-2.1 <span>{chosenModel?.title.split(' · ').at(-1)||'Q8_0'}</span><ChevronDown size={13}/></button>:tab==='video'&&videoSection==='create'?<select className="video-model-choice" aria-label="Video model" value={videoModel} disabled={submitting} onChange={e=>setVideoModel(e.target.value)}>{modelState?.models.filter(m=>m.kind==='video').map(m=><option key={m.id} value={m.id}>{m.title} · {m.modes?.includes('image')?'Text + images':'Text only'}{m.ready?'':' · Download needed'}</option>)}</select>:null}</div>
-      <div className="header-tools"><button className="queue-header-button" onClick={()=>setQueueOpen(true)} aria-label={`Open queue (${queue.count})`}>Queue <span>{queue.count}</span></button><button className="icon-button" onClick={()=>setShowSettings(true)} title={t('settings')} aria-label={t('settings')}><Settings size={19}/></button><button className="icon-button" onClick={()=>setShowHelp(true)} title={t('help')} aria-label={t('help')}><CircleHelp size={19}/></button></div>
+    <header className="header"><div className="brand"><img src="/branding/icon-64.png" alt=""/><strong>Qwen</strong><span className="brand-divider"/><nav className="app-tabs" aria-label="Generation type"><button aria-current={tab==='image'?'page':undefined} onClick={()=>{setTab('image');window.history.replaceState(null,'','#images');}}><ImageIcon size={17}/>Images</button><button aria-current={tab==='video'?'page':undefined} onClick={()=>showVideo(videoSection)}><span className="video-tab-icon" aria-hidden="true">▷</span>Video{videoBusy?<Loader2 className="spin" size={13}/>:null}</button><button aria-current={tab==='gallery'?'page':undefined} onClick={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}>Gallery</button></nav></div>
+      <div className="header-tools"><button className="queue-header-button" onClick={()=>setQueueOpen(true)} aria-label={`Open queue (${queue.count})`}>Queue <span>{queue.count}</span></button><button className="icon-button" onClick={()=>openSettings()} title={t('settings')} aria-label={t('settings')}><Settings size={19}/></button><button className="icon-button" onClick={()=>setShowHelp(true)} title={t('help')} aria-label={t('help')}><CircleHelp size={19}/></button></div>
     </header>
+    {inputs.length?<BoxEditor src={inputs[0].url} open={boxOpen} onClose={()=>setBoxOpen(false)} onApply={async png=>{const data=new FormData();data.append('files',new File([png],'marked.png',{type:'image/png'}));const [marked]=await api('/api/uploads',{method:'POST',body:data});setInputs(old=>[marked,...old.slice(1)]);}}/>:null}
+    <RecentInputs api={api} open={recentOpen} onClose={()=>setRecentOpen(false)} limit={10-inputs.length} results={history} onAdd={images=>setInputs(old=>[...old,...images.filter(i=>!old.some(o=>o.id===i.id))].slice(0,10))}/>
     <JobQueue api={api} state={queue.state} error={queue.error} refresh={queue.refresh} open={queueOpen} onOpen={setQueueOpen} onRestore={restoreJob} onView={viewJob}/>
     {tab==='video'?<nav className="video-workflow-nav" role="tablist" aria-label="Video tools">
       <button role="tab" aria-selected={videoSection==='create'} onClick={()=>showVideo('create')}>Create video</button>
@@ -145,29 +163,32 @@ function App(){
       <button role="tab" aria-selected={videoSection==='multi-reference'} onClick={()=>showVideo('multi-reference')}>Reference images</button>
       <button role="tab" aria-selected={videoSection==='upscale'} onClick={()=>showVideo('upscale')}>Upscale</button>
     </nav>:null}
-    <main hidden={tab!=='image'}>
+    <main hidden={tab!=='image'} className={`image-main ${railOpen?'with-rail':''}`}><div className="image-workspace"><div className="image-column">
 
       {config&&missingModels.length?<div className="notice">Missing model files will download automatically when you generate.</div>:null}
       <div className="image-panels">
-        <section className="panel input-panel"><div className="section-heading"><h2>{t('input')}</h2>{inputs.length>0?<><span className="count">{inputs.length}/10</span><button className="text-button" disabled={locked} onClick={()=>setInputs([])}>{t('clear')}</button></>:null}</div>
+        <section className="panel input-panel"><div className="section-heading"><h2>{t('input')}</h2>{inputs.length>0?<span className="count">{inputs.length}/10</span>:null}{activeTool?.needs_box&&inputs.length?<button className="text-button mark-object" disabled={locked} onClick={()=>setBoxOpen(true)}><SquareDashed size={15}/>Mark object</button>:null}<button className="text-button" disabled={locked||inputs.length>=10} onClick={()=>setRecentOpen(true)}><History size={15}/>Recent</button>{inputs.length>0?<button className="text-button" disabled={locked} onClick={()=>setInputs([])}>{t('clear')}</button>:null}</div>
           <div className={`upload-area ${dragging?'dragging':''} ${inputs.length?'has-images':''}`} onDragOver={e=>{e.preventDefault();if(!locked)setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);upload(Array.from(e.dataTransfer.files));}}>
             <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={e=>upload(Array.from(e.target.files||[]))}/>
-            {inputs.length===0?<button className="upload-empty" disabled={locked} onClick={()=>uploadRef.current?.click()}><UploadCloud size={42} strokeWidth={1.5}/><strong>{uploading?t('uploadBusy'):t('drop')}</strong><span>{t('uploadHint')}</span><span className="select-link">{t('upload')}</span></button>:<div className="input-grid">{inputs.map((input,index)=><div className="input-thumb" key={input.id}><button className="thumb-preview checker" onClick={()=>setLightbox(input.url)} aria-label={`${t('preview')} ${index+1}`}><img src={input.url} alt={`${index+1}. ${input.name}`}/></button><span className="image-number">{index+1}</span><button disabled={locked} className="remove-image" onClick={()=>setInputs(old=>old.filter((_,i)=>i!==index))} aria-label={`${t('remove')} ${index+1}`}><X size={13}/></button><div className="reorder"><button disabled={locked||index===0} onClick={()=>reorder(index,-1)} aria-label={`${t('left')} ${index+1}`}><ChevronLeft size={14}/></button><button disabled={locked||index===inputs.length-1} onClick={()=>reorder(index,1)} aria-label={`${t('right')} ${index+1}`}><ChevronRight size={14}/></button></div></div>)}{inputs.length<10?<button className="add-image" disabled={locked} onClick={()=>uploadRef.current?.click()} aria-label={t('upload')}><Plus size={25}/></button>:null}</div>}
+            {inputs.length===0?<button className="upload-empty" disabled={locked} onClick={()=>uploadRef.current?.click()}><UploadCloud size={42} strokeWidth={1.5}/><strong>{uploading?t('uploadBusy'):t('drop')}</strong><span>{t('uploadHint')}</span><span className="select-link">{t('upload')}</span><span className="paste-hint">or press Ctrl + V to paste</span></button>:<div className="input-grid">{inputs.map((input,index)=><div className="input-thumb" key={input.id}><button className="thumb-preview checker" onClick={()=>setLightbox(input.url)} aria-label={`${t('preview')} ${index+1}`}><img src={input.url} alt={`${index+1}. ${input.name}`}/></button><span className="image-number">{index+1}{activeTool?.inputs.labels[index]?` · ${activeTool.inputs.labels[index]}`:''}</span><button disabled={locked} className="remove-image" onClick={()=>setInputs(old=>old.filter((_,i)=>i!==index))} aria-label={`${t('remove')} ${index+1}`}><X size={13}/></button><div className="reorder"><button disabled={locked||index===0} onClick={()=>reorder(index,-1)} aria-label={`${t('left')} ${index+1}`}><ChevronLeft size={14}/></button><button disabled={locked||index===inputs.length-1} onClick={()=>reorder(index,1)} aria-label={`${t('right')} ${index+1}`}><ChevronRight size={14}/></button></div></div>)}{inputs.length<10?<button className="add-image" disabled={locked} onClick={()=>uploadRef.current?.click()} aria-label={t('upload')}><Plus size={25}/></button>:null}</div>}
           </div>
         </section>
-        <section className="panel result-panel"><div className="section-heading"><h2>{t('result')}</h2>{result?<span className="result-size" dir="ltr">{result.width} × {result.height} · PNG</span>:null}{result?<button className="icon-button" onClick={()=>setLightbox(result.image_url!)} aria-label={t('preview')}><Expand size={17}/></button>:null}</div>
-          <div className="result-canvas checker">{result?<button className="result-image-button" onClick={()=>setLightbox(result.image_url!)} aria-label={t('preview')}><img className="result-image" src={result.image_url} alt={result.request.prompt}/></button>:<div className="result-empty"><ImageIcon size={42} strokeWidth={1.4}/><span>{t('empty')}</span></div>}
-            {busy?<div className="generation-overlay" aria-live="polite"><Loader2 className="spin" size={28}/><strong>{job?.status==='queued'?'Waiting in queue':job?job.message||t(job.stage):t('starting')}</strong>{job?.stage==='downloading_models'?<ModelDownloadProgress job={job}/>:job?.stage==='generating'?<><progress value={job.step} max={job.total_steps}/><span>{job.step} / {job.total_steps} · {elapsed} {t('seconds')}</span></>:<span>{elapsed>0?`${stageElapsed}s this step · ${elapsed}s total`:''}{job?.stage==='rewriting'&&job.tokens?` · ${job.tokens} ${t('tokens')}`:''}</span>}</div>:null}
+        <section className="panel result-panel"><div className="section-heading"><h2>{t('result')}</h2>{result?<span className="result-size" dir="ltr">{result.width} × {result.height} · PNG</span>:null}{result?.request.images?.length?<label className="checkbox-label compare-toggle"><input type="checkbox" checked={compareResult} onChange={e=>setCompareResult(e.target.checked)}/>Compare</label>:null}{result?<button className="icon-button" onClick={()=>setLightbox(result.image_url!)} aria-label={t('preview')}><Expand size={17}/></button>:null}</div>
+          <div className="result-canvas checker">{result&&compareResult&&result.request.images?.length?<CompareView before={inputImage(result.request.images[0]).url} after={result.image_url!} alt={result.request.prompt}/>:result?<button className="result-image-button" onClick={()=>setLightbox(result.image_url!)} aria-label={t('preview')}><img className="result-image" src={result.image_url} alt={result.request.prompt}/></button>:<div className="result-empty"><ImageIcon size={42} strokeWidth={1.4}/><span>{t('empty')}</span></div>}
+            {busy?<div className="generation-overlay" aria-live="polite"><Loader2 className="spin" size={28}/><strong>{job?.status==='queued'?'Waiting in queue':job?job.message||t(job.stage):t('starting')}</strong>{job?.stage==='downloading_models'?<ModelDownloadProgress job={job}/>:job?.stage==='generating'?<><progress value={job.step} max={job.total_steps}/><span>Step {job.step} / {job.total_steps} · {formatDuration(stageElapsed)} this stage · {formatDuration(elapsed)} total</span></>:<span>{elapsed>0?`${formatDuration(stageElapsed)} this stage · ${formatDuration(elapsed)} total`:''}{job?.stage==='rewriting'&&job.tokens?` · ${job.tokens} ${t('tokens')}`:''}</span>}</div>:null}
           </div>
           {result?<GenerationTiming job={result} models={modelState}/>:null}{result?<div className="result-actions"><a className="button secondary" href={`${result.image_url}?download=true`}><Download size={15}/>{t('download')}</a><button disabled={locked} className="text-button" onClick={async()=>{try{setInputs([await api(`/api/jobs/${result.id}/reuse`,{method:'POST'})]);promptRef.current?.focus();}catch(e){setError(String(e));}}}><ArrowUpRight size={16}/>{t('editResult')}</button><a className="icon-button" href={`/api/jobs/${result.id}/metadata`} aria-label={t('metadata')} title={t('metadata')}><Download size={15}/></a></div>:null}
         </section>
       </div>
       <section className="panel controls-panel">
         <label htmlFor="prompt" className="prompt-label">{t('prompt')}<span className="mode-label">{inputs.length?t('editMode'):t('createMode')}</span></label>
-        <textarea ref={promptRef} id="prompt" dir="auto" className="prompt-input" placeholder={t('placeholder')} value={params.prompt} disabled={locked} onChange={e=>change('prompt',e.target.value)} onPaste={e=>{const files=Array.from(e.clipboardData.files);if(files.length){e.preventDefault();upload(files);}}} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();generate();}}}/>
-        <ImageSettings value={params} model={chosenModel} disabled={locked} onChange={values=>setParams(p=>({...p,...values}))}/>
-        <div className="generate-row"><label className="toggle-label"><input type="checkbox" role="switch" checked={params.enhance} disabled={locked} onChange={e=>{change('enhance',e.target.checked);setJob(null);}}/><span className="switch"/><span>{t('enhance')}</span></label><div className="generate-controls"><span className="keyboard-hint">{t('keyboard')}</span>{busy?<button className="button secondary cancel" onClick={async()=>{try{if(pollId)await api(`/api/jobs/${pollId}/cancel`,{method:'POST'});}catch(e){setError(String(e));}}}>{t('cancel')}</button>:null}<button className="button primary" disabled={locked||!ready} onClick={generate}>{submitting?<Loader2 size={20} className="spin"/>:<Sparkles size={20}/>}<span>{submitting?'Adding\u2026':queue.count||queue.state.paused?'Add image to queue':t('generate')}</span></button></div></div>
-        {params.enhance&&!enhancement?.connected?<div className="connection-hint"><span>{promptSettingsCopy[lang].description}</span><button className="text-button" onClick={()=>setShowSettings(true)}>{promptSettingsCopy[lang].connect}<ArrowUpRight size={15}/></button></div>:null}
+        <textarea ref={promptRef} id="prompt" dir="auto" className="prompt-input" placeholder={t('placeholder')} value={params.prompt} disabled={locked} onChange={e=>change('prompt',e.target.value)} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();generate();}}}/>
+        <ImageSettings value={params} model={chosenModel} models={modelState} modelId={params.model_id} tools={tools} tool={activeTool} toolState={{tool_id:activeTool?.id??null,tool_options:params.tool_options,lora_strength:params.lora_strength}} disabled={locked}
+          onChange={values=>setParams(p=>({...p,...values}))}
+          onModel={id=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null}));setError('');}}
+          onTool={state=>{const next=tools.find(t=>t.id===state.tool_id);setParams(p=>({...p,...state,prompt:next?toolPrompt(next,state.tool_options):(p.tool_id?'':p.prompt)}));setError('');}}/>
+        <div className="generate-row"><label className="toggle-label" title={activeTool?'Tools use their own prompt wording, so enhancement is off.':undefined}><input type="checkbox" role="switch" checked={enhanceOn} disabled={locked||!!activeTool} onChange={e=>{change('enhance',e.target.checked);setJob(null);}}/><span className="switch"/><span>{t('enhance')}</span></label><div className="generate-controls"><span className="keyboard-hint">{t('keyboard')}</span>{busy?<button className="button secondary cancel" onClick={async()=>{try{if(pollId)await api(`/api/jobs/${pollId}/cancel`,{method:'POST'});}catch(e){setError(String(e));}}}>{t('cancel')}</button>:null}<button className="button primary" disabled={locked||!ready} onClick={generate}>{submitting?<Loader2 size={20} className="spin"/>:<Sparkles size={20}/>}<span>{submitting?'Adding\u2026':queue.count||queue.state.paused?'Add image to queue':t('generate')}</span></button></div></div>
+        {enhanceOn&&!enhancement?.connected?<div className="connection-hint"><span>{promptSettingsCopy[lang].description}</span><button className="text-button" onClick={()=>openSettings('enhance')}>{promptSettingsCopy[lang].connect}<ArrowUpRight size={15}/></button></div>:null}
         {error?<div className="message error" role="alert"><span>{error}</span><button className="icon-button" aria-label={t('close')} onClick={()=>setError('')}><X size={16}/></button></div>:null}
         {notice?<div className="notice" role="status">{notice}</div>:null}
         {job?.status==='cancelled'?<div className="notice">{t('cancelled')}</div>:null}
@@ -177,12 +198,15 @@ function App(){
             <div className="field"><label htmlFor="seed">{t('seed')}</label><input id="seed" type="number" min="0" max="2147483647" step="1" value={params.seed} disabled={params.randomize_seed} onChange={e=>change('seed',Number(e.target.value))}/></div>
             <label className="checkbox-label align-field"><input type="checkbox" checked={params.randomize_seed} onChange={e=>change('randomize_seed',e.target.checked)}/>{t('randomize')}</label>
             <div className="field span-2"><label htmlFor="negative">{t('negative')}</label><textarea id="negative" dir="auto" rows={2} placeholder={t('negativeHint')} value={params.negative_prompt} onChange={e=>change('negative_prompt',e.target.value)}/>{params.negative_prompt.trim()?<small>{t('negativeHelp')}</small>:null}</div>
+            <div className="field span-2"><label htmlFor="vae">Image decoder (VAE)</label><select id="vae" value={params.vae_id} onChange={e=>change('vae_id',e.target.value as Params['vae_id'])}><option value="vae">Standard</option><option value="vae-texture-fix">Texture fix · fewer checkerboard artifacts{modelState?.models.find(m=>m.id==='vae-texture-fix')?.ready?'':' · 0.7 GB download'}</option></select></div>
             <div className="field span-2"><label htmlFor="folder">{t('folder')}</label><input id="folder" dir="ltr" value={params.output_dir} onChange={e=>change('output_dir',e.target.value)}/></div>
           </fieldset>
         </details>
         <section className="examples"><div className="section-heading"><h3>{t('examples')}</h3><button className="text-button" onClick={()=>setAllExamples(!allExamples)}>{allExamples?t('fewerExamples'):t('allExamples')}<ChevronDown className={allExamples?'rotate':''} size={15}/></button></div><div className="examples-grid">{displayed.map(example=><button key={example.id} className="example-card" onClick={()=>setActiveExample(example)}><div className="example-thumbnail checker"><img loading="lazy" src={`/examples/${example.outputs[0]||example.inputs[0]}`} alt=""/></div><span>{example.title_en}<small>{example.inputs.length?`${example.inputs.length} ${t('sourceCount')}`:t('createMode')}</small></span><ChevronRight size={16}/></button>)}</div></section>
-        <details className="history disclosure"><summary><ChevronRight size={15}/>{t('history')}<span className="summary-hint">{history.length}</span><button className="text-button folder-button" onClick={e=>{e.preventDefault();api('/api/open-output',{method:'POST'}).catch(err=>setError(String(err)));}}><FolderOpen size={15}/>{t('openFolder')}</button></summary><div className="details-body"><div className="history-grid">{history.map(item=><button className={`history-item ${result?.id===item.id?'selected':''}`} key={item.id} onClick={()=>{setResult(item);if(!busy)setJob(item);}}><img src={item.image_url} alt={item.request.prompt} loading="lazy"/><span>{item.request.prompt}</span></button>)}</div>{!history.length?<p>{t('noHistory')}</p>:null}{result?<button disabled={locked} className="text-button reuse-settings" onClick={()=>{setParams({...defaults,...result.request,randomize_seed:false});setInputs(result.request.images.map(id=>({id,name:id,url:id.startsWith('example:')?`/examples/${id.slice(8)}`:`/api/uploads/${id}`})));setNotice(t('reuseSettings'));}}><RotateCcw size={15}/>{t('reuseSettings')}</button>:null}</div></details>
       </section>
+      </div><ResultsRail open={railOpen} onToggle={()=>setRailOpen(o=>!o)} running={[queue.state.active,...queue.state.pending].filter((j):j is SavedJob=>!!j&&(j.kind||'image')==='image')} results={history} selected={result?.id}
+        onSelect={item=>{setResult(item as Job);if(!busy)setJob(item as Job);}} onUseAsInput={async item=>{if(inputs.length>=10){setError(t('maxImages'));return;}try{const added=await api(`/api/jobs/${item.id}/reuse`,{method:'POST'});setInputs(old=>old.some(i=>i.id===added.id)?old:[...old,added]);}catch(e){setError((e as Error).message);}}}
+        onUseSettings={item=>restoreJob(item)} onOpenGallery={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}} onOpenFolder={()=>api('/api/open-output',{method:'POST'}).catch(err=>setError(String(err)))} onOpenQueue={()=>setQueueOpen(true)}/></div>
       <footer><span className="local-status"><i/>{modelState?.remote?'Runs on RunPod GPU':t('local')}</span><span>{modelState?.remote?'Results saved on this computer':config?.device||''}</span></footer>
     </main>
     <VideoTab onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='create'} api={api} models={modelState} enhancement={enhancement} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)}/>
@@ -191,7 +215,7 @@ function App(){
     <UpscaleTab onSendVideo={sendVideo} videoInput={videoInput?.target==='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='upscale'} api={api} token={token.current} models={modelState} restoreRequest={upscaleRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
     <Gallery onSendVideo={sendVideo} api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>
     <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':'content-dialog'}><button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>
-      {showSettings?<ModelSettings enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
+      {showSettings?<ModelSettings initialView={settingsView} enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
       {lightbox?<img className="lightbox-image checker" src={lightbox} alt={t('preview')}/>:null}
       {showHelp&&tab==='video'&&videoSection==='create'?<div className="help-content"><h2>Video help</h2><p>Describe the scene, movement, camera and sounds. FastH3 creates video from text. Choose MiniMax H3 to animate an image or move between a first and last frame.</p><p>Base model mode uses adjustable steps. Turbo uses 8 steps. Video is generated at 24 frames per second. You can change the seed, size and output folder in Advanced settings.</p><p>Missing models download automatically when you add a job. Supporting model files are selected automatically. Enhance prompt uses your Antigravity connection.</p><a href="https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2" target="_blank" rel="noreferrer">FastH3 model details</a><a href="https://huggingface.co/MiniMaxAI/MiniMax-H3" target="_blank" rel="noreferrer">MiniMax H3 model details</a></div>:null}
       {showHelp&&tab==='video'&&videoSection==='reference'?<div className="help-content"><h2>Video to video help</h2><p>Replace subjects uses ordered person images. Camera view changes the viewpoint without replacing people. Open the optional subject replacement section in Camera view to run both steps in order.</p><p>Choose the model and duration in this tab. Missing model files download automatically when you add a job.</p></div>:null}

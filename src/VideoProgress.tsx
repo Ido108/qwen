@@ -2,7 +2,7 @@ import {Check,Loader2} from 'lucide-react';
 import type {SavedJob} from './JobQueue';
 import {ModelDownloadProgress} from './ModelDownloadProgress';
 
-const time=(seconds:number)=>seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`;
+import {formatDuration as time} from './duration';
 export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
   const end=job.finished_at?job.finished_at*1000:clock;
   const total=job.started_at?Math.max(0,Math.round((end-job.started_at*1000)/1000)):0;
