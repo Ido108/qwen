@@ -183,7 +183,8 @@
       "model_card": "https://huggingface.co/Qwen/Qwen-Image-2.1",
       "reviewed_on": "2026-09-22",
       "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
-    }
+    },
+    "family": "qwen-image-2.1"
   },
   {
     "id": "pe-t2i",
@@ -378,7 +379,8 @@
       "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
       "reviewed_on": "2026-09-22",
       "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
-    }
+    },
+    "family": "qwen-image-2.1"
   },
   {
     "id": "gguf-q6_k",
@@ -407,7 +409,8 @@
       "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
       "reviewed_on": "2026-09-22",
       "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
-    }
+    },
+    "family": "qwen-image-2.1"
   },
   {
     "id": "gguf-q5_k_m",
@@ -436,7 +439,8 @@
       "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
       "reviewed_on": "2026-09-22",
       "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
-    }
+    },
+    "family": "qwen-image-2.1"
   },
   {
     "id": "gguf-q4_k_m",
@@ -465,7 +469,8 @@
       "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
       "reviewed_on": "2026-09-22",
       "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
-    }
+    },
+    "family": "qwen-image-2.1"
   },
   {
     "id": "gguf-q4_0",
@@ -494,7 +499,8 @@
       "model_card": "https://huggingface.co/abenzerps/Qwen-Image-2.1-GGUF",
       "reviewed_on": "2026-09-22",
       "note": "25 steps in the official ComfyUI text-to-image and image-edit workflows (Euler/simple), linked by the GGUF model card. The Diffusers examples use 40; this app runs the ComfyUI workflow."
-    }
+    },
+    "family": "qwen-image-2.1"
   },
   {
     "id": "encoder-int8",
@@ -545,6 +551,348 @@
         "path": "vae/qwen_image_2.1_vae_bf16.safetensors",
         "bytes": 675509688,
         "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9"
+      }
+    ],
+    "bytes": 675509688,
+    "dependencies": []
+  },
+  {
+    "id": "turbo-gguf-q8_0",
+    "title": "Qwen-Image-2.1 Turbo · Q8_0",
+    "kind": "image",
+    "family": "qwen-image-2.1-turbo",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Turbo-Quantized",
+    "revision": "b4ac9d2ce65c89c3863c6d21d60d1605d9775c1b",
+    "directory": "abenzerps-Turbo-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-turbo-Q8_0.gguf",
+        "bytes": 7591558176,
+        "sha256": "9c2fd9b645811ae5f2b41e60adee832510a23929bc05bd6f8cc48d34a17b079e"
+      }
+    ],
+    "bytes": 7591558176,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "fixed_steps": true,
+      "sigmas": [
+        1.0,
+        0.978453,
+        0.95418,
+        0.926626,
+        0.89508,
+        0.845148,
+        0.704534,
+        0.414568,
+        0.0
+      ],
+      "sampler": "euler",
+      "cfg": 1.0,
+      "source": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "model_card": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "reviewed_on": "2026-10-11",
+      "note": "Distilled to 8 steps at CFG 1 with a fixed sampling schedule (model_index.json sample_sigmas). Other step counts are not supported by the model."
+    }
+  },
+  {
+    "id": "turbo-gguf-q6_k",
+    "title": "Qwen-Image-2.1 Turbo · Q6_K",
+    "kind": "image",
+    "family": "qwen-image-2.1-turbo",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Turbo-Quantized",
+    "revision": "b4ac9d2ce65c89c3863c6d21d60d1605d9775c1b",
+    "directory": "abenzerps-Turbo-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-turbo-Q6_K.gguf",
+        "bytes": 5876562976,
+        "sha256": "734908b1dfe858f31b15224a5b40350d8439d13dd5a7c1661b8178d8759df385"
+      }
+    ],
+    "bytes": 5876562976,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "fixed_steps": true,
+      "sigmas": [
+        1.0,
+        0.978453,
+        0.95418,
+        0.926626,
+        0.89508,
+        0.845148,
+        0.704534,
+        0.414568,
+        0.0
+      ],
+      "sampler": "euler",
+      "cfg": 1.0,
+      "source": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "model_card": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "reviewed_on": "2026-10-11",
+      "note": "Distilled to 8 steps at CFG 1 with a fixed sampling schedule (model_index.json sample_sigmas). Other step counts are not supported by the model."
+    }
+  },
+  {
+    "id": "turbo-gguf-q5_k_m",
+    "title": "Qwen-Image-2.1 Turbo · Q5_K_M",
+    "kind": "image",
+    "family": "qwen-image-2.1-turbo",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Turbo-Quantized",
+    "revision": "b4ac9d2ce65c89c3863c6d21d60d1605d9775c1b",
+    "directory": "abenzerps-Turbo-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-turbo-Q5_K_M.gguf",
+        "bytes": 4936078368,
+        "sha256": "dbfd5a72f9a5ab77a354d0c58019b6f4eba4be16ee534bb8aa8481e63e24f22f"
+      }
+    ],
+    "bytes": 4936078368,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "fixed_steps": true,
+      "sigmas": [
+        1.0,
+        0.978453,
+        0.95418,
+        0.926626,
+        0.89508,
+        0.845148,
+        0.704534,
+        0.414568,
+        0.0
+      ],
+      "sampler": "euler",
+      "cfg": 1.0,
+      "source": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "model_card": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "reviewed_on": "2026-10-11",
+      "note": "Distilled to 8 steps at CFG 1 with a fixed sampling schedule (model_index.json sample_sigmas). Other step counts are not supported by the model."
+    }
+  },
+  {
+    "id": "turbo-gguf-q4_k_m",
+    "title": "Qwen-Image-2.1 Turbo · Q4_K_M",
+    "kind": "image",
+    "family": "qwen-image-2.1-turbo",
+    "format": "GGUF",
+    "repo": "abenzerps/Qwen-Image-2.1-Turbo-Quantized",
+    "revision": "b4ac9d2ce65c89c3863c6d21d60d1605d9775c1b",
+    "directory": "abenzerps-Turbo-GGUF",
+    "files": [
+      {
+        "path": "qwen-image-2.1-turbo-Q4_K_M.gguf",
+        "bytes": 4050916384,
+        "sha256": "14be42ddc6e324682dd8e073ab32a0a4b3b8cd93657d6ec419dae3cc5f22ef78"
+      }
+    ],
+    "bytes": 4050916384,
+    "dependencies": [
+      "encoder-int8",
+      "vae"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "fixed_steps": true,
+      "sigmas": [
+        1.0,
+        0.978453,
+        0.95418,
+        0.926626,
+        0.89508,
+        0.845148,
+        0.704534,
+        0.414568,
+        0.0
+      ],
+      "sampler": "euler",
+      "cfg": 1.0,
+      "source": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "model_card": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "reviewed_on": "2026-10-11",
+      "note": "Distilled to 8 steps at CFG 1 with a fixed sampling schedule (model_index.json sample_sigmas). Other step counts are not supported by the model."
+    }
+  },
+  {
+    "id": "turbo-bf16",
+    "title": "Qwen-Image-2.1 Turbo · BF16",
+    "kind": "image",
+    "family": "qwen-image-2.1-turbo",
+    "format": "BF16",
+    "layout": "comfy",
+    "repo": "Comfy-Org/Qwen-Image-2.1",
+    "revision": "df94239739eef7205973a145ffa6f441f7b64e84",
+    "directory": "Comfy-Org-Qwen-Image-2.1",
+    "files": [
+      {
+        "path": "diffusion_models/qwen_image_2.1_turbo_bf16.safetensors",
+        "bytes": 14230280616,
+        "sha256": "8b74237a7f505773e2c66726fa696444b4c704585c93a347cff9044937f7914a"
+      }
+    ],
+    "bytes": 14230280616,
+    "dependencies": [
+      "encoder-bf16",
+      "vae"
+    ],
+    "generation_defaults": {
+      "steps": 8,
+      "fixed_steps": true,
+      "sigmas": [
+        1.0,
+        0.978453,
+        0.95418,
+        0.926626,
+        0.89508,
+        0.845148,
+        0.704534,
+        0.414568,
+        0.0
+      ],
+      "sampler": "euler",
+      "cfg": 1.0,
+      "source": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "model_card": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo",
+      "reviewed_on": "2026-10-11",
+      "note": "Distilled to 8 steps at CFG 1 with a fixed sampling schedule (model_index.json sample_sigmas). Other step counts are not supported by the model."
+    }
+  },
+  {
+    "id": "lora-outfit-swap",
+    "title": "Outfit swap LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "ausboss/Qwen-Image-2.1-Outfit-Swap-Consistency-LoRA",
+    "revision": "226c0a4edcee08328f2369f42f14b305e9671d9c",
+    "directory": "loras/ausboss",
+    "files": [
+      {
+        "path": "qwen-image-2.1-outfit-swap.safetensors",
+        "bytes": 159436488,
+        "sha256": "4ddfeac5695adaed1f0f78b23fda40919fd2ed6a4af790ced6c1e043dc4ae1f0"
+      }
+    ],
+    "bytes": 159436488,
+    "dependencies": []
+  },
+  {
+    "id": "lora-restore",
+    "title": "Restore LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "ausboss/Qwen-Image-2.1-Restore-LoRA",
+    "revision": "22dab373bf2c832dd19ee81449f5658b4209a244",
+    "directory": "loras/ausboss",
+    "files": [
+      {
+        "path": "qwen-image-2.1-restore.safetensors",
+        "bytes": 159436584,
+        "sha256": "65de4f6c2468071d5aa6ffbd82c76bfee7cc8ac28fe960e91bbca4a58f43c08c"
+      }
+    ],
+    "bytes": 159436584,
+    "dependencies": []
+  },
+  {
+    "id": "lora-outpaint",
+    "title": "Outpaint LoRA v2",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "ausboss/Qwen-Image-2.1-Outpaint-LoRA",
+    "revision": "449336db42ff074aee970ba0facc0ac0feb77863",
+    "directory": "loras/ausboss",
+    "files": [
+      {
+        "path": "qwen-image-2.1-outpaint-v2.safetensors",
+        "bytes": 159436576,
+        "sha256": "3611a5ccae5f790405eeacf1dfb2c89285c1e4f2987b9abc88cd0161a60eca28"
+      }
+    ],
+    "bytes": 159436576,
+    "dependencies": []
+  },
+  {
+    "id": "lora-angles",
+    "title": "Multiple Angles LoRA v2",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "akhaliq/Qwen-Image-2.1-Multiple-Angles-LoRA",
+    "revision": "0d91c4dfa22b3f5aa89c020eadc30d8f42cb51c0",
+    "directory": "loras/akhaliq",
+    "files": [
+      {
+        "path": "checkpoints_v2/angles_v2_full_qwen21_multiple_angles_v2_qwen21_multiple_angles_v2_000001500.safetensors",
+        "bytes": 318819792,
+        "sha256": "548c57977c3f1c09c2c9e5f4e83e930cbc6f719c878a576ab8666ce29fef39b6"
+      }
+    ],
+    "bytes": 318819792,
+    "dependencies": []
+  },
+  {
+    "id": "lora-object-remover",
+    "title": "Object Remover LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "prithivMLmods/Qwen-Image-2.1-Object-Remover-Bbox-turbo",
+    "revision": "90f708f53feb896a2873378629ffe414e0e584c0",
+    "directory": "loras/prithivMLmods",
+    "files": [
+      {
+        "path": "Qwen-Image-2.1-Object-Remover-Bbox-turbo-4000.safetensors",
+        "bytes": 83943952,
+        "sha256": "7035eba6f25cdbd0c780027372710c9bebebdd814baaa79d48ce9d5ca80d6449"
+      }
+    ],
+    "bytes": 83943952,
+    "dependencies": []
+  },
+  {
+    "id": "lora-character-swap",
+    "title": "Turbo Character Swap LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "akhaliq/Qwen-Image-2.1-Turbo-Character-Swap-LoRA",
+    "revision": "fbdc96c6e0f15c26f07eb08de2902246b6b94c37",
+    "directory": "loras/akhaliq",
+    "files": [
+      {
+        "path": "qwen-image-21-turbo-character-swap-lora.safetensors",
+        "bytes": 167830056,
+        "sha256": "e4e3c5cd3e1184d2841206369344c5793912ea5f5228908385b53c268f2b102e"
+      }
+    ],
+    "bytes": 167830056,
+    "dependencies": []
+  },
+  {
+    "id": "vae-texture-fix",
+    "title": "Texture-fix VAE",
+    "kind": "vae",
+    "format": "BF16",
+    "repo": "madebyollin/texture-fix-vae-for-qwen-image-2.1",
+    "revision": "702909b4d408912c7a28fadea06e8b7fdb38ef0c",
+    "directory": "madebyollin-texture-fix-vae",
+    "files": [
+      {
+        "path": "texture_fix_vae_for_qwen_image_2.1_bf16.safetensors",
+        "bytes": 675509688,
+        "sha256": "36f56608b02077a50a08ea3dbcdb88351298ceba49948f41f9f87186378e6908"
       }
     ],
     "bytes": 675509688,

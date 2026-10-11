@@ -81,14 +81,18 @@ def retain_cpu_weights(patcher):
             saved.append((module, parameters, buffers))
     original_unpatch = patcher.unpatch_model
 
+    def restore_cpu_weights():
+        for module, parameters, buffers in saved:
+            module._parameters.update({name: torch.nn.Parameter(cpu_view(value), requires_grad=False)
+                                       for name, value in parameters.items()})
+            module._buffers.update(buffers)
+    patcher.studio_restore_cpu_weights = restore_cpu_weights
+
     def unpatch(self, device_to=None, unpatch_weights=True):
         # QuantizedTensor's view operations need ordinary version counters.
         with torch.inference_mode(False):
             if unpatch_weights and device_to is not None and torch.device(device_to).type == 'cpu':
-                for module, parameters, buffers in saved:
-                    module._parameters.update({name: torch.nn.Parameter(cpu_view(value), requires_grad=False)
-                                               for name, value in parameters.items()})
-                    module._buffers.update(buffers)
+                restore_cpu_weights()
             return original_unpatch(device_to=device_to, unpatch_weights=unpatch_weights)
 
     def partially_unload(self, device_to, memory_to_free=0, force_patch_weights=False):
@@ -100,3 +104,32 @@ def retain_cpu_weights(patcher):
 
     patcher.unpatch_model = MethodType(unpatch, patcher)
     patcher.partially_unload = MethodType(partially_unload, patcher)
+
+
+def retain_lora_clone(clone, base):
+    """Give a LoRA clone of a retained model the same CPU-view eviction.
+
+    The clone shares the base nn.Module. ComfyUI first removes the clone's own
+    LoRA patches and weight backups; then the original read-only CPU views are
+    put back instead of copying GPU tensors to RAM.
+    """
+    import torch
+    restore = base.studio_restore_cpu_weights
+    class_unpatch = type(clone).unpatch_model
+
+    def unpatch(self, device_to=None, unpatch_weights=True):
+        with torch.inference_mode(False):
+            to_cpu = unpatch_weights and device_to is not None and torch.device(device_to).type == 'cpu'
+            result = class_unpatch(self, device_to=None if to_cpu else device_to, unpatch_weights=unpatch_weights)
+            if to_cpu:
+                restore()
+                self.model.device = torch.device(device_to)
+            return result
+
+    def partially_unload(self, device_to, memory_to_free=0, force_patch_weights=False):
+        loaded = self.loaded_size()
+        self.unpatch_model(device_to=device_to)
+        return loaded
+
+    clone.unpatch_model = MethodType(unpatch, clone)
+    clone.partially_unload = MethodType(partially_unload, clone)

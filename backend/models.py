@@ -13,6 +13,7 @@ os.environ['HF_XET_CACHE']=str(DATA_DIR/'hf-cache'/'xet')
 
 CATALOG_PATH=APP_DIR/'reference'/'model-catalog.json'
 EXTENSION_CATALOG_PATH=APP_DIR/'reference'/'reference-video-catalog.json'
+TOOLS_PATH=APP_DIR/'reference'/'image-tools.json'
 INSTALL_PATH=DATA_DIR/'installed-models.json'
 lock=threading.RLock()
 transfer={'status':'idle'}
@@ -30,6 +31,15 @@ def entry(model_id):
         if item['id']==model_id:
             return item
     raise ValueError('Unknown model.')
+
+def image_tools():
+    return json.loads(TOOLS_PATH.read_text(encoding='utf-8'))
+
+def image_tool(tool_id):
+    for tool in image_tools():
+        if tool['id']==tool_id:
+            return tool
+    raise ValueError('Unknown image tool.')
 
 def installed_manifest():
     try:
@@ -50,14 +60,26 @@ def is_installed(model_id):
         local_path(item,file).is_file() and local_path(item,file).stat().st_size==file['bytes']
         for file in item['files'])
 
-def required(model_id,encoder='auto'):
+def required(model_id,encoder='auto',tool_id=None,vae='vae'):
     item=entry(model_id)
     if item['kind']!='image':
         raise ValueError('Select an image model.')
     if encoder not in ('auto','encoder-int8','encoder-bf16'):
         raise ValueError('Unknown text encoder.')
+    if vae not in ('vae','vae-texture-fix'):
+        raise ValueError('Unknown VAE.')
     default_encoder='encoder-int8' if item['format']=='GGUF' else 'encoder-bf16'
-    return [model_id,encoder if encoder!='auto' else default_encoder,'vae']
+    ids=[model_id,encoder if encoder!='auto' else default_encoder,vae]
+    if tool_id:
+        tool=image_tool(tool_id)
+        if item.get('family','qwen-image-2.1') not in tool['families']:
+            raise ValueError(f"{tool['title']} needs a {' or '.join('Turbo' if f.endswith('turbo') else 'standard' for f in tool['families'])} Qwen-Image-2.1 model.")
+        ids.append(tool['lora'])
+    return ids
+
+def required_image(request):
+    """All files for an image request dict: model, encoder, VAE and an optional tool LoRA."""
+    return required(request['model_id'],request.get('text_encoder','auto'),request.get('tool_id'),request.get('vae_id','vae'))
 
 def required_video(request):
     item=entry(request.model_id)
@@ -135,7 +157,7 @@ def state():
                 'installed':installed,
                 'disk_bytes':disk_bytes,
                 'ready':installed and all(is_installed(d) for d in item['dependencies'])})
-        return {'models':items,'transfer':dict(transfer),'free_bytes':shutil.disk_usage(DATA_DIR).free}
+        return {'models':items,'tools':image_tools(),'transfer':dict(transfer),'free_bytes':shutil.disk_usage(DATA_DIR).free}
 
 class DownloadCancelled(Exception): pass
 

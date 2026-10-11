@@ -1,0 +1,358 @@
+[
+  {
+    "id": "outfit-swap",
+    "title": "Outfit swap",
+    "summary": "Dress a person in an outfit from another picture. Face, pose and background stay the same.",
+    "lora": "lora-outfit-swap",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 2,
+      "max": 2,
+      "labels": [
+        "Person",
+        "Outfit"
+      ]
+    },
+    "fields": [
+      {
+        "key": "outfit",
+        "label": "Outfit in a few words",
+        "placeholder": "red linen summer dress",
+        "default": "outfit"
+      }
+    ],
+    "prompt": "Dress the person in image 1 in the {outfit} shown in image 2. Keep their face, hair, hands, pose and the background exactly the same. Replace everything they wear.",
+    "reference_resolution": 0,
+    "source": "https://huggingface.co/ausboss/Qwen-Image-2.1-Outfit-Swap-Consistency-LoRA"
+  },
+  {
+    "id": "restore",
+    "title": "Restore photo",
+    "summary": "Remove blur, noise, compression artifacts or old-print damage, and enlarge to about 2 megapixels.",
+    "lora": "lora-restore",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Photo"
+      ]
+    },
+    "fields": [
+      {
+        "key": "kind",
+        "label": "Photo type",
+        "options": [
+          {
+            "value": "photo",
+            "label": "Digital photo",
+            "prompt": "Restore the photo: remove blur, noise and compression artifacts and recover sharp, natural detail, keeping the same composition, people and colors."
+          },
+          {
+            "value": "print",
+            "label": "Old print",
+            "prompt": "Restore the old photo: remove scratches, dust, fading and grain and recover sharp, natural detail and color, keeping the same composition and people."
+          }
+        ],
+        "default": "photo"
+      },
+      {
+        "key": "focus",
+        "label": "Sharpness of the original",
+        "options": [
+          {
+            "value": "sharp",
+            "label": "In focus",
+            "strength": 1.0
+          },
+          {
+            "value": "soft",
+            "label": "Slightly soft",
+            "strength": 0.75
+          },
+          {
+            "value": "blurry",
+            "label": "Blurry",
+            "strength": 0.5
+          }
+        ],
+        "default": "sharp"
+      }
+    ],
+    "prompt": "{kind}",
+    "reference_resolution": 0,
+    "prepare": "restore",
+    "source": "https://huggingface.co/ausboss/Qwen-Image-2.1-Restore-LoRA"
+  },
+  {
+    "id": "outpaint",
+    "title": "Expand image",
+    "summary": "Extend the picture beyond its edges. The original part stays unchanged.",
+    "lora": "lora-outpaint",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Image"
+      ]
+    },
+    "fields": [
+      {
+        "key": "direction",
+        "label": "Expand",
+        "options": [
+          {
+            "value": "all",
+            "label": "All sides"
+          },
+          {
+            "value": "horizontal",
+            "label": "Left and right"
+          },
+          {
+            "value": "vertical",
+            "label": "Top and bottom"
+          },
+          {
+            "value": "left",
+            "label": "Left"
+          },
+          {
+            "value": "right",
+            "label": "Right"
+          },
+          {
+            "value": "top",
+            "label": "Top"
+          },
+          {
+            "value": "bottom",
+            "label": "Bottom"
+          }
+        ],
+        "default": "horizontal"
+      },
+      {
+        "key": "amount",
+        "label": "Amount",
+        "options": [
+          {
+            "value": "25",
+            "label": "25%"
+          },
+          {
+            "value": "50",
+            "label": "50%"
+          },
+          {
+            "value": "100",
+            "label": "100%"
+          }
+        ],
+        "default": "50"
+      },
+      {
+        "key": "scene",
+        "label": "Describe the scene (optional)",
+        "placeholder": "a sunny beach with palm trees",
+        "default": ""
+      }
+    ],
+    "prompt": "Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.{scene_suffix}",
+    "reference_resolution": 0,
+    "prepare": "outpaint",
+    "source": "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA"
+  },
+  {
+    "id": "angles",
+    "title": "New camera angle",
+    "summary": "Show the same subject from another side or height.",
+    "lora": "lora-angles",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Subject"
+      ]
+    },
+    "fields": [
+      {
+        "key": "azimuth",
+        "label": "Side",
+        "options": [
+          {
+            "value": "front view",
+            "label": "Front"
+          },
+          {
+            "value": "front-right quarter view",
+            "label": "Front-right quarter"
+          },
+          {
+            "value": "front-right view",
+            "label": "Front-right"
+          },
+          {
+            "value": "right side view",
+            "label": "Right side"
+          },
+          {
+            "value": "back-right quarter view",
+            "label": "Back-right quarter"
+          },
+          {
+            "value": "back-right view",
+            "label": "Back-right"
+          },
+          {
+            "value": "back view",
+            "label": "Back"
+          },
+          {
+            "value": "back-left view",
+            "label": "Back-left"
+          },
+          {
+            "value": "back-left quarter view",
+            "label": "Back-left quarter"
+          },
+          {
+            "value": "left side view",
+            "label": "Left side"
+          },
+          {
+            "value": "front-left quarter view",
+            "label": "Front-left quarter"
+          },
+          {
+            "value": "front-left view",
+            "label": "Front-left"
+          }
+        ],
+        "default": "front-right quarter view"
+      },
+      {
+        "key": "elevation",
+        "label": "Height",
+        "options": [
+          {
+            "value": "eye-level shot",
+            "label": "Eye level (0°)"
+          },
+          {
+            "value": "elevated shot",
+            "label": "Elevated (30°)"
+          },
+          {
+            "value": "high-angle shot",
+            "label": "High angle (60°)"
+          },
+          {
+            "value": "top-down shot",
+            "label": "Top down (90°)"
+          }
+        ],
+        "default": "eye-level shot"
+      },
+      {
+        "key": "closeup",
+        "label": "Distance",
+        "options": [
+          {
+            "value": "",
+            "label": "Normal"
+          },
+          {
+            "value": " close-up",
+            "label": "Close-up"
+          }
+        ],
+        "default": ""
+      }
+    ],
+    "prompt": "<mva> {azimuth}, {elevation}{closeup}",
+    "reference_resolution": 1024,
+    "source": "https://huggingface.co/akhaliq/Qwen-Image-2.1-Multiple-Angles-LoRA"
+  },
+  {
+    "id": "remove-object",
+    "title": "Remove object (experimental)",
+    "summary": "Draw a box around the object to remove. Experimental.",
+    "lora": "lora-object-remover",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Image"
+      ]
+    },
+    "needs_box": true,
+    "fields": [],
+    "prompt": "Remove the red highlighted object from the scene",
+    "reference_resolution": 1024,
+    "source": "https://huggingface.co/prithivMLmods/Qwen-Image-2.1-Object-Remover-Bbox-turbo"
+  },
+  {
+    "id": "character-swap",
+    "title": "Character swap (experimental)",
+    "summary": "Replace the person in picture 1 with the character from picture 2. Experimental: results vary; try another seed or strength.",
+    "lora": "lora-character-swap",
+    "strength": 0.7,
+    "families": [
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1-turbo"
+    ],
+    "inputs": {
+      "min": 2,
+      "max": 2,
+      "labels": [
+        "Scene",
+        "Character"
+      ]
+    },
+    "fields": [],
+    "prompt": "Swap the person in Picture 1 with the character in Picture 2. Keep the background, lighting and everything else unchanged.",
+    "reference_resolution": 1024,
+    "source": "https://huggingface.co/akhaliq/Qwen-Image-2.1-Turbo-Character-Swap-LoRA"
+  }
+]

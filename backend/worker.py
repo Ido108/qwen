@@ -65,16 +65,33 @@ def run():
             image = img.convert('RGBA')
             image.save(directory / f'input-{i+1}.png')
             images.append(image)
+    tool = None
+    paste_box = None
+    if request.get('tool_id'):
+        from .models import image_tool
+        from .image_tools import prepare
+        tool = image_tool(request['tool_id'])
+        images, tool_size, paste_box = prepare(tool, request, images)
+        for i, image in enumerate(images):
+            image.save(directory / f'prepared-{i+1}.png')
+        update(tool=tool['title'], prepared_inputs=[list(image.size) for image in images])
     rewrite = request.get('enhancement_result') or (rewrite_prompt(images) if request['enhance'] else {})
     prompt = rewrite.get('positive_prompt') or request['prompt']
-    width, height = output_dimensions(request, images, rewrite)
+    if tool and tool_size:
+        width, height = tool_size
+    else:
+        # Edit tools follow the shape of image 1 (the picture being changed).
+        width, height = output_dimensions(request, images, {'ratio_follow': '<image1>'} if tool else rewrite)
     render_width = math.ceil(width / 32) * 32
     render_height = math.ceil(height / 32) * 32
-    update(stage='loading_model', message='Loading Qwen-Image-2.1…', width=width, height=height)
+    update(stage='loading_model', message=f"Loading {entry(request.get('model_id','official-bf16'))['title']}…", width=width, height=height)
     image = generate(request,prompt,images,render_width,render_height,update)
     update(stage='saving', message='Saving PNG…')
     if image.size != (width, height):
         image = image.resize((width, height), Image.Resampling.LANCZOS)
+    if paste_box:
+        from .image_tools import paste_back
+        image = paste_back(image, paste_box)
     destination = Path(request['output_dir']) / (time.strftime('%Y-%m-%d_%H-%M-%S') + '_' + job['id'][:8] + '.png')
     metadata = PngInfo()
     selected = entry(request.get('model_id','official-bf16'))
@@ -82,6 +99,8 @@ def run():
     metadata.add_text('Prompt', request['prompt'])
     metadata.add_text('Rewritten prompt', job.get('rewritten_prompt', ''))
     metadata.add_text('Seed', str(request['seed']))
+    if tool:
+        metadata.add_text('Tool', f"{tool['title']} ({request.get('lora_strength')})")
     metadata.add_text('Parameters', json.dumps(request, ensure_ascii=False))
     image.save(destination, pnginfo=metadata)
     alpha_histogram=image.getchannel('A').histogram()

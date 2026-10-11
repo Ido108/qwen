@@ -59,6 +59,26 @@ class AppTests(unittest.TestCase):
         finally:
             timer.join();reader.close();target.unlink()
 
+    def test_recent_uploads_dedupe_list_and_thumbnail(self):
+        def image(color):
+            stream = io.BytesIO(); Image.new('RGB', (40, 30), color).save(stream, 'PNG'); return stream.getvalue()
+        first = self.client.post('/api/uploads', files=[('files', ('a.png', image('blue'), 'image/png'))], headers=self.headers).json()[0]
+        time.sleep(0.02)
+        other = self.client.post('/api/uploads', files=[('files', ('b.png', image('green'), 'image/png'))], headers=self.headers).json()[0]
+        time.sleep(0.02)
+        again = self.client.post('/api/uploads', files=[('files', ('copy.png', image('blue'), 'image/png'))], headers=self.headers).json()[0]
+        self.assertEqual(first['id'], again['id'])
+        self.assertNotEqual(first['id'], other['id'])
+        listing = self.client.get('/api/uploads?limit=200').json()
+        ids = [item['id'] for item in listing['items']]
+        self.assertEqual(ids.count(first['id']), 1)
+        self.assertLess(ids.index(first['id']), ids.index(other['id']))  # re-adding moves it to the top
+        self.assertFalse(any(name.startswith('.') for name in ids))
+        thumb = self.client.get(f"/api/uploads/{first['id']}/thumb")
+        self.assertEqual(thumb.status_code, 200)
+        self.assertEqual(thumb.headers['content-type'], 'image/webp')
+        self.assertEqual(self.client.get('/api/uploads/../../x.png/thumb').status_code, 404)
+
     def test_image_upload_preserves_alpha(self):
         response = self.client.post('/api/uploads', files=[('files', ('alpha.png', png(), 'image/png'))], headers=self.headers)
         self.assertEqual(response.status_code, 200, response.text)
@@ -112,6 +132,49 @@ class AppTests(unittest.TestCase):
         for image_id in ('../secret.png', 'example:../../package.json', str(Path(temporary.name)/'secret.png')):
             with self.assertRaises(ValueError):
                 resolve_image(image_id)
+
+    def test_turbo_steps_are_fixed_and_tools_validated(self):
+        from backend import server
+        upload = self.client.post('/api/uploads', files=[('files', ('a.png', png(), 'image/png'))], headers=self.headers).json()[0]['id']
+        with tempfile.TemporaryDirectory() as folder,              patch.object(server,'JOBS_DIR',Path(folder)),              patch.object(server,'active_job',None),              patch.object(server,'threading',SimpleNamespace(Thread=Mock())):
+            def post(**values):
+                server.active_job=None
+                return self.client.post('/api/generate',json={'prompt':'An apple','enhance':False,'auto_resolution':1024,'output_dir':folder,**values},headers=self.headers)
+            response=post(model_id='turbo-gguf-q8_0',steps=30)
+            self.assertEqual(response.status_code,202,response.text)
+            saved=json.loads((Path(folder)/response.json()['id']/'request.json').read_text())
+            self.assertEqual((saved['steps'],saved['steps_mode']),(8,'model'))
+            # Wrong input count, wrong model family, bad outpaint options, unknown tool.
+            self.assertIn('needs 2 input images',post(model_id='gguf-q8_0',tool_id='outfit-swap',images=[upload]).json()['detail'])
+            self.assertIn('Turbo',post(model_id='gguf-q8_0',tool_id='character-swap',images=[upload,upload]).json()['detail'])
+            self.assertEqual(post(model_id='gguf-q8_0',tool_id='outpaint',images=[upload],tool_options={'direction':'up','amount':'50'}).status_code,400)
+            self.assertEqual(post(model_id='gguf-q8_0',tool_id='nope',images=[upload]).status_code,400)
+            response=post(model_id='gguf-q8_0',tool_id='restore',images=[upload],enhance=True,lora_strength=0.5,vae_id='vae-texture-fix')
+            self.assertEqual(response.status_code,202,response.text)
+            saved=json.loads((Path(folder)/response.json()['id']/'request.json').read_text())
+            self.assertEqual((saved['enhance'],saved['lora_strength'],saved['reference_resolution'],saved['vae_id']),(False,0.5,0,'vae-texture-fix'))
+        from backend.models import required_image
+        self.assertEqual(required_image({'model_id':'turbo-bf16','tool_id':'restore'}),['turbo-bf16','encoder-bf16','vae','lora-restore'])
+        self.assertEqual(post_status:=self.client.post('/api/generate',json={'prompt':'x','lora_strength':3},headers=self.headers).status_code,422)
+
+    def test_tool_preparation_sizes(self):
+        from backend.image_tools import prepare, outpaint_canvas, paste_back
+        from backend.models import image_tool
+        big = Image.new('RGBA', (4000, 3000), 'red')
+        images, size, box = prepare(image_tool('restore'), {'auto_resolution': 2048}, [big])
+        self.assertEqual(size, images[0].size)
+        self.assertTrue(size[0] % 32 == 0 and size[1] % 32 == 0 and 1_800_000 < size[0] * size[1] < 2_200_000)
+        images, size, box = prepare(image_tool('outfit-swap'), {'auto_resolution': 1024}, [big, Image.new('RGBA', (3000, 3000))])
+        self.assertLessEqual(size[0] * size[1], 1024 * 1024 * 1.1)
+        self.assertLessEqual(images[1].width * images[1].height, 1024 * 1024 * 1.1)
+        self.assertIsNone(prepare(image_tool('angles'), {}, [big])[1])
+        canvas, box = outpaint_canvas(Image.new('RGBA', (400, 300), 'red'), 'right', '100', 1024 * 1024)
+        self.assertEqual(canvas.getpixel((5, canvas.height // 2))[:3], (255, 0, 0))
+        self.assertEqual(canvas.getpixel((canvas.width - 5, canvas.height // 2))[:3], (128, 128, 128))
+        result = paste_back(Image.new('RGBA', canvas.size, 'blue'), box)
+        x, y, original = box
+        self.assertEqual(result.getpixel((x + 5, y + original.height // 2))[:3], (255, 0, 0))  # left edge touches the border: kept
+        self.assertEqual(result.getpixel((canvas.width - 5, canvas.height // 2))[:3], (0, 0, 255))  # generated area untouched
 
     def test_image_steps_and_auto_resolution_validation(self):
         for values in ({'steps':0},{'steps':81},{'steps':12.5},{'auto_resolution':1536}):

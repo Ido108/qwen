@@ -7,8 +7,8 @@ from pathlib import Path
 import sys
 import time
 from .common import APP_DIR, MODELS_DIR
-from .models import entry, local_path, required
-from .image_cache import ConditioningCache, PositiveOnlyEncoder, retain_cpu_weights
+from .models import entry, local_path, required_image
+from .image_cache import ConditioningCache, PositiveOnlyEncoder, retain_cpu_weights, retain_lora_clone
 
 _components = {}
 _conditioning = ConditioningCache()
@@ -57,17 +57,17 @@ def generate(request, prompt, images, width, height, progress):
         return weights,metadata
 
     selected=entry(request.get('model_id','official-bf16'))
-    encoder_id=required(selected['id'],request.get('text_encoder','auto'))[1]
+    model_id,encoder_id,vae_id=required_image(request)[:3]
     encoder=entry(encoder_id)
-    vae_entry=entry('vae')
-    cache_key=(selected['id'],encoder_id)
+    vae_entry=entry(vae_id)
+    cache_key=(selected['id'],encoder_id,vae_id)
     if _components and _components['key'] != cache_key:
         raise RuntimeError('Start a new image worker when changing model or encoder.')
     reused=bool(_components)
     started=time.perf_counter()
     progress(stage='loading_model',message='Using loaded image models.' if reused else 'Loading text encoder and VAE…',
              model_reused=reused,
-             selected_model=selected['title'],text_encoder_id=encoder_id,vae_id='vae')
+             selected_model=selected['title'],text_encoder_id=encoder_id,vae_id=vae_id)
     if reused:
         vae,clip=_components['vae'],_components['clip']
     else:
@@ -87,7 +87,8 @@ def generate(request, prompt, images, width, height, progress):
     progress(encoder_load_seconds=round(time.perf_counter()-started,3))
     negative=request['negative_prompt'].strip()
     started=time.perf_counter()
-    conditioning_key=_conditioning.fingerprint(prompt,negative,images)
+    reference_resolution=int(request.get('reference_resolution',1024))
+    conditioning_key=_conditioning.fingerprint(f'{reference_resolution}|{prompt}',negative,images)
     cached=_conditioning.get(conditioning_key)
     progress(stage='encoding',message='Using saved prompt and image data.' if cached else
              ('Processing prompt and input images…' if images else 'Processing prompt…'),step=0,
@@ -95,7 +96,7 @@ def generate(request, prompt, images, width, height, progress):
     if cached is None:
         image_tensors={f'image_{i+1}':torch.from_numpy(np.array(img.convert('RGBA')).astype(np.float32)/255.0).unsqueeze(0) for i,img in enumerate(images)}
         with torch.inference_mode():
-            encoded=TextEncodeQwenImage21.execute(clip=PositiveOnlyEncoder(clip,bool(negative)),prompt=prompt,negative_prompt=negative,vae=vae,resolution=1024,images=image_tensors)
+            encoded=TextEncodeQwenImage21.execute(clip=PositiveOnlyEncoder(clip,bool(negative)),prompt=prompt,negative_prompt=negative,vae=vae,resolution=reference_resolution,images=image_tensors)
         positive,negative_conditioning=encoded[0],encoded[1]
         _conditioning.put(conditioning_key,(positive,negative_conditioning))
         del encoded,image_tensors
@@ -135,6 +136,12 @@ def generate(request, prompt, images, width, height, progress):
             raise RuntimeError('This GGUF file is not a compatible Qwen-Image-2.1 checkpoint.')
         model=GGUFModelPatcher.clone(model)
         progress(gguf_norm_vectors_decoded=len(fixed),gguf_quantization=selected['title'].split(' · ')[-1])
+    elif selected.get('layout')=='comfy':
+        # Single-file ComfyUI checkpoint (Comfy-Org Turbo BF16).
+        weights,metadata=read_weights(local_path(selected,selected['files'][0]))
+        model=comfy.sd.load_diffusion_model_state_dict(weights,model_options={'dtype':torch.bfloat16},metadata=metadata,disable_dynamic=True)
+        if model is None:
+            raise RuntimeError(f"Could not load {selected['title']}.")
     else:
         index_path=MODELS_DIR/'Qwen-Image-2.1'/'transformer'/'diffusion_pytorch_model.safetensors.index.json'
         weight_map=json.loads(index_path.read_text())['weight_map']
@@ -152,6 +159,20 @@ def generate(request, prompt, images, width, height, progress):
         _components.update(key=cache_key,clip=clip,vae=vae,model=model)
         gc.collect()
     progress(diffusion_load_seconds=round(time.perf_counter()-started,3))
+    tool_lora=None
+    if request.get('tool_id'):
+        from .models import image_tool
+        lora=entry(image_tool(request['tool_id'])['lora'])
+        strength=float(request.get('lora_strength',1.0))
+        started=time.perf_counter()
+        loras=_components.setdefault('loras',{})
+        if lora['id'] not in loras:
+            loras.clear()  # one tool at a time; keeps RAM bounded
+            loras[lora['id']]=comfy.utils.load_torch_file(str(local_path(lora,lora['files'][0])),safe_load=True)
+        model,_=comfy.sd.load_lora_for_models(model,None,loras[lora['id']],strength,0)
+        retain_lora_clone(model,_components['model'])
+        tool_lora=lora['title']
+        progress(lora=lora['title'],lora_strength=strength,lora_load_seconds=round(time.perf_counter()-started,3))
     # The upstream automatic cache can copy large multi-image prefixes to host
     # RAM. That path caused a native Windows access violation. The supported
     # GPU policy keeps the lossless cache in VRAM when its memory checks allow,
@@ -161,18 +182,27 @@ def generate(request, prompt, images, width, height, progress):
     # Official Qwen 2.1 workflow: 64-channel, 16x spatial latent, Euler + simple.
     latent=torch.zeros((1,64,height//16,width//16),device=memory.intermediate_device())
     noise=comfy.sample.prepare_noise(latent,request['seed'])
-    cfg=2.0 if negative else 1.0
+    defaults=selected['generation_defaults']
+    turbo=bool(defaults.get('sigmas'))
+    # Turbo is distilled for CFG 1 on its own schedule; the negative prompt has no effect there.
+    cfg=1.0 if turbo or not negative else 2.0
     def callback(step,x0,x,total):
         progress(stage='generating',message='Generating image…',step=step+1,total_steps=total)
-    progress(stage='generating',message='Generating image…',step=0)
+    progress(stage='generating',message='Generating image…',step=0,sampling='turbo-sigmas' if turbo else 'euler-simple')
     with torch.inference_mode():
-        samples=comfy.sample.sample(model,noise,request['steps'],cfg,'euler','simple',positive,negative_conditioning,
-                                    latent,callback=callback,seed=request['seed'])
+        if turbo:
+            import comfy.samplers
+            sigmas=torch.tensor(defaults['sigmas'],dtype=torch.float32)
+            samples=comfy.sample.sample_custom(model,noise,cfg,comfy.samplers.sampler_object(defaults.get('sampler','euler')),sigmas,
+                                               positive,negative_conditioning,latent,callback=callback,seed=request['seed'])
+        else:
+            samples=comfy.sample.sample(model,noise,request['steps'],cfg,'euler','simple',positive,negative_conditioning,
+                                        latent,callback=callback,seed=request['seed'])
         del noise,latent
         progress(stage='decoding',message='Decoding image…')
         pixels=vae.decode(samples)
     array=(pixels[0].float().cpu().numpy().clip(0,1)*255).round().astype(np.uint8)
     if array.shape[-1]!=4:
         raise RuntimeError('The Qwen 2.1 VAE did not return an RGBA image.')
-    progress(peak_vram_gb=round(torch.cuda.max_memory_allocated()/1024**3,2),engine='ComfyUI',true_cfg_scale=cfg)
+    progress(peak_vram_gb=round(torch.cuda.max_memory_allocated()/1024**3,2),engine='ComfyUI',true_cfg_scale=cfg,applied_lora=tool_lora)
     return Image.fromarray(array)

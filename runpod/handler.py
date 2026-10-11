@@ -32,7 +32,7 @@ def checked_path(key: str, prefix: str) -> Path:
 
 def ensure_models(request: dict, kind: str, progress=lambda _: None) -> None:
     if kind == 'image':
-        needed = models.required(request['model_id'], request.get('text_encoder', 'auto'))
+        needed = models.required_image(request)
     elif kind == 'video':
         needed = models.required_video(type('VideoSettings', (), request))
     elif kind == 'reference-video':

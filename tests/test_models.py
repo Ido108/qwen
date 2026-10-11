@@ -22,7 +22,12 @@ class ModelTests(unittest.TestCase):
             workflow=json.loads((models.APP_DIR/'reference'/filename).read_text(encoding='utf-8'))
             self.assertEqual(set(samplers(workflow)),{25})
         for item in models.catalog():
-            if item['kind']=='image':
+            if item['kind']=='image' and item['family']=='qwen-image-2.1-turbo':
+                # Qwen/Qwen-Image-2.1-Turbo model_index.json sample_sigmas, plus the terminal 0.
+                defaults=item['generation_defaults']
+                self.assertEqual((defaults['steps'],defaults['fixed_steps'],defaults['cfg']),(8,True,1.0),item['id'])
+                self.assertEqual(defaults['sigmas'],[1.0,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0.0])
+            elif item['kind']=='image':
                 self.assertEqual(item['generation_defaults']['steps'],25,item['id'])
                 self.assertIn('workflow_templates',item['generation_defaults']['source'])
 

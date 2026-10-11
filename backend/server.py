@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from collections import deque
+import hashlib
 import io
 import json
 import os
@@ -349,7 +350,7 @@ def prepare_job_models(job_id,request):
     elif kind=='upscale':
         needed=models.required_upscale(UpscaleRequest(**request))
     else:
-        needed=models.required(request['model_id'],request.get('text_encoder','auto'))
+        needed=models.required_image(request)
     def cancelled():
         return job_id in cancelled_jobs or shutting_down
     def progress(state):
@@ -606,12 +607,31 @@ async def upload(files: list[UploadFile] = File(...)):
         except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
             raise HTTPException(400, 'This file is not a supported image.')
         prepared.append((picture, file.filename or 'Image'))
-    results = []
-    for picture, name in prepared:
-        image_id = uuid.uuid4().hex + '.png'
-        picture.save(UPLOADS_DIR / image_id)
-        results.append({'id': image_id, 'name': name, 'url': f'/api/uploads/{image_id}', 'width': picture.width, 'height': picture.height})
-    return results
+    return [save_upload(picture, name) for picture, name in prepared]
+
+
+def save_upload(picture: Image.Image, name: str) -> dict:
+    # Identical pixels share one file, so Recent inputs lists each image once.
+    image_id = hashlib.sha256(picture.tobytes() + f'{picture.size}'.encode()).hexdigest()[:32] + '.png'
+    path = UPLOADS_DIR / image_id
+    if path.is_file():
+        os.utime(path)
+    else:
+        temporary = UPLOADS_DIR / f'.{uuid.uuid4().hex}.tmp'
+        picture.save(temporary, format='PNG')
+        temporary.replace(path)
+    return {'id': image_id, 'name': name, 'url': f'/api/uploads/{image_id}', 'thumb_url': f'/api/uploads/{image_id}/thumb',
+            'width': picture.width, 'height': picture.height}
+
+
+@app.get('/api/uploads')
+def recent_uploads(offset: int = Query(0, ge=0), limit: int = Query(60, ge=1, le=200)):
+    files = [path for path in UPLOADS_DIR.iterdir() if path.is_file() and path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'}]
+    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return {'total': len(files), 'items': [{'id': path.name, 'name': path.name, 'url': f'/api/uploads/{path.name}',
+                                            'thumb_url': f'/api/uploads/{path.name}/thumb', 'modified': path.stat().st_mtime}
+                                           for path in files[offset:offset + limit]]}
+
 
 @app.get('/api/uploads/{image_id}')
 def uploaded_image(image_id: str):
@@ -620,6 +640,27 @@ def uploaded_image(image_id: str):
     except ValueError as exc:
         raise HTTPException(404, str(exc))
     return FileResponse(path)
+
+
+@app.get('/api/uploads/{image_id}/thumb')
+def uploaded_thumbnail(image_id: str):
+    try:
+        path = resolve_image(image_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    folder = UPLOADS_DIR / '.thumbs'
+    folder.mkdir(exist_ok=True)
+    cached = folder / (path.stem + '.webp')
+    if not cached.is_file() or cached.stat().st_mtime < path.stat().st_mtime - 1:
+        temporary = folder / f'{uuid.uuid4().hex}.tmp'
+        try:
+            with Image.open(path) as picture:
+                picture.thumbnail((320, 320), Image.Resampling.LANCZOS)
+                picture.save(temporary, format='WEBP', quality=82)
+            temporary.replace(cached)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return FileResponse(cached, media_type='image/webp', headers={'Cache-Control': 'max-age=86400'})
 
 
 @app.put('/api/video-uploads')
@@ -757,21 +798,40 @@ def uploaded_video(video_id: str):
     except ValueError as exc:
         raise HTTPException(404,str(exc))
 
+OUTPAINT_DIRECTIONS = {'all', 'horizontal', 'vertical', 'left', 'right', 'top', 'bottom'}
+
+
+def validate_image_tool(body: GenerationRequest) -> dict:
+    tool = models.image_tool(body.tool_id)
+    limits = tool['inputs']
+    if not limits['min'] <= len(body.images) <= limits['max']:
+        labels = ', '.join(f'{i + 1}. {label}' for i, label in enumerate(limits['labels']))
+        raise ValueError(f"{tool['title']} needs {limits['min']} input image{'s' if limits['min'] > 1 else ''}: {labels}.")
+    if tool.get('prepare') == 'outpaint' and (body.tool_options.get('direction') not in OUTPAINT_DIRECTIONS
+                                             or body.tool_options.get('amount') not in ('25', '50', '100')):
+        raise ValueError('Choose where and how much to expand the image.')
+    return tool
+
+
 @app.post('/api/generate', status_code=202)
 def generate(body: GenerationRequest):
     try:
-        needed = models.required(body.model_id, body.text_encoder)
+        needed = models.required(body.model_id, body.text_encoder, body.tool_id, body.vae_id)
+        tool = validate_image_tool(body) if body.tool_id else None
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     remote = cloud.settings()['mode'] == 'runpod'
     if remote and not cloud.ready('image'):
         raise HTTPException(503, 'Connect a RunPod image endpoint and network volume in Settings.')
+    if tool:
+        # Tool prompts carry the LoRA trigger wording; enhancement would rewrite it.
+        body.enhance = False
     if body.enhance and not antigravity.status()['connected']:
         raise HTTPException(409, 'Connect Google Account in Settings → Prompt enhancement, or turn off Enhance prompt.')
     try:
         for image_id in body.images:
             resolve_image(image_id)
-        destination = Path(body.output_dir).expanduser().resolve()
+        destination = Path(body.output_dir.strip() or OUTPUTS_DIR).expanduser().resolve()
         destination.mkdir(parents=True, exist_ok=True)
         probe = destination / f'.write-test-{uuid.uuid4().hex}'
         probe.write_bytes(b'')
@@ -789,9 +849,14 @@ def generate(body: GenerationRequest):
         job_id = uuid.uuid4().hex
         data = body.model_dump()
         data['execution'] = 'runpod' if remote else 'local'
-        default_steps = models.entry(body.model_id)['generation_defaults']['steps']
-        data['steps'] = body.steps if body.steps is not None else default_steps
-        data['steps_mode'] = 'custom' if body.steps is not None else 'model'
+        defaults = models.entry(body.model_id)['generation_defaults']
+        fixed = defaults.get('fixed_steps', False)
+        data['steps'] = body.steps if body.steps is not None and not fixed else defaults['steps']
+        data['steps_mode'] = 'custom' if body.steps is not None and not fixed else 'model'
+        if tool:
+            data['enhance'] = False
+            data['lora_strength'] = body.lora_strength if body.lora_strength is not None else tool['strength']
+            data['reference_resolution'] = tool['reference_resolution']
         # Store only a model selection. The worker resolves current tokens at execution.
         data['enhancement_model'] = antigravity.selected_model()
         data['output_dir'] = str(destination)
@@ -812,7 +877,7 @@ def generate_video(body: VideoRequest):
         for image_id in (body.first_frame,body.last_frame):
             if image_id:
                 resolve_image(image_id)
-        destination=Path(body.output_dir).expanduser().resolve()
+        destination=Path(body.output_dir.strip() or VIDEOS_DIR).expanduser().resolve()
         destination.mkdir(parents=True,exist_ok=True)
         probe=destination/f'.write-test-{uuid.uuid4().hex}'
         probe.write_bytes(b'');probe.unlink()
@@ -867,7 +932,7 @@ def generate_reference_video(body: ReferenceVideoRequest):
             resolve_video(body.warp_video)
         for image_id in body.reference_images:
             resolve_image(image_id)
-        destination=Path(body.output_dir).expanduser().resolve()
+        destination=Path(body.output_dir.strip() or VIDEOS_DIR).expanduser().resolve()
         destination.mkdir(parents=True,exist_ok=True)
         probe=destination/f'.write-test-{uuid.uuid4().hex}'
         probe.write_bytes(b'');probe.unlink()
@@ -906,7 +971,7 @@ def generate_upscale(body: UpscaleRequest):
         source=resolve_video(body.source_video)
         if source.stat().st_size>20*1024**3:
             raise ValueError('Videos must be under 20 GB.')
-        destination=Path(body.output_dir).expanduser().resolve()
+        destination=Path(body.output_dir.strip() or VIDEOS_DIR).expanduser().resolve()
         destination.mkdir(parents=True,exist_ok=True)
         probe=destination/f'.write-test-{uuid.uuid4().hex}'
         probe.write_bytes(b'');probe.unlink()
@@ -933,7 +998,7 @@ def generate_multi_reference(body: MultiReferenceRequest):
         required_ltx(body)
         for media, value in ltx_media_inputs(body.model_dump()):
             (resolve_audio if media == 'audio' else resolve_image)(value)
-        destination = Path(body.output_dir).expanduser().resolve()
+        destination = Path(body.output_dir.strip() or VIDEOS_DIR).expanduser().resolve()
         destination.mkdir(parents=True, exist_ok=True)
         probe = destination / ('.write-test-' + uuid.uuid4().hex)
         probe.write_bytes(b''); probe.unlink()
@@ -1170,9 +1235,8 @@ def reuse(job_id: str):
     path = Path(job.get('output_path', ''))
     if job.get('kind','image') != 'image' or job['status'] != 'succeeded' or not path.is_file():
         raise HTTPException(404, 'Saved image not found.')
-    image_id = uuid.uuid4().hex + '.png'
-    shutil.copy2(path, UPLOADS_DIR / image_id)
-    return {'id': image_id, 'name': path.name, 'url': f'/api/uploads/{image_id}'}
+    with Image.open(path) as picture:
+        return save_upload(picture.convert('RGBA'), path.name)
 
 @app.post('/api/jobs/{job_id}/reuse-video')
 def reuse_video(job_id: str, part: Literal['final', 'subject'] = 'final'):

@@ -64,6 +64,11 @@ class GenerationRequest(BaseModel):
     output_dir: str = str(OUTPUTS_DIR)
     # None follows the selected model's documented default; integers override it.
     steps: int | None = Field(default=None, ge=1, le=80)
+    vae_id: Literal['vae', 'vae-texture-fix'] = 'vae'
+    # Optional LoRA tool (see reference/image-tools.json) and its options.
+    tool_id: str | None = Field(default=None, max_length=40)
+    lora_strength: float | None = Field(default=None, ge=0, le=1.5)
+    tool_options: dict[str, str] = Field(default_factory=dict)
 
     @field_validator('prompt')
     @classmethod
