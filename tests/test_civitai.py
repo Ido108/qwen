@@ -40,6 +40,22 @@ class CivitaiTests(unittest.TestCase):
         self.assertEqual(civitai._known_vae('texture_fix_vae_for_qwen_image_2.1_bf16.safetensors'), 'vae-texture-fix')
         self.assertEqual(civitai._known_vae('qwen_image_2.1_vae_bf16.safetensors'), 'vae')
 
+    def test_ltx_checkpoints_are_found_also_when_packed_to_4_bit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            plain, packed = Path(folder) / 'plain.safetensors', Path(folder) / 'packed.safetensors'
+            safetensors(plain, {'audio_adaln_single.linear.weight': [18432, 2048]})
+            # W4A8 codebook files store half-width packed weights plus scales.
+            safetensors(packed, {'audio_adaln_single.linear.weight': [18432, 1024], 'audio_adaln_single.linear.weight_s_channel': [18432],
+                                 'av_ca_a2v_gate_adaln_single.linear.weight_codebook': [16]})
+            self.assertEqual(civitai.inspect(plain)['arch'], 'ltx25')
+            self.assertEqual(civitai.inspect(packed)['arch'], 'ltx25')
+
+    def test_ltx_variant_reads_dev_before_distilled(self):
+        self.assertEqual(civitai.ltx_variant('Joy-LTX 2.5 DEV merges - bring your own distilled LoRA', '070T30', {'steps': 25}, ''), 'dev')
+        self.assertEqual(civitai.ltx_variant('LTX 2.5 INT8/INT4 ConvRot', 'LTX 2.5 DISTILLED INT8', {}, ''), 'distilled')
+        self.assertEqual(civitai.ltx_variant('Remix', 'Beta1', {'steps': 8}, ''), 'distilled')
+        self.assertIsNone(civitai.ltx_variant('Surfaces', 'v1.0', {}, 'a style merge'))
+
     def test_inspect_tells_qwen21_from_qwen1_and_models_from_loras(self):
         with tempfile.TemporaryDirectory() as folder:
             cases = {

@@ -120,6 +120,13 @@ def _load_transformer(selected):
     return model
 
 
+def _with_distill_lora(selected, loras):
+    """A dev checkpoint runs with the official distilled LoRA first, at the strength its page asks for."""
+    if selected.get('distill_lora_strength'):
+        return [{'id': 'ltx25-distill-lora', 'strength': selected['distill_lora_strength']}, *(loras or [])]
+    return loras
+
+
 def _apply_user_loras(model, loras, progress):
     """The user's LoRAs (for example from Civitai) go on top of the built-in ones."""
     import comfy.sd
@@ -197,7 +204,7 @@ def generate(request, images, voices, progress, preview_directory=None):
     lora_path = local_path(lora, lora['files'][0])
     folder_paths.add_model_folder_path('loras', str(lora_path.parent))
     model, parameters = ComfyUILTX25MSRICLoRALoader.execute(model, lora_path.name, request['lora_strength'])
-    model = _apply_user_loras(model, request.get('loras'), progress)
+    model = _apply_user_loras(model, _with_distill_lora(selected, request.get('loras')), progress)
     progress(model_format=selected['format'], model_weight_gb=round(model.model_size()/GIB, 2),
              text_encoder_id='ltx25-gemma-int8', vae_id='ltx25-video-vae', audio_vae_id='ltx25-audio-vae',
              lora_id='ltx25-msr-v2', actual_steps=total_steps, sampler='euler_ancestral', guidance=1.0)
@@ -315,7 +322,7 @@ def generate_video(request, prompt, images, progress, preview_directory=None):
     progress(stage='loading_model', message='Loading LTX 2.5...')
     selected = entry(request['model_id'])
     model = _load_transformer(selected)
-    model = _apply_user_loras(model, request.get('loras'), progress)
+    model = _apply_user_loras(model, _with_distill_lora(selected, request.get('loras')), progress)
     # Official FLF uses SamplerEulerAncestral(eta=0, s_noise=1); T2V/I2V use KSamplerSelect(euler_ancestral).
     sampler_name = 'euler_ancestral'
     sampler = (comfy.samplers.ksampler(sampler_name, {'eta': 0.0, 's_noise': 1.0}) if keyframes

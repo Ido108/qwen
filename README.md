@@ -126,7 +126,9 @@ Open the **Civitai** tab to browse [civitai.red](https://civitai.red) for **Imag
 
 Open a card to see every version on the page. For each version the app shows its type (Standard or Turbo), the steps, CFG, sampler and scheduler that the author recommends, and the VAE. Click **Add to Qwen**. The download uses 8 parallel connections and continues if you close the dialog. If you cancel, **Add to Qwen** later continues from where it stopped.
 
-The app checks every file before it uses it: the checksum and the shape of the model, so a file for another model type is refused. **Connect Civitai account** is needed only for files that require a signed-in account.
+The app checks every file before it uses it: the checksum and the shape of the model, so a file for another model type is refused.
+
+LTX 2.5 checkpoints come in two kinds. A **distilled** checkpoint runs as it is. A **dev** checkpoint gets the official Lightricks distilled LoRA (8.9 GB, downloaded once) at strength 0.5, as the model pages describe, and then runs the same 8-step schedule. When a page does not say which kind it is, the app does not offer it, because the wrong kind makes broken video. **Connect Civitai account** is needed only for files that require a signed-in account.
 
 ## Settings
 

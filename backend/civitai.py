@@ -404,6 +404,33 @@ def example_settings(version: dict) -> dict:
     return found
 
 
+def ltx_variant(model_name: str, version_name: str, settings: dict, text: str) -> str | None:
+    """'distilled' or 'dev' for an LTX 2.5 checkpoint, None when the page does not say. Create video runs the
+    official distilled 8 + 3 step schedule, which breaks a dev checkpoint."""
+    for name in (version_name, model_name):
+        # "dev ... bring your own distilled LoRA" is a dev model, so dev wins within one name.
+        if re.search(r'\bdev\b', name, re.I):
+            return 'dev'
+        if re.search(r'distill', name, re.I):
+            return 'distilled'
+    if settings.get('steps'):
+        if settings['steps'] <= 10:
+            return 'distilled'
+        if settings['steps'] >= 15:
+            return 'dev'
+    distilled, dev = re.search(r'distill', text, re.I), re.search(r'\bdev\b', text, re.I)
+    return 'distilled' if distilled and not dev else 'dev' if dev and not distilled else None
+
+
+def ltx_problem(model: dict, version: dict, settings: dict, text: str) -> str | None:
+    if model.get('type') != 'Checkpoint' or version.get('baseModel') != 'LTXV 2.5':
+        return None
+    variant = ltx_variant(model['name'], version['name'], settings, text)
+    if variant is None:
+        return 'The page does not say that this LTX 2.5 checkpoint is distilled. The app runs distilled LTX 2.5 checkpoints only.'
+    return None
+
+
 def recommended_vae(text: str) -> str | None:
     if re.search(r'texture[ _-]?fix|checkerboard|madebyollin', text, re.I):
         return 'vae-texture-fix'
@@ -448,9 +475,11 @@ def details(model_id: int) -> dict:
                  for f in version.get('files', [])]
         usable = [f for f in files if _usable_file(model['type'], f)]
         rank = lambda f: _file_rank(f, _best_quality(model['type'], info))
+        problem = ltx_problem(model, version, settings, version_text + '\n' + description)
         versions.append({'id': version['id'], 'name': version['name'], 'base_model': version.get('baseModel', ''),
-                         'area': info['area'] if info else None,
-                         'supported': bool(info) and bool(usable),
+                         'area': info['area'] if info else None, 'problem': problem,
+                         'ltx_variant': ltx_variant(model['name'], version['name'], settings, version_text + '\n' + description) if version.get('baseModel') == 'LTXV 2.5' and model['type'] == 'Checkpoint' else None,
+                         'supported': bool(info) and bool(usable) and not problem,
                          'trained_words': [w.strip() for w in version.get('trainedWords') or [] if w.strip()],
                          'description': version_text, 'files': files, 'default_file': (sorted(usable, key=rank)[0]['id'] if usable else None),
                          'suggested_strength': suggested_strength(version_text + '\n' + description),
@@ -515,6 +544,9 @@ def inspect(path: Path) -> dict:
         if lora and re.search(r'audio_attn1\.to_q\.(?:lora_A|lora_down)', name) and max(shape) == LTX_AUDIO_HIDDEN:
             arch = 'ltx25'; break
         if not lora and re.search(r'(^|\.)audio_adaln_single\.linear\.weight$', name) and min(shape) == LTX_AUDIO_HIDDEN:
+            arch = 'ltx25'; break
+        # Packed 4-bit files halve the weight shapes; this audio-video cross-attention gate exists only in LTX 2.5.
+        if not lora and re.search(r'(^|\.)av_ca_a2v_gate_adaln_single\.', name):
             arch = 'ltx25'; break
         # Krea 2: the txtfusion adapter (ComfyUI and diffusers names), or its 6144-wide single-stream blocks.
         if not lora and re.search(r'(^|\.)txtfusion\.projector\.weight$', name):
@@ -589,6 +621,10 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     base = BASE_MODELS.get(version.get('baseModel'))
     if not base:
         raise ValueError(f"This version is for {version.get('baseModel')}, which this app cannot run yet. Supported: {', '.join(BASE_MODELS)}.")
+    page_text = _text(version.get('description')) + '\n' + _text(model.get('description'))
+    problem = ltx_problem(model, version, author_settings(_text(version.get('description')), _text(model.get('description'))), page_text)
+    if problem:
+        raise ValueError(problem)
     files = [f for f in version.get('files', []) if file_id is None or f['id'] == file_id]
     candidates = [f for f in files if _usable_file(model['type'], {'type': f.get('type', 'Model'), 'format': (f.get('metadata') or {}).get('format', '')})]
     if not candidates:
@@ -645,10 +681,16 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     elif base['arch'] == 'ltx25':
         # Only distilled LTX 2.5 checkpoints suit the fixed 8 + 3 step schedule that Create video runs.
         gguf = target.suffix.lower() == '.gguf'
+        page = _text(version.get('description')) + '\n' + _text(model.get('description'))
+        dev = ltx_variant(model['name'], version['name'], author_settings(_text(version.get('description')), _text(model.get('description'))), page) == 'dev'
         entry.update(kind='video', family='ltx25', modes=['text', 'image'],
                      format='GGUF' if gguf else ((file.get('metadata') or {}).get('fp') or 'BF16').upper(),
-                     dependencies=['ltx25-gemma-int8', 'ltx25-video-vae', 'ltx25-audio-vae'],
-                     generation_defaults={'steps': 8, 'source': entry['civitai']['url'], 'note': 'LTX 2.5 distilled schedule.'})
+                     dependencies=['ltx25-gemma-int8', 'ltx25-video-vae', 'ltx25-audio-vae', *(['ltx25-distill-lora'] if dev else [])],
+                     generation_defaults={'steps': 8, 'source': entry['civitai']['url'],
+                                          'note': ('Dev checkpoint: the official distilled LoRA at 0.5, then the distilled schedule (as the Lightricks '
+                                                   'and model pages describe).' if dev else 'LTX 2.5 distilled schedule.')})
+        if dev:
+            entry['distill_lora_strength'] = 0.5
     elif lora and base['arch'] == 'krea-2':
         entry.update(kind='image-lora', format='LoRA', families=list(KREA2_FAMILIES),
                      trained_words=[w.strip() for w in version.get('trainedWords') or [] if w.strip()],
