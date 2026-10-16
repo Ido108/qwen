@@ -3,6 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from collections import deque
 import hashlib
+import httpx
 import io
 import json
 import os
@@ -25,11 +26,11 @@ from pydantic import BaseModel, Field
 
 from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, GenerationRequest, VideoRequest, ReferenceVideoRequest, UpscaleRequest, model_status, resolve_image, resolve_video, read_json, write_json
 from .reference_timing import probe_video_duration, resolve_reference_clip
-from . import models, antigravity, cloud
+from . import models, antigravity, cloud, civitai, people
 from .resident_worker import ImageWorker
 
 from .common import AUDIO_UPLOADS_DIR, resolve_audio
-from .ltx_settings import MultiReferenceRequest, required_ltx, media_inputs as ltx_media_inputs
+from .ltx_settings import MultiReferenceRequest, required_ltx, is_ref2va, media_inputs as ltx_media_inputs
 
 SESSION_TOKEN = secrets.token_urlsafe(32)
 active_lock = threading.Lock()
@@ -57,6 +58,26 @@ def start_next_locked():
         active_job = job_id
         threading.Thread(target=run_job, args=(job_id,), daemon=True).start()
         return
+    warm_image_worker_locked()
+
+
+def warm_image_worker_locked():
+    """Caller holds active_lock. When the queue is idle and no image model is loaded (after the app starts or
+    after a video job), load the last used image model so the next image starts in about a second."""
+    if active_job or pending_jobs or queue_paused or shutting_down or cloud.settings()['mode'] != 'local':
+        return
+    if os.environ.get('QWEN_NO_WARMUP') or image_worker.status()['loaded']:
+        return
+    last = next((job for job in sorted(all_jobs(), key=lambda j: j['created_at'], reverse=True)
+                 if job.get('kind', 'image') == 'image' and job.get('status') == 'succeeded' and job.get('request', {}).get('execution') != 'runpod'), None)
+    if not last:
+        return
+    try:
+        request = json.loads((JOBS_DIR / last['id'] / 'request.json').read_text(encoding='utf-8'))
+        if all(models.is_installed(model_id) for model_id in models.required_image(request)[:3]):
+            image_worker.warm(request, DATA_DIR / 'temp')
+    except (OSError, ValueError, KeyError):
+        pass  # the next job loads normally
 
 
 def save_queue_locked():
@@ -157,6 +178,8 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
                 work['enhancement_result'] = rewrite
             elif task_kind == 'video':
                 from .prompt_enhancer import enhance_video
+                if models.is_ltx_video(models.entry(request['model_id'])):
+                    from .video_worker import enhance_ltx_video as enhance_video
                 named = {}
                 if request.get('first_frame'):
                     named['first_frame'] = pictures[0]
@@ -397,6 +420,9 @@ async def lifespan(app):
         order = saved.get('pending', [])
         pending_jobs.sort(key=lambda job_id: order.index(job_id) if job_id in order else len(order))
         start_next_locked()
+    # Fix the settings of Civitai models saved by older versions (for example a Base model saved as Turbo).
+    threading.Thread(target=civitai.repair_entries, name='civitai-repair', daemon=True).start()
+    threading.Thread(target=civitai.warm_indexes, name='civitai-index-warm', daemon=True).start()
     yield
     with active_lock:
         shutting_down = True
@@ -424,6 +450,9 @@ async def local_only(request: Request, call_next):
     response.headers['Referrer-Policy'] = 'no-referrer'
     if request.url.path.startswith('/api'):
         response.headers['Cache-Control'] = 'no-store'
+    elif request.url.path in ('/', '/index.html'):
+        # Always check for a newer build; the hashed assets can stay cached.
+        response.headers['Cache-Control'] = 'no-cache'
     return response
 
 @app.get('/api/health')
@@ -548,6 +577,185 @@ def connection_test():
     except antigravity.ConnectionError as exc:
         raise HTTPException(424, str(exc))
 
+class CivitaiKey(BaseModel):
+    key: str = Field(min_length=10, max_length=200)
+
+
+class CivitaiLink(BaseModel):
+    link: str = Field(min_length=10, max_length=500)
+
+
+class CivitaiInstall(BaseModel):
+    version_id: int = Field(ge=1)
+    file_id: int | None = None
+    turbo: bool = False
+    title: str = Field(default='Civitai model', max_length=200)
+
+
+def civitai_call(function, *args):
+    try:
+        return function(*args)
+    except (ValueError, ConnectionError, PermissionError) as exc:
+        raise HTTPException(400, str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(502, 'Civitai is not reachable. Check the internet connection and try again.')
+
+
+@app.get('/api/civitai/status')
+def civitai_status():
+    return civitai.status()
+
+
+@app.post('/api/civitai/login')
+def civitai_login():
+    return civitai_call(civitai.start_login)
+
+
+@app.get('/api/civitai/login/{state}')
+def civitai_login_poll(state: str):
+    return civitai_call(civitai.poll_login, state)
+
+
+@app.post('/api/civitai/key')
+def civitai_key(body: CivitaiKey):
+    return civitai_call(civitai.save_api_key, body.key)
+
+
+@app.post('/api/civitai/disconnect')
+def civitai_disconnect():
+    return civitai.disconnect()
+
+
+@app.get('/api/civitai/search')
+def civitai_search(query: str = '', kind: Literal['LORA', 'Checkpoint'] = 'LORA',
+                   sort: Literal['Most Downloaded', 'Highest Rated', 'Newest'] = 'Most Downloaded', cursor: str | None = None,
+                   area: Literal['image', 'video'] = 'image', variant: Literal['all', 'standard', 'turbo'] = 'all'):
+    return civitai_call(civitai.search, query, kind, sort, cursor, True, area, variant)
+
+
+@app.get('/api/civitai/models/{model_id}')
+def civitai_details(model_id: int):
+    return civitai_call(civitai.details, model_id)
+
+
+@app.post('/api/civitai/resolve')
+def civitai_resolve(body: CivitaiLink):
+    return civitai_call(civitai.resolve_link, body.link)
+
+
+@app.post('/api/civitai/install')
+def civitai_install(body: CivitaiInstall):
+    with models.lock:
+        if models._download_running_locked():
+            raise HTTPException(409, 'Another model is downloading. Wait for it to finish.')
+        models.transfer.clear()
+        models.transfer.update(status='running', stage='preparing', requested_id=f'civitai:{body.version_id}', title=body.title,
+                               completed_bytes=0, total_bytes=0)
+        models.cancel_event.clear()
+
+    def run():
+        started, printed = time.monotonic(), [0.0]
+
+        def progress(done, total, stage):
+            if models.cancel_event.is_set():
+                raise models.DownloadCancelled()
+            with models.lock:
+                models.transfer.update(completed_bytes=done, total_bytes=total, stage=stage)
+            now = time.monotonic()
+            if now - printed[0] > 5 or stage != 'downloading':
+                printed[0] = now
+                speed = done / max(now - started, .1) / 1e6
+                print(f'[Civitai] {stage}: {done / 1e9:.2f} of {total / 1e9:.2f} GB · {speed:.0f} MB/s', flush=True)
+        try:
+            entry = civitai.install(body.version_id, body.file_id, body.turbo, progress)
+            with models.lock:
+                models.transfer.update(status='succeeded', stage='complete', title=entry['title'], model_id=entry['id'], installed_id=entry['id'])
+        except models.DownloadCancelled:
+            with models.lock:
+                models.transfer.update(status='cancelled', message='Download cancelled. Add it again to resume.')
+        except Exception as exc:
+            with models.lock:
+                models.transfer.update(status='failed', message=str(exc)[:400])
+    threading.Thread(target=run, daemon=True).start()
+    return {'ok': True}
+
+
+@app.get('/api/civitai/previews/{entry_id}')
+def civitai_preview(entry_id: str):
+    path = (civitai.PREVIEWS / f'{entry_id}.jpg').resolve()
+    if not path.is_relative_to(civitai.PREVIEWS.resolve()) or not path.is_file():
+        raise HTTPException(404, 'Preview not found.')
+    return FileResponse(path, headers={'Cache-Control': 'max-age=86400'})
+
+
+class PersonBody(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    image_ids: list[str] = Field(min_length=1, max_length=20)
+
+
+class PersonUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    image_ids: list[str] | None = Field(default=None, max_length=20)
+
+
+class MoiseImport(BaseModel):
+    password: str | None = Field(default=None, max_length=200)
+
+
+def people_call(function, *args):
+    try:
+        for image_id in (args[1] if len(args) > 1 and isinstance(args[1], list) else []):
+            resolve_image(image_id)
+        return function(*args)
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get('/api/people')
+def list_people():
+    return people.listing()
+
+
+@app.post('/api/people')
+def add_person(body: PersonBody):
+    return people_call(people.upsert, body.name, body.image_ids)
+
+
+@app.patch('/api/people/{person_id}')
+def edit_person(person_id: str, body: PersonUpdate):
+    if body.image_ids:
+        for image_id in body.image_ids:
+            people_call(resolve_image, image_id)
+    return people_call(people.update, person_id, body.name, body.image_ids)
+
+
+@app.delete('/api/people/{person_id}')
+def remove_person(person_id: str):
+    people.delete(person_id)
+    return {'ok': True}
+
+
+@app.get('/api/people/{person_id}/avatar')
+def person_avatar(person_id: str):
+    try:
+        return FileResponse(people.avatar(person_id), media_type='image/webp', headers={'Cache-Control': 'max-age=86400'})
+    except (ValueError, OSError):
+        raise HTTPException(404, 'No avatar.')
+
+
+@app.post('/api/people/import/moise')
+def import_moise(body: MoiseImport):
+    if people.status.get('state') == 'running':
+        raise HTTPException(409, 'An import is already running.')
+    threading.Thread(target=people.import_moise, args=(body.password,), daemon=True).start()
+    return {'ok': True}
+
+
+@app.get('/api/people/import/status')
+def import_status():
+    return dict(people.status)
+
+
 @app.get('/api/models')
 def get_models():
     return catalog_state() | {'resident': image_worker.status() if cloud.settings()['mode'] == 'local' else None}
@@ -624,13 +832,50 @@ def save_upload(picture: Image.Image, name: str) -> dict:
             'width': picture.width, 'height': picture.height}
 
 
+def upload_fingerprints(files: list[Path]) -> dict[str, str]:
+    """Pixel hash per upload, cached by size and time, so copies saved under old random names group together."""
+    index_path = UPLOADS_DIR / '.thumbs' / 'fingerprints.json'
+    try:
+        index = json.loads(index_path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        index = {}
+    changed = False
+    result = {}
+    for path in files:
+        stat = path.stat()
+        key = f'{stat.st_size}:{int(stat.st_mtime)}'
+        cached = index.get(path.name)
+        if not cached or cached[0] != key:
+            try:
+                with Image.open(path) as picture:
+                    picture = picture.convert('RGBA')
+                    digest = hashlib.sha256(picture.tobytes() + f'{picture.size}'.encode()).hexdigest()
+            except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+                digest = path.name
+            cached = index[path.name] = [key, digest]
+            changed = True
+        result[path.name] = cached[1]
+    if changed:
+        index_path.parent.mkdir(exist_ok=True)
+        write_json(index_path, {name: value for name, value in index.items() if name in result})
+    return result
+
+
 @app.get('/api/uploads')
 def recent_uploads(offset: int = Query(0, ge=0), limit: int = Query(60, ge=1, le=200)):
     files = [path for path in UPLOADS_DIR.iterdir() if path.is_file() and path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'}]
     files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
-    return {'total': len(files), 'items': [{'id': path.name, 'name': path.name, 'url': f'/api/uploads/{path.name}',
-                                            'thumb_url': f'/api/uploads/{path.name}/thumb', 'modified': path.stat().st_mtime}
-                                           for path in files[offset:offset + limit]]}
+    people_photos = {image_id for person in people.load() for image_id in person['image_ids']}
+    files = [path for path in files if path.name not in people_photos]  # shown under People
+    fingerprints = upload_fingerprints(files)
+    seen, unique = set(), []
+    for path in files:  # newest copy of each image only
+        if fingerprints[path.name] not in seen:
+            seen.add(fingerprints[path.name])
+            unique.append(path)
+    return {'total': len(unique), 'items': [{'id': path.name, 'name': path.name, 'url': f'/api/uploads/{path.name}',
+                                             'thumb_url': f'/api/uploads/{path.name}/thumb', 'modified': path.stat().st_mtime}
+                                            for path in unique[offset:offset + limit]]}
 
 
 @app.get('/api/uploads/{image_id}')
@@ -816,7 +1061,7 @@ def validate_image_tool(body: GenerationRequest) -> dict:
 @app.post('/api/generate', status_code=202)
 def generate(body: GenerationRequest):
     try:
-        needed = models.required(body.model_id, body.text_encoder, body.tool_id, body.vae_id)
+        needed = models.required(body.model_id, body.text_encoder, body.tool_id, body.vae_id, [lora.id for lora in body.loras], len(body.images))
         tool = validate_image_tool(body) if body.tool_id else None
     except ValueError as exc:
         raise HTTPException(400, str(exc))
@@ -850,9 +1095,8 @@ def generate(body: GenerationRequest):
         data = body.model_dump()
         data['execution'] = 'runpod' if remote else 'local'
         defaults = models.entry(body.model_id)['generation_defaults']
-        fixed = defaults.get('fixed_steps', False)
-        data['steps'] = body.steps if body.steps is not None and not fixed else defaults['steps']
-        data['steps_mode'] = 'custom' if body.steps is not None and not fixed else 'model'
+        data['steps'] = body.steps if body.steps is not None else defaults['steps']
+        data['steps_mode'] = 'custom' if body.steps is not None else 'model'
         if tool:
             data['enhance'] = False
             data['lora_strength'] = body.lora_strength if body.lora_strength is not None else tool['strength']
@@ -895,8 +1139,13 @@ def generate_video(body: VideoRequest):
         data.update(kind='video',execution='runpod' if remote else 'local',output_dir=str(destination),enhancement_model=antigravity.selected_model())
         if body.randomize_seed:
             data['seed']=secrets.randbelow(2147483648)
-        fast=models.entry(body.model_id)['family']=='fasth3'
+        selected=models.entry(body.model_id)
+        fast=selected['family']=='fasth3'
         steps=8 if fast or body.quality=='turbo' else body.steps
+        if models.is_ltx_video(selected):
+            # Official LTX 2.5 distilled schedule: 8 steps, plus 3 refinement steps after the 2x upscale.
+            from .ltx_settings import ltx_video_two_pass
+            steps=11 if ltx_video_two_pass(body) else 8
         job_id=uuid.uuid4().hex
         job={'id':job_id,'kind':'video','status':'queued','message':'Waiting in queue','stage':'queued',
              'created_at':time.time(),'seed':data['seed'],'request':data,'rewritten_prompt':'','step':0,'total_steps':steps}
@@ -1014,9 +1263,16 @@ def generate_multi_reference(body: MultiReferenceRequest):
         data.update(kind='multi-reference', execution='runpod' if remote else 'local', output_dir=str(destination))
         if body.randomize_seed:
             data['seed'] = secrets.randbelow(2147483648)
+        selected = models.entry(body.model_id)
+        total_steps = 11 if body.refine else 8
+        if is_ref2va(selected):
+            from .reference_sampling import reference_sampling
+            sampling = reference_sampling(selected, body.quality, body.steps)
+            total_steps = sampling['steps']
+            data.update(quality=sampling['quality'], sampling_profile=sampling)
         job = {'id': uuid.uuid4().hex, 'kind': 'multi-reference', 'status': 'queued',
                'stage': 'queued', 'message': 'Waiting in queue', 'created_at': time.time(),
-               'seed': data['seed'], 'request': data, 'step': 0, 'total_steps': 11 if body.refine else 8}
+               'seed': data['seed'], 'request': data, 'step': 0, 'total_steps': total_steps}
         enqueue_locked(job, data)
     return public_job(job)
 
@@ -1134,9 +1390,7 @@ def retry_job(job_id: str):
     return generate(GenerationRequest(**data))
 
 
-@app.get('/api/library')
-def library(kind: Literal['all', 'image', 'video'] = 'all', search: str = '',
-            offset: int = Query(0, ge=0), limit: int = Query(48, ge=1, le=100)):
+def library_jobs(kind: str, search: str) -> list[dict]:
     query = search.casefold().strip()
     titles = {item['id']: item['title'] for item in models.catalog()}
     jobs = [j for j in all_jobs() if j.get('status') == 'succeeded'
@@ -1145,7 +1399,55 @@ def library(kind: Literal['all', 'image', 'video'] = 'all', search: str = '',
             and (not query or query in (j.get('request', {}).get('prompt', '') + ' ' + j.get('request', {}).get('model_id', '')
                  + ' ' + titles.get(j.get('request', {}).get('model_id', ''), '')).casefold())]
     jobs.sort(key=lambda j: j['created_at'], reverse=True)
+    return jobs
+
+
+@app.get('/api/library')
+def library(kind: Literal['all', 'image', 'video'] = 'all', search: str = '',
+            offset: int = Query(0, ge=0), limit: int = Query(48, ge=1, le=100)):
+    jobs = library_jobs(kind, search)
     return {'items': [public_job(j) for j in jobs[offset:offset + limit]], 'total': len(jobs)}
+
+
+class LibraryDelete(BaseModel):
+    ids: list[str] = Field(default_factory=list, max_length=100000)
+    all: bool = False
+    kind: Literal['all', 'image', 'video'] = 'all'
+    search: str = Field(default='', max_length=2000)
+
+
+MEDIA_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mov', '.wav'}
+
+
+@app.post('/api/library/delete')
+def library_delete(body: LibraryDelete):
+    """Delete finished results: the saved file, its settings file next to it, and the job folder."""
+    if body.all:
+        targets = library_jobs(body.kind, body.search)
+    else:
+        wanted = set(body.ids)
+        targets = [job for job in all_jobs() if job['id'] in wanted]
+    deleted, failed = 0, []
+    for job in targets:
+        with active_lock:
+            if job['id'] == active_job or job['id'] in pending_jobs or job.get('status') != 'succeeded':
+                continue  # never touch running or waiting jobs
+            if job['id'] in recent_jobs:
+                recent_jobs.remove(job['id'])
+        output = Path(job.get('output_path') or '')
+        try:
+            if output.suffix.lower() in MEDIA_SUFFIXES and output.is_file():
+                output.unlink()
+            sidecar = output.with_suffix('.json')
+            if output.suffix.lower() in MEDIA_SUFFIXES and sidecar.is_file():
+                sidecar.unlink()
+            directory = JOBS_DIR / job['id']
+            if directory.is_dir() and directory.parent == JOBS_DIR:
+                shutil.rmtree(directory)
+            deleted += 1
+        except OSError as exc:
+            failed.append(f"{job['id']}: {exc}")
+    return {'deleted': deleted, 'failed': failed[:20]}
 
 
 @app.get('/api/history')

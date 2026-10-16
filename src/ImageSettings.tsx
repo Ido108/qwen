@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import type {ModelEntry,ModelState} from './ModelSettings';
 
-export type ImageOptions={custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null};
+export type ImageOptions={custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null};
 export type ToolField={key:string;label:string;placeholder?:string;default:string;options?:{value:string;label:string;prompt?:string;strength?:number}[]};
 export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;families:string[];tested_on:string[];inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
@@ -25,14 +25,17 @@ export function toolStrength(tool:ImageTool,options:Record<string,string>){
 }
 export function toolDefaults(tool:ImageTool){return Object.fromEntries(tool.fields.map(f=>[f.key,f.default]));}
 
-export function ImageSettings({value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled}:{value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
-  models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean}){
-  const defaults=model?.generation_defaults;const defaultSteps=defaults?.steps;const fixed=!!defaults?.fixed_steps;
+export function ImageSettings({part='main',value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled}:{value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
+  models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'advanced'}){
+  const defaults=model?.generation_defaults;const defaultSteps=defaults?.steps;const turbo=!!defaults?.sigmas;
+  const page=typeof defaults?.note==='string'&&defaults.note.startsWith('From the Civitai page')?defaults:null;
+  const pageText=page?`Author settings: ${page.steps} steps${page.cfg?`, CFG ${page.cfg}`:''}${page.sampler?`, ${page.sampler}`:''}${page.scheduler?` / ${page.scheduler}`:''}.`:'';
   const validSteps=value.steps===null||(Number.isInteger(value.steps)&&value.steps>=1&&value.steps<=80);
+  const defaultCfg=defaults?.cfg??1;const validCfg=value.cfg==null||(value.cfg>=1&&value.cfg<=15);
   const family=model?.family||'qwen-image-2.1';
   const imageModels=(models?.models||[]).filter(m=>m.kind==='image');
-  const groups=[['qwen-image-2.1','Qwen-Image-2.1 · 25 steps'],['qwen-image-2.1-turbo','Qwen-Image-2.1 Turbo · 8 steps, fast']] as const;
-  const order=['Q8_0','Q6_K','Q5_K_M','Q4_K_M','Q4_0','BF16'];
+  const groups=[['qwen-image-2.1','Qwen 2.1 Standard · 25 steps'],['qwen-image-2.1-turbo','Qwen 2.1 Turbo · 8 steps, fast'],['krea-2-turbo','Krea 2 Turbo · 8 steps, fast'],['krea-2','Krea 2 Raw · 52 steps']] as const;
+  const order=['Q8_0','Q6_K','Q5_K_M','Q4_K_M','Q4_0','FP8','NVFP4','INT8','BF16'];
   const quant=(m:ModelEntry)=>m.title.split(' · ').at(-1)||m.title;
   const isPreset=presets.some(([w,h])=>w===value.width&&h===value.height);
   const [customMode,setCustomMode]=useState(()=>value.custom_size&&!isPreset);
@@ -50,33 +53,44 @@ export function ImageSettings({value,onChange,model,models,modelId,onModel,tools
   }
   const options=toolState.tool_options;
   const strength=toolState.lora_strength??(tool?toolStrength(tool,options):1);
-  return <fieldset className="image-generation-settings studio-settings" disabled={disabled} aria-label="Image generation settings">
-    <div className="field"><label htmlFor="image-model">Model</label>
-      <select id="image-model" value={modelId} onChange={e=>onModel(e.target.value)}>
+  const status=[model?.id==='gguf-q8_0'||model?.id==='turbo-gguf-q8_0'?'★ Recommended':'',model?.ready?'✓ Installed':model?'Downloads when you generate':'',
+    family==='qwen-image-2.1-turbo'?'Turbo, 8 steps, no negative prompt':family==='krea-2-turbo'?'Krea 2 Turbo, 8 steps, no negative prompt':family==='krea-2'?'Krea 2 Raw, 52 steps, CFG 4.5':'Standard, 25 steps',pageText?'Author settings':''].filter(Boolean).join(' · ');
+  const cls=`image-generation-settings studio-settings settings-${part}`;
+  if(part==='model')return <fieldset className={cls} disabled={disabled} aria-label="Model">
+    <div className="field model-field"><label htmlFor="image-model">Model</label>
+      <select id="image-model" value={modelId} onChange={e=>onModel(e.target.value)} title={model?.title}>
         {groups.map(([id,label])=><optgroup key={id} label={label}>{imageModels.filter(m=>(m.family||'qwen-image-2.1')===id).sort((a,b)=>order.indexOf(quant(a))-order.indexOf(quant(b))).map(m=>
-          <option key={m.id} value={m.id}>{familyLabel(m.family)} {quant(m)}{m.id==='gguf-q8_0'||m.id==='turbo-gguf-q8_0'?' ★':''}{m.ready?'':` · ↓ ${gb(m.bytes)}`}</option>)}</optgroup>)}
+          <option key={m.id} value={m.id}>{m.title}{m.id==='gguf-q8_0'||m.id==='turbo-gguf-q8_0'?' ★':''}{m.ready?' ✓':` · ↓ ${gb(m.bytes)}`}</option>)}</optgroup>)}
       </select>
-      <small>{model?.id==='gguf-q8_0'||model?.id==='turbo-gguf-q8_0'?'★ Recommended. ':''}{family==='qwen-image-2.1-turbo'?'Turbo: 8 steps, fastest. Negative prompt is not used.':'Standard: 25 steps, highest fidelity.'}{model&&!model.ready?' Downloads when you generate.':''}</small>
+      <small className="model-status" title={[pageText,defaults?.note].filter(Boolean).join(' ')||undefined}>{status}</small>
     </div>
+  </fieldset>;
+  if(part==='advanced')return <fieldset className={cls} disabled={disabled} aria-label="Steps and CFG">
+    <div className="field"><div className="steps-heading"><label htmlFor="image-steps">Steps</label>
+      {value.steps===null?(defaults?.source?<a href={defaults.source} target="_blank" rel="noreferrer" title={`Default: ${defaultSteps} steps`}>Model default</a>:<span>Model default</span>):<button type="button" className="text-button" disabled={!defaultSteps} onClick={()=>onChange({steps:null})}>Reset ({defaultSteps??'…'})</button>}
+    </div><input id="image-steps" type="number" min="1" max="80" step="1" disabled={!defaultSteps} value={value.steps??defaultSteps??''} aria-invalid={!validSteps} title={turbo?`Turbo is trained for ${defaultSteps} steps; other counts stretch its schedule.`:`Default: ${defaultSteps??'…'} steps`} onChange={e=>onChange({steps:Number(e.target.value)})}/>
+      {!validSteps?<small>Enter a whole number from 1 to 80.</small>:turbo&&value.steps!==null&&value.steps!==defaultSteps?<small>Turbo is trained for {defaultSteps}.</small>:null}
+    </div>
+    <div className="field"><div className="steps-heading"><label htmlFor="image-cfg">CFG</label>
+      {value.cfg==null?<span>Model default</span>:<button type="button" className="text-button" onClick={()=>onChange({cfg:null})}>Reset ({defaultCfg})</button>}
+    </div><input id="image-cfg" type="number" min="1" max="15" step="0.5" disabled={!defaults} value={value.cfg??defaultCfg} aria-invalid={!validCfg} title={`${defaults?.cfg?'Default from the model page. ':turbo?'Turbo is trained for CFG 1. ':'1, or 2 with a negative prompt. '}Above 1 runs a second guidance pass, so each step takes about twice as long.`} onChange={e=>onChange({cfg:e.target.value===''?null:Number(e.target.value)})}/>
+      {!validCfg?<small>Enter a number from 1 to 15.</small>:value.cfg!=null&&value.cfg>1?<small>About 2x slower per step.</small>:null}
+    </div>
+  </fieldset>;
+  return <fieldset className={cls} disabled={disabled} aria-label="Tool and output size">
     <div className="field"><label htmlFor="image-tool">Tool</label>
-      <select id="image-tool" value={toolState.tool_id||''} onChange={e=>chooseTool(e.target.value)}>
+      <select id="image-tool" value={toolState.tool_id||''} onChange={e=>chooseTool(e.target.value)} title={tool?tool.summary:'Optional add-ons for try-on, restoration, expansion and more.'}>
         <option value="">None · free prompt</option>
         {tools.map(t=>{const ok=t.families.includes(family);return <option key={t.id} value={t.id} disabled={!ok}>{t.title}{ok?'':` · ${familyLabel(t.families[0])} model only`}</option>;})}
       </select>
-      <small>{tool?tool.summary:'Optional add-ons for try-on, restoration, expansion and more.'}</small>
     </div>
     <div className="field"><label htmlFor="image-size">Output size</label>
-      <select id="image-size" value={sizeValue} onChange={e=>setSize(e.target.value)}>
+      <select id="image-size" value={sizeValue} onChange={e=>setSize(e.target.value)} title={followsImage?'Follows the shape of image 1.':value.custom_size?'Exact size in pixels.':'Shape follows the prompt or input image.'}>
         <option value="auto-1024">Auto · 1K (about 1 MP)</option><option value="auto-2048">Auto · 2K (about {followsImage?'2':'4'} MP)</option>
         {followsImage?null:<><option disabled>──────────</option>{presets.map(([w,h,r])=><option key={`${w}x${h}`} value={`${w}x${h}`}>{w} × {h} · {r}</option>)}<option disabled>──────────</option><option value="custom">Custom…</option></>}
       </select>
-      <small>{followsImage?'Follows the shape of image 1.':value.custom_size?'Exact size in pixels.':'Shape follows the prompt or input image.'}</small>
     </div>
-    <div className="field"><div className="steps-heading"><label htmlFor="image-steps">Steps</label>
-      {fixed?<span>Fixed by model</span>:value.steps===null?<span>Model default</span>:<button type="button" className="text-button" disabled={!defaultSteps} onClick={()=>onChange({steps:null})}>Reset ({defaultSteps??'…'})</button>}
-    </div><input id="image-steps" type="number" min="1" max="80" step="1" disabled={!defaultSteps||fixed} value={fixed?defaultSteps:value.steps??defaultSteps??''} aria-invalid={!validSteps} onChange={e=>onChange({steps:Number(e.target.value)})}/>
-      <small>{!validSteps?'Enter a whole number from 1 to 80.':fixed?'Turbo is trained for exactly 8 steps.':defaults?<a href={defaults.source} target="_blank" rel="noreferrer">Default: {defaultSteps} steps</a>:null}</small>
-    </div>
+    {tool?<small className="tool-summary">{tool.summary}</small>:null}
     {sizeValue==='custom'&&!followsImage?<div className="custom-image-settings">
       {(['width','height'] as const).map(key=><div className="field" key={key}><label htmlFor={key}>{key==='width'?'Width':'Height'}</label><div className="dimension"><input id={key} type="number" min="256" max="2688" step="8" value={value[key]} onChange={e=>onChange({[key]:Number(e.target.value)})}/><span>px</span></div><input aria-label={`${key==='width'?'Width':'Height'} slider`} type="range" min="256" max="2688" step="8" value={value[key]} onChange={e=>onChange({[key]:Number(e.target.value)})}/></div>)}
       {value.width%32!==0||value.height%32!==0?<small className="span-2">Sizes that are not multiples of 32 are rendered at the next compatible size, then resized to your exact dimensions.</small>:null}

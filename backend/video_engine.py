@@ -89,7 +89,8 @@ def generate(request, prompt, images, progress, preview_directory=None):
     del clip
     progress(stage='preparing_conditioning', message='Preparing video conditioning…')
     audio_vae = None
-    if reference and images.get('source_audio') is not None:
+    voices = images.get('ref_audios') or {}
+    if reference and (images.get('source_audio') is not None or voices):
         progress(stage='loading_audio_vae', message='Loading the audio encoder…')
         weights, _ = read_weights('h3-audio-vae')
         audio_vae = ProgressVAE(comfy.sd.VAE(sd=weights), progress, audio=True)
@@ -97,13 +98,14 @@ def generate(request, prompt, images, progress, preview_directory=None):
     with torch.inference_mode():
         if reference:
             references={f'ref_image_{i+1}':tensors[f'ref_image_{i+1}'] for i in range(len(request['reference_images']))}
-            source=images['source_video']
-            video_audios={'ref_video_audio_1':images['source_audio']} if images.get('source_audio') is not None else None
+            # Reference images only (official r2v template) or with a source video.
+            source=images.get('source_video')
+            video_audios={'ref_video_audio_1':images['source_audio']} if source is not None and images.get('source_audio') is not None else None
             positive, latent=MiniMaxH3ReferenceToVideo.execute(encoder,prompt,
                 request['width'],request['height'],request['frames'],
                 ref_image_size=request['reference_image_size'],vae=vae,audio_vae=audio_vae,
-                ref_images=references,ref_videos={'ref_video_1':source},
-                ref_video_audios=video_audios)
+                ref_images=references,ref_videos={'ref_video_1':source} if source is not None else None,
+                ref_video_audios=video_audios,ref_audios=voices or None)
             if request['workflow']=='crossview':
                 positive=MiniMaxH3AddGuide.execute(positive,latent,0,vae=vae,image=images['warp_video'])[0]
         else:
@@ -161,6 +163,12 @@ def generate(request, prompt, images, progress, preview_directory=None):
         lora, _ = read_weights(lora_id)
         model, _ = comfy.sd.load_lora_for_models(model,None,lora,strength,0)
         del lora
+    # The user's LoRAs (for example from Civitai) go on top of the built-in ones.
+    for choice in request.get('loras') or []:
+        lora, _ = read_weights(choice['id'])
+        model, _ = comfy.sd.load_lora_for_models(model, None, lora, float(choice.get('strength', 1.0)), 0)
+        del lora
+        progress(user_lora=choice['id'], user_lora_strength=float(choice.get('strength', 1.0)))
     video_shift = sampling['video_shift'] if sampling else (10.0 if fast else 12.0)
     audio_shift = sampling['audio_shift'] if sampling else 3.0
     model = MiniMaxH3SigmaShift.execute(model, video_shift, audio_shift)[0]

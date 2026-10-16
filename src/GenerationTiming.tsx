@@ -33,7 +33,7 @@ export function GenerationTiming({job,models}:{job:Run;models?:ModelState|null})
   if(elapsed!==null)facts.push(['Run time',time(elapsed)]);
   if(model)facts.push(['Model',model]);
   if(steps)facts.push([job.kind==='upscale'?'Processed sections':twoPasses?'Steps per pass':'Steps',String(steps)]);
-  if(twoPasses)facts.push(['Passes','2 — subject replacement, then camera view']);
+  if(twoPasses)facts.push(['Passes','2: subject replacement, then camera view']);
   if(job.request.refine&&job.kind==='multi-reference')facts.push(['Passes','8 generation steps + 3 refinement steps']);
   if(seed!==null)facts.push(['Seed',String(seed)]);
   if(size)facts.push(['Output size',size]);

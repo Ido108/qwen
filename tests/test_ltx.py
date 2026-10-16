@@ -31,12 +31,37 @@ class LtxTests(unittest.TestCase):
 
     def test_frame_grid_resolution_and_audio_pairs_are_validated(self):
         base = dict(prompt='Scene', reference_images=['a.png'])
-        for data in [dict(frames=124), dict(width=1025), dict(reference_frames=17), dict(reference_images=[])]:
+        for data in [dict(frames=120), dict(width=1025), dict(reference_frames=17), dict(reference_images=[])]:
             with self.assertRaises(ValueError):
                 MultiReferenceRequest(**(base | data))
-        for data in [dict(width=1536,height=1536), dict(audio_references=[None,'voice.wav']), dict(model_id='h3-ref-turbo-int8')]:
+        # 124 frames is a MiniMax H3 length (17n+5), not an LTX length (8n+1).
+        for data in [dict(width=1536,height=1536), dict(audio_references=[None,'voice.wav']), dict(frames=124),
+                     dict(model_id='h3-ref-turbo-int8'), dict(model_id='h3-ref-turbo-int8',frames=124,refine=True),
+                     dict(model_id='h3-ref-turbo-int8',frames=124,fps=25), dict(model_id='fasth3-q4_k_m')]:
             with self.assertRaises(ValueError):
                 required_ltx(MultiReferenceRequest(**(base | data)))
+
+    def test_ref2va_models_accept_reference_images_without_a_source_video(self):
+        request = MultiReferenceRequest(model_id='h3-ref-base-int8', prompt='Image 1 waves in Image 2.',
+            reference_images=['a.png'], background='bg.png', audio_references=['voice.wav'], frames=124, width=768, height=448)
+        self.assertEqual(required_ltx(request), ['h3-ref-base-int8', 'h3-encoder', 'h3-video-vae', 'h3-audio-vae'])
+        turbo = request.model_copy(update={'quality': 'turbo'})
+        self.assertIn('h3-ref-turbo-lora', required_ltx(turbo))
+        from backend.ltx_settings import ref2va_prompt
+        prompt = ref2va_prompt(request.model_dump())
+        self.assertTrue(prompt.startswith('<Picture 1> waves in <Picture 2>.'))
+        self.assertIn('<Picture 2> as the background', prompt)
+        self.assertIn('<Audio 1> is the voice of the subject in <Picture 1>.', prompt)
+        with self.assertRaises(ValueError):
+            ref2va_prompt({**request.model_dump(), 'prompt': 'Image 3 dances'})
+
+    def test_api_queues_ref2va_reference_images_with_model_steps(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(server,'resolve_image',return_value=Path(folder)/'ref.png'),                  patch.object(cloud,'settings',return_value={'mode':'local'}),                  patch.object(server,'enqueue_locked'):
+                result=server.generate_multi_reference(MultiReferenceRequest(model_id='h3-ref-turbo-int8',prompt='Scene',
+                    reference_images=['ref.png'],frames=124,output_dir=folder))
+            self.assertEqual(result['total_steps'],8)
+            self.assertEqual(result['request']['quality'],'turbo')
 
     def test_media_order_preserves_sparse_voice_slots(self):
         request = MultiReferenceRequest(prompt='Scene', reference_images=['a.png','b.png'], background='bg.png',audio_references=[None,'voice.wav'])

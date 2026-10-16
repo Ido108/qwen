@@ -29,6 +29,31 @@ class AppTests(unittest.TestCase):
         cls.client = TestClient(app)
         cls.headers = {'X-Studio-Token': cls.client.get('/api/config').json()['token']}
 
+    def test_library_delete_removes_files_and_keeps_running_jobs(self):
+        from backend import server
+        with tempfile.TemporaryDirectory() as folder, patch.object(server, 'JOBS_DIR', Path(folder) / 'jobs'):
+            jobs_dir = Path(folder) / 'jobs'
+            made = {}
+            for name, status in (('a', 'succeeded'), ('b', 'succeeded'), ('c', 'succeeded'), ('busy', 'running')):
+                output = Path(folder) / f'{name}.png'
+                output.write_bytes(b'png')
+                output.with_suffix('.json').write_text('{}')
+                (jobs_dir / name).mkdir(parents=True)
+                write_json(jobs_dir / name / 'status.json', {'id': name, 'status': status, 'kind': 'image', 'created_at': time.time(),
+                                                              'output_path': str(output), 'request': {'prompt': f'prompt {name}', 'model_id': 'gguf-q8_0'}})
+                made[name] = output
+            with patch.object(server, 'active_job', 'busy'):
+                result = self.client.post('/api/library/delete', json={'ids': ['a', 'busy']}, headers=self.headers).json()
+                self.assertEqual(result['deleted'], 1)
+                self.assertFalse(made['a'].exists() or made['a'].with_suffix('.json').exists() or (jobs_dir / 'a').exists())
+                self.assertTrue(made['busy'].exists() and (jobs_dir / 'busy').exists())
+                # Select all with a search deletes only the matching finished results.
+                self.assertEqual(self.client.post('/api/library/delete', json={'all': True, 'search': 'prompt b'}, headers=self.headers).json()['deleted'], 1)
+                self.assertTrue(made['c'].exists() and not made['b'].exists())
+                self.assertEqual(self.client.post('/api/library/delete', json={'all': True}, headers=self.headers).json()['deleted'], 1)
+                self.assertFalse(made['c'].exists())
+                self.assertTrue(made['busy'].exists())
+
     def test_local_access_and_session_guard(self):
         self.assertEqual(self.client.post('/api/open-output').status_code, 403)
         self.assertEqual(self.client.get('/api/config', headers={'host':'evil.example'}).status_code, 403)
@@ -133,17 +158,18 @@ class AppTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 resolve_image(image_id)
 
-    def test_turbo_steps_are_fixed_and_tools_validated(self):
+    def test_turbo_steps_default_custom_and_tools_validated(self):
         from backend import server
         upload = self.client.post('/api/uploads', files=[('files', ('a.png', png(), 'image/png'))], headers=self.headers).json()[0]['id']
         with tempfile.TemporaryDirectory() as folder,              patch.object(server,'JOBS_DIR',Path(folder)),              patch.object(server,'active_job',None),              patch.object(server,'threading',SimpleNamespace(Thread=Mock())):
             def post(**values):
                 server.active_job=None
                 return self.client.post('/api/generate',json={'prompt':'An apple','enhance':False,'auto_resolution':1024,'output_dir':folder,**values},headers=self.headers)
-            response=post(model_id='turbo-gguf-q8_0',steps=30)
-            self.assertEqual(response.status_code,202,response.text)
-            saved=json.loads((Path(folder)/response.json()['id']/'request.json').read_text())
-            self.assertEqual((saved['steps'],saved['steps_mode']),(8,'model'))
+            for steps,expected in ((None,(8,'model')),(12,(12,'custom'))):
+                response=post(model_id='turbo-gguf-q8_0',**({'steps':steps} if steps else {}))
+                self.assertEqual(response.status_code,202,response.text)
+                saved=json.loads((Path(folder)/response.json()['id']/'request.json').read_text())
+                self.assertEqual((saved['steps'],saved['steps_mode']),expected)
             # Wrong input count, wrong model family, bad outpaint options, unknown tool.
             self.assertIn('needs 2 input images',post(model_id='gguf-q8_0',tool_id='outfit-swap',images=[upload]).json()['detail'])
             self.assertIn('Turbo',post(model_id='gguf-q8_0',tool_id='character-swap',images=[upload,upload]).json()['detail'])
@@ -154,7 +180,7 @@ class AppTests(unittest.TestCase):
             saved=json.loads((Path(folder)/response.json()['id']/'request.json').read_text())
             self.assertEqual((saved['enhance'],saved['lora_strength'],saved['reference_resolution'],saved['vae_id']),(False,0.5,0,'vae-texture-fix'))
         from backend.models import required_image
-        self.assertEqual(required_image({'model_id':'turbo-bf16','tool_id':'restore'}),['turbo-bf16','encoder-bf16','vae','lora-restore'])
+        self.assertEqual(required_image({'model_id':'turbo-bf16','tool_id':'restore'}),['turbo-bf16','encoder-bf16','vae-texture-fix','lora-restore'])
         self.assertEqual(post_status:=self.client.post('/api/generate',json={'prompt':'x','lora_strength':3},headers=self.headers).status_code,422)
 
     def test_tool_preparation_sizes(self):

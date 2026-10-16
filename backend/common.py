@@ -48,6 +48,11 @@ def write_json(path: Path, data: dict) -> None:
     finally:
         temp.unlink(missing_ok=True)
 
+class LoraChoice(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    strength: float = Field(default=1.0, ge=0, le=2)
+
+
 class GenerationRequest(BaseModel):
     model_id: str = 'gguf-q8_0'
     text_encoder: str = 'auto'
@@ -64,11 +69,14 @@ class GenerationRequest(BaseModel):
     output_dir: str = str(OUTPUTS_DIR)
     # None follows the selected model's documented default; integers override it.
     steps: int | None = Field(default=None, ge=1, le=80)
-    vae_id: Literal['vae', 'vae-texture-fix'] = 'vae'
+    cfg: float | None = Field(default=None, ge=1, le=15)
+    vae_id: str = Field(default='auto', max_length=120)
     # Optional LoRA tool (see reference/image-tools.json) and its options.
     tool_id: str | None = Field(default=None, max_length=40)
     lora_strength: float | None = Field(default=None, ge=0, le=1.5)
     tool_options: dict[str, str] = Field(default_factory=dict)
+    # Extra LoRAs, for example ones added from Civitai: [{"id": ..., "strength": ...}].
+    loras: list['LoraChoice'] = Field(default_factory=list, max_length=4)
 
     @field_validator('prompt')
     @classmethod
@@ -90,16 +98,20 @@ class VideoRequest(BaseModel):
     mode: Literal['text', 'image'] = 'text'
     first_frame: str | None = None
     last_frame: str | None = None
-    width: int = Field(default=1344, ge=256, le=1344)
-    height: int = Field(default=768, ge=256, le=1344)
+    # MiniMax H3 allows up to 1344 px per side; LTX 2.5 up to 1536. models.required_video
+    # applies each family's own size, frame and pixel-count rules.
+    width: int = Field(default=1344, ge=256, le=1536)
+    height: int = Field(default=768, ge=256, le=1536)
     frames: int = Field(default=124, ge=22, le=362)
     seed: int = Field(default=0, ge=0, le=2147483647)
     randomize_seed: bool = True
     quality: Literal['standard', 'turbo'] = 'standard'
+    # LTX 2.5 is distilled and always runs its fixed schedule; this applies to MiniMax H3.
     steps: int = Field(default=20, ge=10, le=60)
     audio: bool = True
     enhance: bool = False
     output_dir: str = str(VIDEOS_DIR)
+    loras: list[LoraChoice] = Field(default_factory=list, max_length=4)
 
     @field_validator('prompt')
     @classmethod
@@ -118,7 +130,8 @@ class VideoRequest(BaseModel):
     @field_validator('frames')
     @classmethod
     def valid_frames(cls, value):
-        if value % 17 != 5:
+        # MiniMax H3 uses 17n+5 frames and LTX 2.5 uses 8n+1 frames.
+        if value % 17 != 5 and value % 8 != 1:
             raise ValueError('Choose a supported video duration.')
         return value
 
@@ -166,6 +179,7 @@ class ReferenceVideoRequest(BaseModel):
     output_audio: Literal['generated', 'source', 'mute'] = 'generated'
     enhance: bool = False
     output_dir: str = str(VIDEOS_DIR)
+    loras: list[LoraChoice] = Field(default_factory=list, max_length=4)
 
     @model_validator(mode='after')
     def grouped_references(self):

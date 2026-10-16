@@ -84,7 +84,7 @@ def stop_legacy(url, data, saved, *, close_app_windows=False):
     # Close only the old app-mode window, never a general Edge browser window.
     if close_app_windows:
         for hwnd, _, title in windows():
-            if title == 'Qwen — Qwen-Image-2.1':
+            if title == 'Qwen: Qwen-Image-2.1':
                 post_message(hwnd, 0x10, 0, 0)
     deadline = time.monotonic() + 10
     while matching_server(url, data) and time.monotonic() < deadline:
@@ -114,6 +114,14 @@ def browser_executable():
     raise RuntimeError('Install Microsoft Edge or Google Chrome to open the Qwen window.')
 
 
+def generating(runtime):
+    try:
+        saved = json.loads(runtime.read_text(encoding='utf-8-sig'))
+        return bool(get_json(saved['url'] + '/api/queue').get('active'))
+    except Exception:
+        return False
+
+
 def run(args):
     data = args.data_dir.resolve()
     runtime = args.runtime_file.resolve()
@@ -124,10 +132,13 @@ def run(args):
     logs_done = threading.Event()
     try:
         if not instance.acquire():
-            if not (args.restart or args.stop):
+            if not (args.restart or args.stop) and generating(runtime):
+                # Never kill a running generation; waiting jobs survive a restart.
                 set_event(instance.focus)
-                print('Qwen is already open. Showing its window.', flush=True)
+                print('Qwen is generating. Showing its window instead of restarting.', flush=True)
                 return
+            if not (args.restart or args.stop):
+                print('Qwen is already open. Restarting it with the current version.', flush=True)
             # Restart is an explicit close: stop the entire owned app, then wait
             # for the lock so old/new servers cannot overlap.
             set_event(instance.stop)

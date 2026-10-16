@@ -1,0 +1,88 @@
+import json
+import os
+import struct
+import tempfile
+import unittest
+from pathlib import Path
+
+os.environ.setdefault('QWEN_DATA_DIR', tempfile.mkdtemp(prefix='civitai-tests-'))
+from backend import civitai
+
+
+def safetensors(path: Path, shapes: dict):
+    header = {name: {'dtype': 'BF16', 'shape': shape, 'data_offsets': [0, 0]} for name, shape in shapes.items()}
+    raw = json.dumps(header).encode()
+    path.write_bytes(struct.pack('<Q', len(raw)) + raw)
+
+
+class CivitaiTests(unittest.TestCase):
+    def test_author_settings_prefer_the_version_and_the_author(self):
+        version = "NVFP4 conversion. Author's settings for V4 Base: 25 steps, euler, simple, cfg 3 (cfg 1 runs about twice as fast)."
+        model = 'The example images were made with: 80 steps, euler_ancestral_cfg_pp, beta, cfg 0.7. The author setting also works.'
+        found = civitai.author_settings(version, model)
+        self.assertEqual({k: found[k] for k in ('steps', 'cfg', 'sampler', 'scheduler')}, {'steps': 25, 'cfg': 3.0, 'sampler': 'euler', 'scheduler': 'simple'})
+        self.assertEqual(civitai.author_settings('', model)['sampler'], 'euler_ancestral_cfg_pp')
+        self.assertEqual(civitai.author_settings('No numbers here.'), {})
+
+    def test_turbo_detection_trusts_base_over_step_counts(self):
+        self.assertIs(civitai.detect_turbo('V4.0 Base NVFP4', {'steps': 8}), False)
+        self.assertIs(civitai.detect_turbo('turbo v1.3 int8', {}), True)
+        self.assertIs(civitai.detect_turbo('v2', {'steps': 10}), True)
+        self.assertIs(civitai.detect_turbo('v2', {'steps': 25}), False)
+        self.assertIsNone(civitai.detect_turbo('v2', {}))
+
+    def test_page_settings_reach_generation_defaults(self):
+        base = civitai.image_defaults(False, {'steps': 25, 'cfg': 3.0, 'sampler': 'euler', 'scheduler': 'simple', 'quote': 'q'}, 'u')
+        self.assertEqual((base['steps'], base['cfg'], base['sampler'], base['scheduler']), (25, 3.0, 'euler', 'simple'))
+        turbo = civitai.image_defaults(True, {'steps': 10, 'cfg': 2.0, 'quote': 'q'}, 'u')
+        self.assertEqual((turbo['steps'], turbo['cfg'], len(turbo['sigmas'])), (10, 2.0, 9))
+        self.assertNotIn('fixed_steps', turbo)
+        self.assertEqual(civitai._known_vae('texture_fix_vae_for_qwen_image_2.1_bf16.safetensors'), 'vae-texture-fix')
+        self.assertEqual(civitai._known_vae('qwen_image_2.1_vae_bf16.safetensors'), 'vae')
+
+    def test_inspect_tells_qwen21_from_qwen1_and_models_from_loras(self):
+        with tempfile.TemporaryDirectory() as folder:
+            cases = {
+                'lora21.safetensors': ({'transformer_blocks.0.attn.to_q.lora_A.default.weight': [16, 4096],
+                                        'transformer_blocks.0.attn.to_q.lora_B.default.weight': [4096, 16]}, ('lora', 'qwen-image-2.1')),
+                'lora21-comfy.safetensors': ({'diffusion_model.transformer_blocks.0.attn.to_q.lora_down.weight': [32, 4096]}, ('lora', 'qwen-image-2.1')),
+                'lora1.safetensors': ({'transformer_blocks.0.attn.to_q.lora_A.weight': [16, 3072]}, ('lora', 'qwen-image-1')),
+                'model21.safetensors': ({'img_in.weight': [4096, 64], 'txt_in.weight': [4096, 4096]}, ('model', 'qwen-image-2.1')),
+                'model1.safetensors': ({'model.diffusion_model.img_in.weight': [3072, 64]}, ('model', 'qwen-image-1')),
+                'sdxl.safetensors': ({'lora_unet_down_blocks_0.lora_down.weight': [8, 320]}, ('lora', 'unknown')),
+            }
+            for name, (shapes, expected) in cases.items():
+                path = Path(folder) / name
+                safetensors(path, shapes)
+                info = civitai.inspect(path)
+                self.assertEqual((info['kind'], info['arch']), expected, name)
+
+    def test_link_strength_and_text(self):
+        self.assertEqual(civitai.resolve_link('https://civitai.red/models/1662740/lenovo?modelVersionId=3349565'), {'model_id': 1662740, 'version_id': 3349565})
+        self.assertEqual(civitai.resolve_link('https://civitai.com/models/42'), {'model_id': 42, 'version_id': None})
+        with self.assertRaises(ValueError):
+            civitai.resolve_link('https://example.com/models/1')
+        self.assertEqual(civitai.suggested_strength('Use it at strength 0.75 for best results'), 0.75)
+        self.assertEqual(civitai.suggested_strength('LoRA weight: 1.2'), 1.2)
+        self.assertIsNone(civitai.suggested_strength('No settings here, 2048 px'))
+        self.assertEqual(civitai._text('<p>Hi &amp; <b>bye</b></p><ul><li>one</li></ul>'), 'Hi & bye\n• one')
+
+    def test_user_lora_requirements_follow_model_family(self):
+        from backend import models
+        entry = {'id': 'civitai-lora-1', 'title': 'Test LoRA', 'kind': 'image-lora', 'format': 'LoRA', 'source': 'civitai', 'repo': 'civitai',
+                 'revision': '1', 'directory': 'civitai/loras', 'files': [{'path': 'x.safetensors', 'bytes': 1, 'sha256': None}], 'bytes': 1,
+                 'dependencies': [], 'families': ['qwen-image-2.1'], 'civitai': {'version_id': 1}}
+        civitai._register(entry)
+        try:
+            self.assertEqual(models.required('gguf-q8_0', vae='vae', loras=['civitai-lora-1']), ['gguf-q8_0', 'encoder-int8', 'vae', 'civitai-lora-1'])
+            with self.assertRaises(ValueError):
+                models.required('turbo-gguf-q8_0', loras=['civitai-lora-1'])
+            with self.assertRaises(ValueError):
+                models.required('gguf-q8_0', loras=['vae'])
+        finally:
+            civitai.unregister('civitai-lora-1')
+        self.assertFalse(any(item['id'] == 'civitai-lora-1' for item in models.catalog()))
+
+
+if __name__ == '__main__':
+    unittest.main()

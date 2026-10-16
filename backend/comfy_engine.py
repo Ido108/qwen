@@ -86,9 +86,13 @@ def generate(request, prompt, images, width, height, progress):
         retain_cpu_weights(clip.patcher)
     progress(encoder_load_seconds=round(time.perf_counter()-started,3))
     negative=request['negative_prompt'].strip()
+    defaults=selected['generation_defaults']
+    turbo=bool(defaults.get('sigmas'))
+    # A CFG the user typed, else the model's own CFG (Turbo: 1, or what its Civitai page asks for); otherwise CFG 2 only with a negative prompt.
+    cfg=float(request['cfg']) if request.get('cfg') else float(defaults['cfg']) if defaults.get('cfg') else 1.0 if turbo else 2.0 if negative else 1.0
     started=time.perf_counter()
     reference_resolution=int(request.get('reference_resolution',1024))
-    conditioning_key=_conditioning.fingerprint(f'{reference_resolution}|{prompt}',negative,images)
+    conditioning_key=_conditioning.fingerprint(f'{reference_resolution}|{cfg>1}|{prompt}',negative,images)
     cached=_conditioning.get(conditioning_key)
     progress(stage='encoding',message='Using saved prompt and image data.' if cached else
              ('Processing prompt and input images…' if images else 'Processing prompt…'),step=0,
@@ -96,7 +100,7 @@ def generate(request, prompt, images, width, height, progress):
     if cached is None:
         image_tensors={f'image_{i+1}':torch.from_numpy(np.array(img.convert('RGBA')).astype(np.float32)/255.0).unsqueeze(0) for i,img in enumerate(images)}
         with torch.inference_mode():
-            encoded=TextEncodeQwenImage21.execute(clip=PositiveOnlyEncoder(clip,bool(negative)),prompt=prompt,negative_prompt=negative,vae=vae,resolution=reference_resolution,images=image_tensors)
+            encoded=TextEncodeQwenImage21.execute(clip=PositiveOnlyEncoder(clip,bool(negative) or cfg>1),prompt=prompt,negative_prompt=negative,vae=vae,resolution=reference_resolution,images=image_tensors)
         positive,negative_conditioning=encoded[0],encoded[1]
         _conditioning.put(conditioning_key,(positive,negative_conditioning))
         del encoded,image_tensors
@@ -159,20 +163,28 @@ def generate(request, prompt, images, width, height, progress):
         _components.update(key=cache_key,clip=clip,vae=vae,model=model)
         gc.collect()
     progress(diffusion_load_seconds=round(time.perf_counter()-started,3))
-    tool_lora=None
+    # Tool LoRA first, then the user's LoRAs; each one is patched onto a clone.
+    stack=[]
     if request.get('tool_id'):
         from .models import image_tool
-        lora=entry(image_tool(request['tool_id'])['lora'])
-        strength=float(request.get('lora_strength',1.0))
+        stack.append((image_tool(request['tool_id'])['lora'],float(request.get('lora_strength',1.0))))
+    stack+=[(lora['id'],float(lora.get('strength',1.0))) for lora in request.get('loras') or []]
+    tool_lora=None
+    if stack:
         started=time.perf_counter()
         loras=_components.setdefault('loras',{})
-        if lora['id'] not in loras:
-            loras.clear()  # one tool at a time; keeps RAM bounded
-            loras[lora['id']]=comfy.utils.load_torch_file(str(local_path(lora,lora['files'][0])),safe_load=True)
-        model,_=comfy.sd.load_lora_for_models(model,None,loras[lora['id']],strength,0)
+        for stale in [key for key in loras if key not in {lora_id for lora_id,_ in stack}]:
+            del loras[stale]  # keep only this job's LoRAs in RAM
+        applied=[]
+        for lora_id,strength in stack:
+            lora=entry(lora_id)
+            if lora_id not in loras:
+                loras[lora_id]=comfy.utils.load_torch_file(str(local_path(lora,lora['files'][0])),safe_load=True)
+            model,_=comfy.sd.load_lora_for_models(model,None,loras[lora_id],strength,0)
+            applied.append(f"{lora['title']} ({strength:g})")
         retain_lora_clone(model,_components['model'])
-        tool_lora=lora['title']
-        progress(lora=lora['title'],lora_strength=strength,lora_load_seconds=round(time.perf_counter()-started,3))
+        tool_lora=', '.join(applied)
+        progress(lora=tool_lora,lora_strength=stack[0][1],lora_load_seconds=round(time.perf_counter()-started,3))
     # The upstream automatic cache can copy large multi-image prefixes to host
     # RAM. That path caused a native Windows access violation. The supported
     # GPU policy keeps the lossless cache in VRAM when its memory checks allow,
@@ -182,21 +194,22 @@ def generate(request, prompt, images, width, height, progress):
     # Official Qwen 2.1 workflow: 64-channel, 16x spatial latent, Euler + simple.
     latent=torch.zeros((1,64,height//16,width//16),device=memory.intermediate_device())
     noise=comfy.sample.prepare_noise(latent,request['seed'])
-    defaults=selected['generation_defaults']
-    turbo=bool(defaults.get('sigmas'))
-    # Turbo is distilled for CFG 1 on its own schedule; the negative prompt has no effect there.
-    cfg=1.0 if turbo or not negative else 2.0
+    sampler,scheduler=defaults.get('sampler','euler'),defaults.get('scheduler','simple')
     def callback(step,x0,x,total):
         progress(stage='generating',message='Generating image…',step=step+1,total_steps=total)
-    progress(stage='generating',message='Generating image…',step=0,sampling='turbo-sigmas' if turbo else 'euler-simple')
+    progress(stage='generating',message='Generating image…',step=0,sampling='turbo-sigmas' if turbo else f'{sampler}-{scheduler}',cfg=cfg)
     with torch.inference_mode():
         if turbo:
             import comfy.samplers
-            sigmas=torch.tensor(defaults['sigmas'],dtype=torch.float32)
+            sigmas=defaults['sigmas']
+            if request['steps']!=len(sigmas)-1:
+                # A custom step count follows the same trained curve, stretched to the new length.
+                sigmas=np.interp(np.linspace(0,1,request['steps']+1),np.linspace(0,1,len(sigmas)),sigmas).tolist()
+            sigmas=torch.tensor(sigmas,dtype=torch.float32)
             samples=comfy.sample.sample_custom(model,noise,cfg,comfy.samplers.sampler_object(defaults.get('sampler','euler')),sigmas,
                                                positive,negative_conditioning,latent,callback=callback,seed=request['seed'])
         else:
-            samples=comfy.sample.sample(model,noise,request['steps'],cfg,'euler','simple',positive,negative_conditioning,
+            samples=comfy.sample.sample(model,noise,request['steps'],cfg,sampler,scheduler,positive,negative_conditioning,
                                         latent,callback=callback,seed=request['seed'])
         del noise,latent
         progress(stage='decoding',message='Decoding image…')

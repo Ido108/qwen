@@ -1,4 +1,4 @@
-"""LTX multi-reference media preparation and common MP4 output."""
+"""Reference images media preparation (LTX 2.5 MSR or MiniMax H3 Ref2VA) and common MP4 output."""
 from pathlib import Path
 import time
 from .common import resolve_image, resolve_audio, write_json
@@ -8,8 +8,7 @@ def run(request, job, directory, update):
     import torch
     import av
     from PIL import Image
-    from .ltx_settings import MultiReferenceRequest, required_ltx
-    from .ltx_engine import generate
+    from .ltx_settings import MultiReferenceRequest, required_ltx, is_ref2va
     from .video_worker import save_mp4
     from .reference_media import read_audio
     from .models import entry
@@ -40,7 +39,12 @@ def run(request, job, directory, update):
         if audio is None:
             raise ValueError('This voice reference has no readable audio.')
         voices[f'audio_ref{index+1}'] = audio
-    frames, audio = generate(settings.model_dump(), images, voices, update, directory)
+    if is_ref2va(entry(settings.model_id)):
+        frames, audio, prompt = run_ref2va(settings, images, voices, update, directory)
+    else:
+        from .ltx_engine import generate
+        frames, audio = generate(settings.model_dump(), images, voices, update, directory)
+        prompt = settings.prompt
     if len(frames) != settings.frames:
         raise RuntimeError(f'The decoder returned {len(frames)} frames; expected {settings.frames}.')
     update(stage='saving', message='Saving MP4...')
@@ -52,5 +56,28 @@ def run(request, job, directory, update):
         finished_at=time.time(), elapsed_seconds=round(time.time()-job['started_at'], 1),
         duration_seconds=round(len(frames)/settings.fps, 3), fps=settings.fps, frames=len(frames),
         width=int(frames.shape[2]), height=int(frames.shape[1]), has_audio=audio is not None,
-        actual_prompt=settings.prompt, model_revision=entry(settings.model_id)['revision'])
+        actual_prompt=prompt, model_revision=entry(settings.model_id)['revision'])
     write_json(destination.with_suffix('.json'), job)
+
+
+def run_ref2va(settings, images, voices, update, directory):
+    """MiniMax H3 Ref2VA from reference images (and voices) only, as in the official r2v template."""
+    from .ltx_settings import ref2va_prompt
+    from .models import entry
+    from .reference_sampling import reference_sampling
+    from .video_engine import generate
+    data = settings.model_dump()
+    profile = reference_sampling(entry(settings.model_id), settings.quality, settings.steps)
+    ordered = [*settings.reference_images, *([settings.background] if settings.background else [])]
+    prompt = ref2va_prompt(data)
+    work = {**data, 'kind': 'reference-video', 'workflow': 'reference', 'reference_images': ordered,
+            'reference_image_size': 'match', 'quality': profile['quality'], 'steps': profile['steps']}
+    pictures = [images[f'pic{i+1}'] for i in range(len(settings.reference_images))]
+    if settings.background:
+        pictures.append(images['background'])
+    media = {f'ref_image_{i+1}': picture for i, picture in enumerate(pictures)}
+    # H3 numbers standalone audio separately: <Audio 1>, <Audio 2> in slot order.
+    media['ref_audios'] = {f'ref_audio_{i+1}': voice for i, (_, voice) in enumerate(sorted(voices.items()))}
+    update(actual_prompt=prompt, sampling_profile=profile)
+    frames, audio = generate(work, prompt, media, update, preview_directory=directory)
+    return frames, (audio if settings.audio else None), prompt

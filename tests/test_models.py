@@ -27,6 +27,8 @@ class ModelTests(unittest.TestCase):
                 defaults=item['generation_defaults']
                 self.assertEqual((defaults['steps'],defaults['fixed_steps'],defaults['cfg']),(8,True,1.0),item['id'])
                 self.assertEqual(defaults['sigmas'],[1.0,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0.0])
+            elif item['kind']=='image' and models.is_krea(item):
+                continue  # tests/test_krea.py checks the official Krea 2 settings
             elif item['kind']=='image':
                 self.assertEqual(item['generation_defaults']['steps'],25,item['id'])
                 self.assertIn('workflow_templates',item['generation_defaults']['source'])
@@ -58,9 +60,10 @@ class ModelTests(unittest.TestCase):
             self.assertFalse(current.exists()); self.assertFalse(legacy.exists()); self.assertTrue(unrelated.exists())
 
     def test_companions_follow_image_format(self):
-        self.assertEqual(models.required('gguf-q8_0'),['gguf-q8_0','encoder-int8','vae'])
-        self.assertEqual(models.required('gguf-q4_k_m'),['gguf-q4_k_m','encoder-int8','vae'])
-        self.assertEqual(models.required('official-bf16'),['official-bf16','encoder-bf16','vae'])
+        self.assertEqual(models.required('gguf-q8_0'),['gguf-q8_0','encoder-int8','vae-texture-fix'])  # VAE auto
+        self.assertEqual(models.required('gguf-q8_0',vae='vae'),['gguf-q8_0','encoder-int8','vae'])
+        self.assertEqual(models.required('gguf-q4_k_m'),['gguf-q4_k_m','encoder-int8','vae-texture-fix'])
+        self.assertEqual(models.required('official-bf16'),['official-bf16','encoder-bf16','vae-texture-fix'])
         self.assertEqual(models.required('gguf-q4_k_m','encoder-bf16')[1],'encoder-bf16')
         with self.assertRaises(ValueError): models.required('gguf-q8_0','unknown')
         with self.assertRaises(ValueError): models.required('vae')

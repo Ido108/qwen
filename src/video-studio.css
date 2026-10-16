@@ -1,0 +1,183 @@
+/* Video studio: controls left, result right; at 760px and wider the page itself does not scroll.
+   This file loads before the older page styles, so rules use main.video-studio for specificity. */
+
+/* Stage progress card (shared by all video tabs). */
+.vp-card{border:1px solid #dbd3eb;border-radius:10px;background:#faf8fe;color:#453459;padding:10px 12px;margin-top:8px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+.vp-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#6844c6}
+.vp-head strong{font-size:13px;color:#2f2545}
+.vp-badge{font-size:11px;font-weight:600;color:#6844c6;background:#ece6fb;border-radius:10px;padding:2px 8px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.vp-pass{background:#f1eef6;color:#5c4c73}
+.vp-message{margin:0;font-size:12px;color:#5c4c73;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vp-card progress,.vp-card .model-download-progress progress{display:block;width:100%;height:6px;accent-color:#7753d6;margin:0}
+.vp-card .model-download-progress small{font-size:11px;color:#8c7e9f}
+.vp-times{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px;color:#8c7e9f;font-variant-numeric:tabular-nums}
+.vp-count{color:#453459;font-weight:600}
+.vp-eta{color:#4f8a72;font-weight:600}
+.vp-note,.vp-next{font-size:11px;color:#8c7e9f}
+.vp-warning{display:flex;gap:7px;align-items:flex-start;margin:0;padding:7px 9px;border:1px solid #ebd8af;border-radius:7px;background:#fff9ed;color:#775d29;font-size:11px;line-height:1.45}
+.vp-warning svg{flex:none;margin-top:1px}
+.vp-steps{display:flex;gap:3px;list-style:none;margin:2px 0 0;padding:0}
+.vp-steps li{flex:1;height:5px;border-radius:3px;background:#e4def0}
+.vp-steps li.done{background:#8fc2a9}
+.vp-steps li.current{background:#7653d4}
+
+/* VRAM fit hint before submitting. */
+.vs-vram{display:flex;gap:8px;align-items:flex-start;margin-top:10px;padding:8px 10px;border:1px solid #ebd8af;border-radius:8px;background:#fff9ed;color:#775d29;font-size:11px;line-height:1.45}
+.vs-vram>svg{flex:none;margin-top:2px}
+.vs-vram p{margin:0}
+.vs-vram .button{margin-top:6px;min-height:30px;padding:5px 10px;font-size:11px;gap:5px;white-space:normal;text-align:start}
+.vs-vram small{display:block;margin-top:4px;font-size:11px}
+
+/* Shared controls. */
+main.video-studio .vs-panel{padding:12px;margin:0}
+main.video-studio .vs-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+main.video-studio .vs-wide{grid-column:1/-1}
+main.video-studio .vs-fields .field>label{font-size:12px}
+main.video-studio .vs-fields select{padding:7px 9px;font-size:13px}
+main.video-studio .disclosure{margin-top:0}
+main.video-studio .disclosure summary{min-height:38px;padding:8px 12px;font-size:13px}
+main.video-studio .details-body{padding:4px 12px 12px}
+main.video-studio .lora-stack{margin-top:0}
+main.video-studio .prompt-row{margin-top:10px}
+main.video-studio .prompt-row .prompt-label{margin-bottom:6px}
+.vs-action{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 -6px 12px -10px #2a1f5430}
+.vs-action .message{margin:0;padding:7px 10px;font-size:12px;max-height:96px;overflow:auto}
+.vs-action .notice{padding:0;font-size:11px}
+.vs-action-row{display:flex;align-items:center;gap:10px}
+.vs-summary{flex:1;min-width:0;display:flex;flex-direction:column;font-size:12px;font-weight:600;color:#4b3d60;font-variant-numeric:tabular-nums;line-height:1.35}
+.vs-summary small{font-weight:400;font-size:11px;color:#8c7e9f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vs-action .button{min-height:40px;padding:9px 14px;font-size:13px;white-space:nowrap}
+.vs-action .vs-submit{flex:none;min-width:150px}
+.vs-action .text-button{font-size:12px;white-space:nowrap}
+.vs-result{min-width:0}
+.vs-result>.section-heading{margin-bottom:8px}
+.vs-result .result-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.vs-result .run-details{margin-top:8px}
+.vs-history{flex-shrink:0;margin-top:8px}
+.vs-history>summary{font-size:12px}
+.vs-history-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;padding:8px 0 2px;max-height:150px;overflow-y:auto}
+.vs-history-grid button{text-align:left;overflow:hidden;border-radius:7px;background:#f8f6fb;border:1px solid #e4def0;padding:0;min-width:0}
+.vs-history-grid img{width:100%;height:62px;object-fit:cover;display:block}
+.vs-history-grid span{font-size:10px;color:#655c73;padding:4px 6px;display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+
+/* Create video tab. */
+main.video-studio .video-mode{margin:0}
+main.video-studio .video-mode button{padding:8px}
+main.video-studio .vs-frames{margin-top:10px}
+main.video-studio .vs-frames .section-heading{margin-bottom:6px;min-height:0}
+main.video-studio .vs-frames .section-heading h2{font-size:13px}
+main.video-studio .vs-frames .section-heading .text-button{display:inline-flex;align-items:center;gap:4px;font-size:12px}
+main.video-studio .video-frame-grid{min-height:0;padding:8px;gap:8px}
+main.video-studio .video-frame-box{height:120px}
+main.video-studio .video-add-frame{gap:4px;padding:6px}
+main.video-studio .video-add-frame small{font-size:10px;line-height:1.35}
+main.video-studio .video-input-hint{font-size:11px;margin-top:6px}
+main.video-studio .prompt-input{height:110px;min-height:70px;padding:10px 12px;font-size:14px}
+main.video-studio .video-settings{grid-template-columns:1fr 1fr;gap:10px}
+main.video-studio .video-settings>.video-output-field,main.video-studio .video-settings-note,main.video-studio .video-settings .span-2{grid-column:1/-1}
+main.video-studio .video-settings input{min-width:0;width:100%}
+main.video-studio .video-settings .checkbox-label input{width:auto}
+main.video-studio .history-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+
+@media(min-width:760px){
+  body:has(main.video-studio:not([hidden])){overflow:hidden}
+  body:has(main.video-studio:not([hidden])) #root{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+  body:has(main.video-studio:not([hidden])) #root>*{flex-shrink:0}
+  body:has(main.video-studio:not([hidden])) .video-workflow-nav{margin-top:6px;max-width:none;padding:0 16px}
+  body:has(main.video-studio:not([hidden])) .video-workflow-nav button{padding:8px 14px 10px}
+  body:has(main.video-studio:not([hidden])) .queue-strip{margin:6px 16px 0}
+  body:has(main.video-studio:not([hidden])) .queue-strip>button{padding:6px 12px}
+  #root>main.video-studio{flex:1 1 0;min-height:0;height:auto;max-width:none;width:100%;margin:0;padding:10px 16px 12px;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box}
+  main.video-studio .vs-grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(330px,440px) minmax(0,1fr);gap:12px}
+  main.video-studio .vs-controls{min-height:0;display:flex;flex-direction:column;gap:8px}
+  main.video-studio .vs-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding-right:4px;scrollbar-width:thin}
+  main.video-studio .vs-scroll>*{flex-shrink:0}
+  main.video-studio .vs-action{flex:none}
+  main.video-studio .vs-result{display:flex;flex-direction:column;min-height:0;margin:0;padding:12px;overflow:hidden}
+  main.video-studio .vs-result>*{flex-shrink:0}
+  main.video-studio .vs-result .shared-video-output,main.video-studio .vs-stage{flex:1 1 0;min-height:120px;height:auto;position:relative}
+  main.video-studio .vs-result .shared-video-output>video,main.video-studio .vs-result .shared-video-output>img,main.video-studio .vs-stage>video,main.video-studio .vs-stage>img{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:contain}
+}
+@media(min-width:1280px){main.video-studio .vs-grid{grid-template-columns:minmax(380px,460px) minmax(0,1fr)}}
+@media(max-width:759px){
+  main.video-studio{padding:10px 12px 0}
+  main.video-studio .vs-grid{display:flex;flex-direction:column;gap:10px}
+  main.video-studio .vs-scroll{display:flex;flex-direction:column;gap:8px}
+  main.video-studio .vs-controls{display:flex;flex-direction:column;gap:8px}
+  main.video-studio .vs-action{position:sticky;bottom:0;z-index:15}
+  main.video-studio .vs-result .shared-video-output,main.video-studio .vs-stage{flex:none;height:300px;min-height:0}
+  main.video-studio .vs-stage>video,main.video-studio .vs-stage>img{width:100%;height:100%;max-height:none;object-fit:contain}
+}
+
+/* Video to video tab. */
+main.video-studio .reference-modes{margin:0 0 2px;width:100%;padding:3px}
+main.video-studio .reference-modes button{flex:1;padding:7px 6px;font-size:12px}
+main.video-studio .reference-next{margin-top:10px}
+main.video-studio .reference-inputs>progress{display:block;width:100%;height:5px;margin-top:8px}
+main.video-studio .reference-output-settings{padding:12px;max-height:none;overflow:visible;border-top:1px solid var(--line);background:#fff}
+main.video-studio .reference-output-settings .section-heading{margin-bottom:6px}
+main.video-studio .reference-output-settings .section-heading small{font-size:11px;color:#8f88a0}
+main.video-studio .reference-resolution{grid-template-columns:1fr 1fr;margin:0;padding:0;border:0;background:transparent;gap:10px}
+main.video-studio .reference-resolution .field>label{font-size:11px}
+main.video-studio .reference-advanced{border:1px solid var(--line);border-radius:7px;background:#f8f7fc66}
+main.video-studio .reference-advanced>summary{padding:8px 12px;font-size:13px}
+main.video-studio .reference-settings{grid-template-columns:1fr 1fr;padding:6px 12px 12px;gap:10px}
+main.video-studio .camera-controls{gap:8px}
+main.video-studio .camera-control{padding:8px 10px}
+main.video-studio .reference-extra-instructions{margin-top:10px}
+main.video-studio .reference-prompt-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+main.video-studio .reference-history-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+main.video-studio .vs-result .reference-output{border-radius:9px;background:#eeebf3;display:grid;place-items:center;overflow:hidden}
+main.video-studio .vs-result .reference-preview-tabs{margin:0 0 8px}
+main.video-studio .vs-result .reference-preview-caption{margin:6px 0 0;font-size:11px}
+main.video-studio .vs-result .reference-preview-actions{margin-top:8px}
+main.video-studio .vs-result .reference-intermediate{margin-top:8px}
+main.video-studio .vs-result .reference-intermediate[open]>video{max-height:180px}
+main.video-studio .vs-result .reference-empty{padding:16px}
+
+/* Reference images tab. */
+main.video-studio.msr-workbench{color:#211732}
+main.video-studio .msr-model{margin-bottom:4px}
+main.video-studio .msr-inputs .section-heading{margin:10px 0 8px}
+main.video-studio .msr-reference-list{gap:6px;margin-bottom:6px}
+main.video-studio .msr-reference-card,main.video-studio .msr-background,main.video-studio .msr-add{width:70px;height:84px;min-height:84px}
+main.video-studio .msr-background .msr-add{width:100%;height:100%}
+main.video-studio .msr-hint{margin:4px 0 6px}
+main.video-studio textarea#msr-prompt{height:100px;min-height:70px}
+main.video-studio .msr-output-controls{margin:10px 0 0;gap:10px}
+main.video-studio .msr-voices,main.video-studio .msr-options{border:1px solid var(--line);border-radius:7px;background:#f8f7fc66}
+main.video-studio .msr-voices>summary,main.video-studio .msr-options>summary{padding:8px 12px}
+main.video-studio .msr-voices>div,main.video-studio .msr-settings{padding:4px 12px 12px}
+main.video-studio .msr-download-note{margin:0;font-size:11px}
+main.video-studio .msr-viewer{gap:0}
+main.video-studio .msr-result{min-height:0}
+main.video-studio .msr-draft img{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:contain}
+main.video-studio .msr-viewer>.message{margin:8px 0 0}
+.vs-history-grid button{position:relative}
+.vs-history-grid .msr-source-badge{position:absolute;right:4px;top:30px;width:24px;height:26px;object-fit:cover;border:2px solid #fff;border-radius:5px}
+
+/* Upscale tab. */
+main.video-studio .upscale-inputs{display:block;max-height:none;min-height:0}
+main.video-studio .upscale-model-row{padding-bottom:10px;margin-bottom:10px}
+main.video-studio .upscale-inputs .section-heading{margin-bottom:6px}
+main.video-studio .upscale-inputs .reference-video-drop>video{height:150px;max-height:22vh}
+main.video-studio .upscale-size-row{margin-top:10px;gap:10px}
+main.video-studio .upscale-dimensions{margin:10px 0 0}
+main.video-studio .upscale-output{position:static}
+main.video-studio .vs-check{font-size:12px;white-space:nowrap}
+
+/* Consistent headings across the four tabs. */
+main.video-studio .section-heading{min-height:0}
+main.video-studio .section-heading h2{font-size:14px;font-weight:650;letter-spacing:-.1px;margin-inline-end:auto}
+main.video-studio .vs-result>.section-heading h2{font-size:16px}
+main.video-studio .section-heading>span,main.video-studio .section-heading>small{font-size:11px;color:#8f88a0}
+main.video-studio .prompt-label,main.video-studio .msr-prompt-label{font-size:14px;font-weight:650}
+.vs-action-row{flex-wrap:wrap}
+.vs-summary{min-width:120px}
+
+/* The group summary already says "LoRAs N of 4". */
+.vs-loras .lora-head>b,.vs-loras .lora-head>span{display:none}
+.vs-loras .lora-stack{border:0;padding:0;background:none}
+/* Model capability hint under each video model list. */
+main.video-studio .vs-model-supports{display:block;margin-top:4px;font-size:12px;font-weight:400;color:var(--muted)}
+main.video-studio .video-size-error{color:#9b3850}

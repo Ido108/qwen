@@ -105,8 +105,11 @@ class WindowsLifetimeTests(unittest.TestCase):
                         return response.status==200
                 eventually(ready,40)
                 old=json.loads(state.read_text())
-                duplicate=start(); self.assertEqual(duplicate.wait(timeout=10),0)
-                self.assertEqual(json.loads(state.read_text())['owner_pid'],old['owner_pid'])
+                # Starting Qwen again while it is idle replaces the old instance.
+                replacement=start(); self.assertEqual(first.wait(timeout=20),0)
+                eventually(lambda:ready() and json.loads(state.read_text())['owner_pid']!=old['owner_pid'],40)
+                self.assertFalse(alive(old['pid']))
+                first,old=replacement,json.loads(state.read_text())
                 # Browser clients can reset sockets; the server must stay usable
                 # without Proactor callback errors or exception filtering.
                 for _ in range(5):

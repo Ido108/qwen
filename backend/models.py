@@ -10,6 +10,9 @@ from .common import APP_DIR, DATA_DIR, MODELS_DIR, write_json
 
 os.environ['HF_HOME']=str(DATA_DIR/'hf-cache')
 os.environ['HF_XET_CACHE']=str(DATA_DIR/'hf-cache'/'xet')
+# The Xet transfer path bypasses tqdm_class, so Cancel was ignored until the
+# whole file finished. Plain HTTP reports every chunk and stops on Cancel.
+os.environ['HF_HUB_DISABLE_XET']='1'
 
 CATALOG_PATH=APP_DIR/'reference'/'model-catalog.json'
 EXTENSION_CATALOG_PATH=APP_DIR/'reference'/'reference-video-catalog.json'
@@ -24,7 +27,8 @@ def catalog():
     items=json.loads(CATALOG_PATH.read_text(encoding='utf-8'))
     if EXTENSION_CATALOG_PATH.is_file():
         items.extend(json.loads(EXTENSION_CATALOG_PATH.read_text(encoding='utf-8')))
-    return items
+    from .civitai import user_catalog
+    return items+user_catalog()
 
 def entry(model_id):
     for item in catalog():
@@ -60,44 +64,119 @@ def is_installed(model_id):
         local_path(item,file).is_file() and local_path(item,file).stat().st_size==file['bytes']
         for file in item['files'])
 
-def required(model_id,encoder='auto',tool_id=None,vae='vae'):
+QWEN_ENCODERS=('encoder-int8','encoder-bf16')
+KREA_ENCODERS=('krea2-encoder-bf16',)
+KREA_STYLE_LORA='krea2-lora-style-reference'
+
+def is_krea(item):
+    """Krea 2 (Raw or Turbo): its own DiT, Qwen3-VL 4B encoder and Qwen-Image VAE, run by krea_engine."""
+    return item.get('family','').startswith('krea-2')
+
+def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
     item=entry(model_id)
     if item['kind']!='image':
         raise ValueError('Select an image model.')
-    if encoder not in ('auto','encoder-int8','encoder-bf16'):
+    if encoder not in ('auto',*QWEN_ENCODERS,*KREA_ENCODERS):
         raise ValueError('Unknown text encoder.')
-    if vae not in ('vae','vae-texture-fix'):
-        raise ValueError('Unknown VAE.')
-    default_encoder='encoder-int8' if item['format']=='GGUF' else 'encoder-bf16'
-    ids=[model_id,encoder if encoder!='auto' else default_encoder,vae]
+    vae=resolve_vae(item,vae)
+    if is_krea(item):
+        if tool_id:
+            raise ValueError(f"{image_tool(tool_id)['title']} is a Qwen-Image-2.1 tool. Krea 2 models cannot use it: choose a Qwen-Image-2.1 model or remove the tool.")
+        if images>3:
+            raise ValueError('Krea 2 uses input images as style references: add at most 3 images.')
+        # A Qwen encoder chosen for Qwen models does not fit Krea 2; it always uses Qwen3-VL 4B.
+        ids=[model_id,encoder if encoder in KREA_ENCODERS else item.get('text_encoder',KREA_ENCODERS[0]),vae]
+    else:
+        default_encoder='encoder-int8' if item['format']=='GGUF' else 'encoder-bf16'
+        ids=[model_id,encoder if encoder in QWEN_ENCODERS else default_encoder,vae]
     if tool_id:
         tool=image_tool(tool_id)
         if item.get('family','qwen-image-2.1') not in tool['families']:
             raise ValueError(f"{tool['title']} needs a {' or '.join('Turbo' if f.endswith('turbo') else 'standard' for f in tool['families'])} Qwen-Image-2.1 model.")
         ids.append(tool['lora'])
-    return ids
+    for lora_id in loras:
+        lora=entry(lora_id)
+        if lora['kind']!='image-lora':
+            raise ValueError('Choose a LoRA for the LoRA list.')
+        # A LoRA without a family list is a Qwen-Image-2.1 tool LoRA; Krea 2 needs one made for Krea 2.
+        if item.get('family','qwen-image-2.1') not in lora.get('families',[] if is_krea(item) else [item.get('family')]):
+            raise ValueError(f"{lora['title']} does not work with {item['title']}.")
+        ids.append(lora_id)
+    if is_krea(item) and images:
+        ids.append(KREA_STYLE_LORA)  # the official Krea 2 style reference workflow
+    return list(dict.fromkeys(ids))
+
+def resolve_vae(item,vae='auto'):
+    """'auto' is the model's own VAE when its page names one, else the texture-fix VAE: the same
+    Qwen-Image-2.1 latent space with cleaner textures and no checkerboard artifacts.
+    Krea 2 has its own latent space: a VAE made for the other architecture changes to the model's automatic VAE."""
+    family=item.get('family','qwen-image-2.1')
+    if vae!='auto' and family not in entry(vae).get('families',[] if is_krea(item) else [family]):
+        vae='auto'
+    if vae=='auto':
+        vae=item.get('recommended_vae') or ('krea2-vae' if is_krea(item) else 'vae-texture-fix')
+    if entry(vae)['kind']!='vae':
+        raise ValueError('Unknown VAE.')
+    return vae
 
 def required_image(request):
     """All files for an image request dict: model, encoder, VAE and an optional tool LoRA."""
-    return required(request['model_id'],request.get('text_encoder','auto'),request.get('tool_id'),request.get('vae_id','vae'))
+    return required(request['model_id'],request.get('text_encoder','auto'),request.get('tool_id'),request.get('vae_id','auto'),
+                    [lora['id'] for lora in request.get('loras') or []],len(request.get('images') or []))
+
+LTX_FAMILIES=('ltx25','ltx25-msr')
+
+
+def is_ltx_video(item):
+    """LTX 2.5 transformers run text and image to video without the MSR LoRA."""
+    return item.get('family') in LTX_FAMILIES and item['kind'] in ('video','multi-reference')
+
+
+def video_modes(item):
+    if is_ltx_video(item):
+        return item.get('modes') or ['text','image']
+    return item.get('modes') or []
+
 
 def required_video(request):
     item=entry(request.model_id)
-    if item['kind']!='video':
+    ltx=is_ltx_video(item)
+    if item['kind']!='video' and not ltx:
         raise ValueError('Select a video model.')
-    if request.mode not in item['modes']:
-        raise ValueError('Choose MiniMax H3 for image-to-video. FastH3 V2 is distilled for text-to-video.')
+    if request.mode not in video_modes(item):
+        raise ValueError('Choose MiniMax H3 or LTX 2.5 for image-to-video. FastH3 V2 is distilled for text-to-video.')
     if request.mode=='image' and not request.first_frame:
         raise ValueError('Add a first frame for image-to-video.')
     if request.mode=='text' and (request.first_frame or request.last_frame):
         raise ValueError('Choose image-to-video to use input images.')
-    if request.width*request.height>1344*768:
-        raise ValueError('The video size must not exceed 1344 × 768 pixels.')
     if not 0.25 <= request.width/request.height <= 4:
-        raise ValueError('MiniMax H3 supports output aspect ratios from 1:4 to 4:1.')
+        raise ValueError('Video models support output aspect ratios from 1:4 to 4:1.')
+    if ltx:
+        from .ltx_settings import check_ltx_video, ltx_video_two_pass
+        check_ltx_video(request)
+        # The MSR LoRA belongs to Reference images only. Text and image to video
+        # use the official two-pass LTX 2.5 workflow with the 2x latent upscaler.
+        ids=[item['id'],*[name for name in item['dependencies'] if name!='ltx25-msr-v2']]
+        if ltx_video_two_pass(request):
+            ids.append('ltx25-spatial-upscaler')
+        return list(dict.fromkeys(ids+video_loras(item,request)))
+    if request.frames%17!=5:
+        raise ValueError('MiniMax H3 uses 17n+5 frames. Choose a duration from the list.')
+    if request.width>1344 or request.height>1344 or request.width*request.height>1344*768:
+        raise ValueError('The video size must not exceed 1344 × 768 pixels.')
     ids=[item['id'],*item['dependencies']]
     if request.quality=='turbo' and item['family']=='minimax-h3':
         ids.append('h3-turbo')
+    return ids+video_loras(item,request)
+
+
+def video_loras(item,request):
+    ids=[]
+    for choice in getattr(request,'loras',None) or []:
+        lora=entry(choice.id if hasattr(choice,'id') else choice['id'])
+        if lora['kind']!='video-lora' or item.get('family') not in lora.get('families',[]):
+            raise ValueError(f"{lora['title']} does not work with {item['title']}.")
+        ids.append(lora['id'])
     return ids
 
 
@@ -128,7 +207,7 @@ def required_reference(request):
     profile = reference_sampling(item, request.quality, request.steps)
     if profile.get('lora_id'):
         ids.append(profile['lora_id'])
-    return ids
+    return ids+video_loras(item,request)
 
 
 def required_upscale(request):
@@ -213,6 +292,15 @@ def install(model_id, *, include_dependencies=True):
                             transfer.update(completed_bytes=min(total,base+int(self.n)),file=file['path'])
                         return result
                 target=local_path(model,file)
+                if model.get('source')=='civitai':
+                    from .civitai import _download
+                    def report(done,size,stage,base=base):
+                        if cancel_event.is_set(): raise DownloadCancelled()
+                        with lock:
+                            transfer.update(completed_bytes=min(total,base+done),stage=stage,file=file['path'])
+                    _download(model['civitai']['download_url'],target,file['bytes'],file.get('sha256') or '',report)
+                    model_done+=file['bytes']
+                    continue
                 invalid=target.with_name(target.name+'.verification-failed')
                 path=hf_hub_download(model['repo'],file['path'],revision=model['revision'],local_dir=MODELS_DIR/model['directory'],tqdm_class=Progress,force_download=invalid.exists(),token=token)
                 with lock:
@@ -348,4 +436,7 @@ def remove(model_id):
         saved=installed_manifest()
         saved.pop(model_id,None)
         write_json(INSTALL_PATH,saved)
+        if item.get('source')=='civitai':
+            from .civitai import unregister
+            unregister(model_id)
     return {'ok':True}

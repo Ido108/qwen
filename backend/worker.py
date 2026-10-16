@@ -38,6 +38,15 @@ def rewrite_prompt(images):
     from .antigravity import selected_model
     return enhance(request['prompt'], images, request.get('enhancement_model') or selected_model(), update)
 
+def image_engine(saved):
+    """Krea 2 models run in krea_engine; Qwen-Image-2.1 models in comfy_engine."""
+    from .models import entry, is_krea
+    if is_krea(entry(saved.get('model_id', 'official-bf16'))):
+        from .krea_engine import generate
+    else:
+        from .comfy_engine import generate
+    return generate
+
 def run():
     update(status='running', stage='loading', message='Loading generation tools…', started_at=time.time())
     if request.get('kind') == 'multi-reference':
@@ -52,9 +61,9 @@ def run():
     import torch
     from PIL import Image
     from PIL.PngImagePlugin import PngInfo
-    from .comfy_engine import generate
     from .models import entry
     from .image_settings import output_dimensions
+    generate = image_engine(request)
     if not torch.cuda.is_available():
         raise RuntimeError('NVIDIA CUDA is unavailable. Restart after checking the graphics driver.')
     torch.set_float32_matmul_precision('high')
@@ -81,7 +90,11 @@ def run():
         width, height = tool_size
     else:
         # Edit tools follow the shape of image 1 (the picture being changed).
-        width, height = output_dimensions(request, images, {'ratio_follow': '<image1>'} if tool else rewrite)
+        sizing = request
+        if entry(request['model_id']).get('family') == 'krea-2' and not request['custom_size']:
+            # Krea 2 Raw is trained up to 1K (krea-ai/krea-2 README); Turbo makes 1K to 2K.
+            sizing = {**request, 'auto_resolution': min(request.get('auto_resolution', 2048), 1024)}
+        width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if tool else rewrite)
     render_width = math.ceil(width / 32) * 32
     render_height = math.ceil(height / 32) * 32
     update(stage='loading_model', message=f"Loading {entry(request.get('model_id','official-bf16'))['title']}…", width=width, height=height)
@@ -140,6 +153,24 @@ def execute(folder):
         return 1
 
 
+def warm(saved, log_path):
+    """Load the model, text encoder and VAE onto the GPU with a tiny 1-step run, so the next job starts at once.
+    Nothing is saved. A failure only means the next job loads normally."""
+    started = time.time()
+    with log_path.open('w', encoding='utf-8') as log:
+        sys.stdout.flush(); sys.stderr.flush()
+        os.dup2(log.fileno(), 1); os.dup2(log.fileno(), 2)
+        try:
+            generate = image_engine(saved)
+            generate({**saved, 'steps': 1, 'seed': 0, 'negative_prompt': '', 'tool_id': None, 'loras': [], 'reference_resolution': 1024},
+                     'warm up', [], 256, 256, lambda **values: None)
+            print(f'Warm-up done in {time.time() - started:.1f} s', flush=True)
+        except Exception:
+            traceback.print_exc()
+        sys.stdout.flush(); sys.stderr.flush()
+    log_path.with_suffix('.done').write_text(str(time.time() - started), encoding='utf-8')
+
+
 def main():
     if sys.argv[1] != '--persistent':
         return execute(sys.argv[1])
@@ -148,6 +179,9 @@ def main():
         command = json.loads(line)
         if command.get('stop'):
             return 0
+        if command.get('warm'):
+            warm(command['warm'], Path(command['log']))
+            continue
         folder = Path(command['directory'])
         with (folder / 'worker.log').open('w', encoding='utf-8') as log:
             sys.stdout.flush()

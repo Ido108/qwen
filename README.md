@@ -20,6 +20,9 @@ One double-click to install. No API keys, no subscription, no cloud required.
 - **Edit images**: add up to 10 images, then describe the change.
 - **Turbo models**: the official 8-step Qwen-Image-2.1 Turbo, about 3 times faster.
 - **Tools**: outfit swap, photo restore, expand image, new camera angle, remove object and character swap.
+- **Civitai**: browse civitai.red inside the app and add LoRAs and models in one click. The app reads each model's own steps, CFG, sampler and VAE from its page.
+- **LoRAs**: stack up to 4 LoRAs on an image or a video, each with its own strength.
+- **People**: named avatars with photos, for quick selection as input images. Import your contacts from Moise in one click.
 - **Create videos** from a prompt or from a first and last frame.
 - **Change videos**: replace people, change the camera angle, or build a new scene from reference images.
 - **Upscale videos** to a higher resolution.
@@ -53,14 +56,22 @@ When the installation is done, Qwen opens in its own window. To open it later, d
 2. Turn **Enhance prompt** off, or connect a Google account to use it (see below).
 3. Click **Generate image**.
 
-The first image also downloads the model (about 18 GB). The progress shows in the **Recent** panel and in **Queue**. After that, a 1K image takes about 20 seconds with a standard model and about 8 seconds with Turbo (RTX 5090, model already loaded).
+The first image also downloads the model (about 18 GB). A small download indicator at the bottom left shows the progress, speed and time left on every page, and the download continues when you switch pages. After that, a 1K image takes about 20 seconds with a standard model and about 6 seconds with Turbo (RTX 5090, model already loaded).
+
+When the queue is idle, Qwen loads the last image model you used in the background, also after a video job. So the next image starts in about 2 seconds instead of about 45.
 
 To **edit** an image, add it to **Input images** and describe the change, for example `Make it a rainy night with neon reflections`. Ways to add an image:
 
 - Drag it in, or click **Select files**.
 - Press **Ctrl + V** anywhere on the page to paste a copied image.
-- Click **Recent** to pick an image you used before, or one of your results.
+- Open the library and check images in **Uploads**, **Results** or **People**. The number on a checkmark is the input position.
 - Click **Use as input** on a result in the **Recent** panel, or **Use for editing** under the result.
+
+Turn on **Replace** in the library to swap images instead of adding them: click an input image to select it (it gets a ring), then click a library image to put it in that place.
+
+**People.** Each person has a round face avatar, a name and one or more photos. Click an avatar to add the person's main photo. Click the small photo count under the name to choose another photo of that person, or to make a photo the main one. **New** makes a person from the checked images. **Moise** imports your contacts and their photos from your Moise assistant (the first import asks Railway for the password once and keeps it encrypted).
+
+**Prompt history.** The clock button next to the prompt lists your earlier prompts. Click a line to load it, or click the play button to run it again. Every prompt tab has its own history.
 
 Turn on **Compare** above the result to slide between the input and the result.
 
@@ -84,9 +95,13 @@ All image settings are in one row under the prompt.
 | Turbo Q6_K / Q5_K_M / Q4_K_M | 5.9 / 4.9 / 4.1 GB | 8 | You want a smaller Turbo. |
 | Turbo BF16 | 14.2 GB | 8 | You want the original full-precision Turbo. |
 
-All image models share one text encoder and VAE (about 10 GB, downloaded once). Turbo always uses exactly 8 steps with the schedule it was trained on, so its **Steps** field is locked. Turbo does not use the negative prompt.
+All Qwen image models share one text encoder and VAE (about 10 GB, downloaded once).
 
-**Tool.** A tool adds a small add-on model (LoRA, 80–320 MB) and writes the right prompt for you. The input chips show which picture goes where.
+**Krea 2.** The Model list also has **Krea 2 Turbo** (8 steps, fast) and **Krea 2 Raw** (52 steps, CFG 4.5, best detail up to 1K). They use their own text encoder and VAE, which download the first time. The app sets the official steps, CFG, sampler and schedule when you pick a Krea model. Krea 2 cannot edit images: input images become a style reference instead. Qwen tools and Qwen LoRAs do not work with Krea, and the app says so.
+
+**Steps and CFG** start at the model's own values: 25 steps for standard models, 8 for Turbo, and for a Civitai model the values its page asks for. You can type other values, and **Reset** returns to the model's value. Turbo is trained for 8 steps; another count follows the same schedule, stretched to the new length. A CFG above 1 runs a second guidance pass, so each step takes about twice as long.
+
+**Tool.** A tool adds a small add-on model (LoRA, 80 to 320 MB) and writes the right prompt for you. The input chips show which picture goes where.
 
 | Tool | Inputs | What it does |
 | --- | --- | --- |
@@ -101,7 +116,17 @@ Every tool has an **Effect strength** slider. Prompt enhancement turns off while
 
 **Output size.** One list: **Auto 1K**, **Auto 2K**, the fixed sizes, and **Custom…** for any width and height.
 
-**Advanced settings** has the seed, the negative prompt, the output folder, and **Image decoder (VAE)**. Choose **Texture fix** there for fewer checkerboard artifacts (0.7 GB download).
+**Advanced settings** has the seed, the negative prompt, the output folder, and **Image decoder (VAE)**. **Random seed** is on by default, also after you load the settings of an earlier result. The VAE is **Auto** by default: the VAE the model's page names or ships, otherwise **Texture fix**, which decodes the same images with fewer checkerboard artifacts.
+
+**LoRAs.** Click **Add LoRA** to stack up to 4 LoRAs on any image model, each with its own strength. A LoRA's trigger words go into the prompt for you. Find more LoRAs in the **Civitai** tab.
+
+## Civitai
+
+Open the **Civitai** tab to browse [civitai.red](https://civitai.red) for **Images** (Qwen-Image-2.1 and Krea 2) or **Video** (MiniMax H3 and LTX 2.5), **LoRAs** or **Models**. Only files that run in this app are listed. Search by name, creator or tag, filter models by **Standard** or **Turbo**, or paste a Civitai link. The app keeps a full list of these models on your computer for 6 hours, so a search covers everything and answers at once (the first list builds in the background after the app starts).
+
+Open a card to see every version on the page. For each version the app shows its type (Standard or Turbo), the steps, CFG, sampler and scheduler that the author recommends, and the VAE. Click **Add to Qwen**. The download uses 8 parallel connections and continues if you close the dialog. If you cancel, **Add to Qwen** later continues from where it stopped.
+
+The app checks every file before it uses it: the checksum and the shape of the model, so a file for another model type is refused. **Connect Civitai account** is needed only for files that require a signed-in account.
 
 ## Settings
 
@@ -143,7 +168,18 @@ Open the **Video** tab. It has four workflows:
 
 Every video result has **Send to**, which opens it in another workflow. For example, create a video and then upscale it.
 
-Video models are large (4–20 GB each). Each one downloads the first time you use it.
+Each workflow lists every model that can do its task, grouped by family, with what it supports:
+
+| Workflow | Models |
+| --- | --- |
+| Create video | MiniMax H3 and FastH3 (text, first and last frame), LTX 2.5 (text, first frame, first and last frame) |
+| Video to video | MiniMax H3 Ref2VA |
+| Reference images | LTX 2.5 with the multi-reference add-on, MiniMax H3 Ref2VA (images only) |
+| Upscale | SeedVR2, FlashVSR, SwiftVR |
+
+Picking a model sets its own frame counts, sizes and steps. Video LoRAs show only for the models they fit.
+
+Video models are large (4 to 20 GB each). Each one downloads the first time you use it.
 
 > **Reference images** uses LTX 2.5. Its files require access to the [Lightricks model](https://huggingface.co/Lightricks/LTX-2.5) on Hugging Face. Accept the terms there, then set the `HF_TOKEN` environment variable to a token of that account.
 
@@ -152,8 +188,9 @@ Video models are large (4–20 GB each). Each one downloads the first time you u
 <img src=".github/assets/gallery.png" alt="Gallery" width="100%">
 
 - Click **Generate** as many times as you want. Each click adds a job to the **Queue**, and you can keep working.
-- In **Queue**, you can reorder, pause or cancel jobs. Waiting jobs stay saved when you close the app.
+- In **Queue**, **Stop** ends the job that runs now, **Remove** takes one waiting job out, and **Remove all waiting** clears the line. You can also move jobs up or pause the queue. Waiting jobs stay saved when you close the app. The button next to **Generate** says what it does: **Stop this job** while your job runs, **Remove from queue** while it waits.
 - **Recent** (the panel on the right of the Images page) shows your latest results and the running jobs. Hover a result to use it as input or to load its settings. Click **>>** to hide the panel.
+- **Delete results** in the **Gallery**: hover a result and click its circle to check it, or click **Select all**. **Delete** removes the checked results and their files from your computer. Running and waiting jobs are never deleted.
 - **Gallery** shows all your images and videos. Open one, then press **←** and **→** to browse. Turn on **Compare with input** to slide between the input and the result. **Use settings** loads the prompt and settings of a result. **Run again** makes a new version.
 
 ## Other tools

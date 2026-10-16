@@ -14,7 +14,7 @@ export const en = {
   clear:'Clear images', left:'Move earlier', right:'Move later', local:'Runs on this computer', history:'Saved images', openFolder:'Open images folder',
   retry:'Retry', saved:'Image saved', editMode:'Editing', createMode:'Text to image', uploadBusy:'Uploading images…',
   maxImages:'You can use up to 10 input images.', enterPrompt:'Enter a prompt first.', modelsMissing:'Missing model files download automatically when you generate.',
-  help:'How to use', helpText:'Write a prompt to create an image. Add 1–10 images to edit or combine them, and refer to each image by its number. For transparent output, use the prompt format below.',
+  help:'How to use', helpText:'Write a prompt to create an image. Add 1 to 10 images to edit or combine them, and refer to each image by its number. For transparent output, use the prompt format below.',
   transparent:'This is an RGBA image with transparency. [Describe your image]. The image has alpha channel and the background is transparent.',
   applyTransparent:'Use transparent image prompt', keyboard:'Ctrl + Enter to generate', generation:'Generation', details:'Details',
   steps:'Steps', precisionHint:'Sizes that are not multiples of 32 are rendered at the next compatible size, then resized to your exact dimensions.',
