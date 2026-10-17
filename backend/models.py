@@ -451,7 +451,7 @@ def remove(model_id):
         saved=installed_manifest()
         saved.pop(model_id,None)
         write_json(INSTALL_PATH,saved)
-        if item.get('source')=='civitai':
+        if item.get('source') in ('civitai','trained'):
             from .civitai import unregister
             unregister(model_id)
     return {'ok':True}

@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, GenerationRequest, VideoRequest, ReferenceVideoRequest, UpscaleRequest, model_status, resolve_image, resolve_video, read_json, write_json
 from .reference_timing import probe_video_duration, resolve_reference_clip
-from . import models, antigravity, cloud, civitai, people
+from . import models, antigravity, cloud, civitai, people, training
 from .resident_worker import ImageWorker
 
 from .common import AUDIO_UPLOADS_DIR, resolve_audio
@@ -123,7 +123,7 @@ def read_job(job_id):
 
 def public_job(job):
     public = {k: v for k, v in job.items() if k not in ('output_path',)}
-    if job.get('status') == 'succeeded':
+    if job.get('status') == 'succeeded' and job.get('kind') != 'training':
         public['thumbnail_url'] = f'/api/jobs/{job["id"]}/thumbnail'
     return public
 
@@ -314,6 +314,9 @@ def run_job(job_id):
     try:
         request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
         is_video = request.get('kind') in VIDEO_KINDS
+        if request.get('kind') == 'training':
+            run_training(job_id, request, directory)
+            return
         if request.get('execution') == 'runpod':
             run_cloud_job(job_id, request, 'video' if is_video else 'image')
             return
@@ -361,6 +364,32 @@ def run_job(job_id):
             recent_jobs.appendleft(job_id)
             save_queue_locked()
             start_next_locked()
+
+
+def run_training(job_id, request, directory):
+    """A LoRA training: the GPU is free of image models first, and Cancel stops the trainer process."""
+    global active_process
+    with active_lock:
+        if job_id in cancelled_jobs:
+            job = read_job(job_id)
+            job.update(status='cancelled', message='Training cancelled.', finished_at=time.time())
+            write_json(directory / 'status.json', job)
+            return
+        image_worker.close()
+
+    def started(process):
+        global active_process
+        with active_lock:
+            active_process = process
+            if job_id in cancelled_jobs:
+                stop_worker(process)
+    training.run(job_id, request, directory, started, lambda: job_id in cancelled_jobs or shutting_down)
+    with active_lock:
+        if job_id in cancelled_jobs:
+            job = read_job(job_id)
+            job.update(status='cancelled', stage='cancelled', message='Training stopped. Start it again with the same name to continue from the last saved step.',
+                       finished_at=time.time())
+            write_json(directory / 'status.json', job)
 
 
 def prepare_job_models(job_id,request):
@@ -1412,13 +1441,15 @@ def retry_job(job_id: str):
         return generate_reference_video(ReferenceVideoRequest(**data))
     if kind=='upscale':
         return generate_upscale(UpscaleRequest(**data))
+    if kind=='training':
+        return start_training(TrainingRequest(**data))
     return generate(GenerationRequest(**data))
 
 
 def library_jobs(kind: str, search: str) -> list[dict]:
     query = search.casefold().strip()
     titles = {item['id']: item['title'] for item in models.catalog()}
-    jobs = [j for j in all_jobs() if j.get('status') == 'succeeded'
+    jobs = [j for j in all_jobs() if j.get('status') == 'succeeded' and j.get('kind') != 'training'
             and (kind == 'all' or (kind=='video' and j.get('kind') in VIDEO_KINDS)
                  or j.get('kind', 'image') == kind)
             and (not query or query in (j.get('request', {}).get('prompt', '') + ' ' + j.get('request', {}).get('model_id', '')
@@ -1473,6 +1504,97 @@ def library_delete(body: LibraryDelete):
         except OSError as exc:
             failed.append(f"{job['id']}: {exc}")
     return {'deleted': deleted, 'failed': failed[:20]}
+
+
+class TrainingImage(BaseModel):
+    id: str = Field(min_length=1, max_length=200)
+    caption: str = Field(default='', max_length=2000)
+
+
+class TrainingRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    arch: Literal['qwen-image-2.1', 'qwen-image-2.1-turbo', 'krea-2', 'krea-2-turbo', 'z-image-turbo', 'z-image'] = 'z-image-turbo'
+    subject: Literal['character', 'style'] = 'character'
+    trigger_word: str = Field(default='', max_length=40)
+    images: list[TrainingImage] = Field(min_length=1, max_length=300)
+    steps: int = Field(default=2000, ge=50, le=20000)
+    rank: int = Field(default=32, ge=4, le=128)
+    learning_rate: float = Field(default=1e-4, ge=1e-6, le=1e-3)
+    resolutions: list[Literal[512, 768, 1024, 1280, 1536]] = Field(default_factory=lambda: [512, 768, 1024], min_length=1)
+    save_every: int = Field(default=250, ge=25, le=5000)
+    sample_prompts: list[str] = Field(default_factory=list, max_length=6)
+
+
+class CaptionRequest(BaseModel):
+    images: list[str] = Field(min_length=1, max_length=300)
+    trigger_word: str = Field(default='', max_length=40)
+    subject: Literal['character', 'style'] = 'character'
+
+
+@app.get('/api/training')
+def training_state():
+    jobs = sorted((j for j in all_jobs() if j.get('kind') == 'training'), key=lambda j: j['created_at'], reverse=True)
+    return {'setup': training.setup_status(),
+            'archs': [{'id': key, 'label': info['label'], 'gate': info.get('gate'), 'families': info['families'],
+                       'turbo': 'assistant_lora_path' in info} for key, info in training.ARCHS.items()],
+            'jobs': [public_job(job) for job in jobs[:50]]}
+
+
+@app.post('/api/training/setup')
+def training_setup():
+    if cloud.settings()['mode'] == 'runpod':
+        raise HTTPException(409, 'Training runs on this computer. Switch the GPU to Local in Settings.')
+    return training.start_setup()
+
+
+@app.post('/api/training/captions')
+def training_captions(body: CaptionRequest):
+    if not antigravity.status()['connected']:
+        raise HTTPException(409, 'Connect Google Account in Settings → Prompt enhancement to write captions, or write them yourself.')
+    from concurrent.futures import ThreadPoolExecutor
+    model_id = antigravity.selected_model()
+    def one(image_id):
+        try:
+            with Image.open(resolve_image(image_id)) as opened:
+                return {'id': image_id, 'caption': training.caption(opened, body.trigger_word.strip(), body.subject, model_id)}
+        except Exception as exc:
+            return {'id': image_id, 'caption': '', 'error': str(exc)[:300]}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        return {'captions': list(pool.map(one, body.images))}
+
+
+@app.post('/api/training/start', status_code=202)
+def start_training(body: TrainingRequest):
+    if cloud.settings()['mode'] == 'runpod':
+        raise HTTPException(409, 'Training runs on this computer. Switch the GPU to Local in Settings.')
+    if not training.setup_status()['ready']:
+        raise HTTPException(409, 'Install the trainer first.')
+    try:
+        for image in body.images:
+            resolve_image(image.id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    with active_lock:
+        job_id = uuid.uuid4().hex
+        data = body.model_dump() | {'kind': 'training', 'execution': 'local', 'prompt': body.name, 'model_id': f'training:{body.arch}'}
+        job = {'id': job_id, 'kind': 'training', 'status': 'queued', 'message': 'Waiting in queue', 'stage': 'queued', 'created_at': time.time(),
+               'seed': 0, 'request': data, 'step': 0, 'total_steps': body.steps, 'title': body.name}
+        enqueue_locked(job, data)
+    return public_job(job)
+
+
+@app.get('/api/training/{job_id}/samples/{name}')
+def training_sample(job_id: str, name: str):
+    job = read_job(job_id)
+    if job.get('kind') != 'training' or name not in job.get('samples', []):
+        raise HTTPException(404, 'Sample not found.')
+    folder = training.slug(job['request']['name'])
+    # Trainings made before the per-name output folder kept their output in the job folder.
+    path = next((base / folder / 'samples' / name for base in (training.output_dir(job['request']), JOBS_DIR / job_id / 'output')
+                 if (base / folder / 'samples' / name).is_file()), None)
+    if not path:
+        raise HTTPException(404, 'Sample not found.')
+    return FileResponse(path, media_type='image/jpeg')
 
 
 @app.get('/api/history')

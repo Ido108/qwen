@@ -15,7 +15,8 @@ import {InputLibrary,type Person} from './InputLibrary';
 import {CompareView} from './CompareView';
 import {BoxEditor} from './BoxEditor';
 import {ZoomView} from './ZoomView';
-import {CivitaiPage} from './CivitaiPage';
+import {CivitaiPage,type InstalledItem} from './CivitaiPage';
+import {TrainPage} from './TrainPage';
 import {LoraStack,type LoraChoice} from './LoraStack';
 import {LibraryPopover} from './LibraryPopover';
 import {ResultsRail} from './ResultsRail';
@@ -43,7 +44,7 @@ const defaults:Params = {loras:[],tool_id:null,tool_options:{},lora_strength:nul
 function loadDraft():Params {try {const saved=JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}');return {...defaults,...saved,randomize_seed:true,vae_id:saved.vae_choice?saved.vae_id:'auto',steps:saved.auto_resolution===undefined&&saved.steps===40?null:(saved.steps??null)};} catch {return defaults;}}
 const clearedResult=()=>{try{return localStorage.getItem('qwen-result-cleared');}catch{return null;}};
 function App(){
-  const [tab,setTab]=useState<'image'|'video'|'gallery'|'civitai'>(()=>location.hash==='#civitai'?'civitai':location.hash==='#gallery'?'gallery':['#video','#reference','#video-to-video','#multi-reference','#upscale'].includes(location.hash)?'video':'image');
+  const [tab,setTab]=useState<'image'|'video'|'gallery'|'civitai'|'train'>(()=>location.hash==='#civitai'?'civitai':location.hash==='#train'?'train':location.hash==='#gallery'?'gallery':['#video','#reference','#video-to-video','#multi-reference','#upscale'].includes(location.hash)?'video':'image');
   const [videoSection,setVideoSection]=useState<VideoSection>(()=>['#reference','#video-to-video'].includes(location.hash)?'reference':location.hash==='#upscale'?'upscale':location.hash==='#multi-reference'?'multi-reference':'create');
   const [queueOpen,setQueueOpen]=useState(false);
   const [videoRestore,setVideoRestore]=useState<{job:SavedJob;key:number}|null>(null);
@@ -88,7 +89,7 @@ function App(){
   const family=chosenModel?.family||'qwen-image-2.1';const krea=family.startsWith('krea-2');const zimage=family.startsWith('z-image');
   // Krea 2 and Z-Image have their own text encoders; Qwen models pick INT8 or BF16 by the model format.
   const chosenEncoder=krea||zimage?(chosenModel?.text_encoder||(krea?'krea2-encoder-bf16':'zimage-encoder-bf16')):params.text_encoder==='auto'?(chosenModel?.format==='GGUF'?'encoder-int8':'encoder-bf16'):params.text_encoder;
-  const userLoras=(modelState?.models||[]).filter(m=>m.kind==='image-lora'&&m.source==='civitai');
+  const userLoras=(modelState?.models||[]).filter(m=>m.kind==='image-lora'&&(m.source==='civitai'||m.source==='trained'));
   const activeLoras=params.loras.filter(l=>userLoras.find(u=>u.id===l.id)?.families?.includes(family));
   const vaes=(modelState?.models||[]).filter(m=>m.kind==='vae'&&(m.families||['qwen-image-2.1','qwen-image-2.1-turbo']).includes(family));const vaeTitle=(id:string)=>id==='vae'?'Standard':id==='vae-texture-fix'?'Texture fix':vaes.find(v=>v.id===id)?.title||id;
   const autoVae=chosenModel?.recommended_vae||(krea?'krea2-vae':zimage?'zimage-vae':'vae-texture-fix');const resolvedVae=params.vae_id==='auto'||!vaes.some(v=>v.id===params.vae_id)?autoVae:params.vae_id;
@@ -109,13 +110,23 @@ function App(){
     window.scrollTo({top:0,behavior:'instant'});
   };
   function restoreJob(saved:SavedJob){
+    if(saved.kind==='training'){setTab('train');window.history.replaceState(null,'','#train');return;}
     if(saved.kind==='video'){setVideoRestore({job:saved,key:Date.now()});setVideoModel(saved.request.model_id);showVideo('create');}
     else if(saved.kind==='multi-reference'){setMultiRestore({job:saved,key:Date.now()});showVideo('multi-reference');}
     else if(saved.kind==='reference-video'){setReferenceRestore({job:saved,key:Date.now()});showVideo('reference');}
     else if(saved.kind==='upscale'){setUpscaleRestore({job:saved,key:Date.now()});showVideo('upscale');}
     else{setParams({...defaults,...saved.request,seed:saved.seed,randomize_seed:true});setInputs((saved.request.images||[]).map(inputImage));if(saved.status==='succeeded')setResult(saved as Job);setTab('image');window.history.replaceState(null,'','#images');setNotice('Original prompt, input images, seed and settings loaded.');setError('');}
   }
-  function viewJob(saved:SavedJob){setGalleryView({job:saved,key:Date.now()});setTab('gallery');window.history.replaceState(null,'','#gallery');}
+  function applyInstalled(item:InstalledItem){
+      item={...item,kind:modelState?.models.find(m=>m.id===item.id)?.kind??item.kind};
+      if(item.kind==='video-lora'||item.kind==='video'||item.kind==='reference-video'){if(item.kind==='video')setVideoModel(item.id);const ref2va=item.kind==='reference-video'||(item.kind==='video-lora'&&modelState?.models.find(m=>m.id===item.id)?.made_for==='Ref2VA');setPendingVideoLora(item.kind==='video-lora'?{id:item.id,key:Date.now(),target:ref2va?'reference':'create'}:null);showVideo(ref2va?'reference':'create');setNotice('');return;}
+      // A LoRA for another architecture also selects a model it works with (the installed one first).
+      const lora=item.kind==='image-lora'?modelState?.models.find(m=>m.id===item.id):undefined;const families=lora?.families||[];
+      const fitting=lora&&!families.includes(family)?(modelState?.models.filter(m=>m.kind==='image'&&families.includes(m.family||'qwen-image-2.1'))||[]).sort((a,b)=>Number(b.ready)-Number(a.ready))[0]:undefined;
+      if(item.kind==='image-lora')setParams(p=>({...p,...(fitting?{model_id:fitting.id,steps:null,cfg:null}:{}),loras:p.loras.some(l=>l.id===item.id)?p.loras:[...p.loras,{id:item.id,strength:lora?.default_strength??1}].slice(0,4)}));
+      else setParams(p=>({...p,model_id:item.id,steps:null,cfg:null}));
+      setTab('image');window.history.replaceState(null,'','#images');setNotice(item.kind==='image-lora'?`LoRA added${fitting?`, and the model changed to ${fitting.title}, which the LoRA works with`:''}. Its strength is under LoRAs.`:'Model selected.');}
+  function viewJob(saved:SavedJob){if(saved.kind==='training'){restoreJob(saved);return;}setGalleryView({job:saved,key:Date.now()});setTab('gallery');window.history.replaceState(null,'','#gallery');}
   useEffect(()=>{let alive=true; (async()=>{try{
     const [cfg,ex,old]=await Promise.all([api('/api/config'),api('/api/examples'),api('/api/history')]);
     if(!alive)return; token.current=cfg.token; setConfig(cfg);setModelState(cfg.catalog);setEnhancement(cfg.enhancement); setExamples(ex); setHistory(old);setResult(old[0]&&old[0].id!==clearedResult()?old[0]:null);
@@ -193,7 +204,7 @@ function App(){
   // The enhanced prompt is shown with the result only when enhancement really changed the prompt.
   const rewrittenPrompt=result?.rewritten_prompt?.trim()&&result.rewritten_prompt.trim()!==(result.request?.prompt||'').trim()?result.rewritten_prompt.trim():'';
   return <>
-    <header className="header"><div className="brand"><img src="/branding/icon-64.png" alt=""/><strong>Qwen</strong><span className="brand-divider"/><nav className="app-tabs" aria-label="Generation type"><button aria-current={tab==='image'?'page':undefined} onClick={()=>{setTab('image');window.history.replaceState(null,'','#images');}}><ImageIcon size={17}/>Images</button><button aria-current={tab==='video'?'page':undefined} onClick={()=>showVideo(videoSection)}><span className="video-tab-icon" aria-hidden="true">▷</span>Video{videoBusy?<Loader2 className="spin" size={13}/>:null}</button><button aria-current={tab==='gallery'?'page':undefined} onClick={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}>Gallery</button><button aria-current={tab==='civitai'?'page':undefined} onClick={()=>{setTab('civitai');window.history.replaceState(null,'','#civitai');}}><Compass size={16}/>Civitai</button></nav></div>
+    <header className="header"><div className="brand"><img src="/branding/icon-64.png" alt=""/><strong>Qwen</strong><span className="brand-divider"/><nav className="app-tabs" aria-label="Generation type"><button aria-current={tab==='image'?'page':undefined} onClick={()=>{setTab('image');window.history.replaceState(null,'','#images');}}><ImageIcon size={17}/>Images</button><button aria-current={tab==='video'?'page':undefined} onClick={()=>showVideo(videoSection)}><span className="video-tab-icon" aria-hidden="true">▷</span>Video{videoBusy?<Loader2 className="spin" size={13}/>:null}</button><button aria-current={tab==='gallery'?'page':undefined} onClick={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}>Gallery</button><button aria-current={tab==='civitai'?'page':undefined} onClick={()=>{setTab('civitai');window.history.replaceState(null,'','#civitai');}}><Compass size={16}/>Civitai</button><button aria-current={tab==='train'?'page':undefined} onClick={()=>{setTab('train');window.history.replaceState(null,'','#train');}}>Train</button></nav></div>
       <div className="header-tools"><button className="queue-header-button" onClick={()=>setQueueOpen(true)} aria-label={`Open queue (${queue.count})`}>Queue <span>{queue.count}</span></button><button className="icon-button" onClick={()=>openSettings()} title={t('settings')} aria-label={t('settings')}><Settings size={19}/></button><button className="icon-button" onClick={()=>setShowHelp(true)} title={t('help')} aria-label={t('help')}><CircleHelp size={19}/></button></div>
     </header>
     {inputs.length?<BoxEditor src={inputs[0].url} open={boxOpen} onClose={()=>setBoxOpen(false)} onApply={async png=>{const data=new FormData();data.append('files',new File([png],'marked.png',{type:'image/png'}));const [marked]=await api('/api/uploads',{method:'POST',body:data});setInputs(old=>[marked,...old.slice(1)]);}}/>:null}
@@ -268,13 +279,10 @@ function App(){
     <ReferenceTab addLora={pendingVideoLora?.target==='reference'?pendingVideoLora:null} onSendVideo={sendVideo} videoInput={videoInput?.target!=='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='reference'} api={api} token={token.current} models={modelState} enhancement={enhancement} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
     <MultiReferenceTab onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='multi-reference'} api={api} models={modelState} queue={queue.state} onQueued={queue.refresh} restoreRequest={multiRestore} onView={job=>setGalleryView({job,key:Date.now()})}/>
     <UpscaleTab onSendVideo={sendVideo} videoInput={videoInput?.target==='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='upscale'} api={api} token={token.current} models={modelState} restoreRequest={upscaleRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
-    <CivitaiPage api={api} visible={tab==='civitai'} models={modelState} onUse={item=>{
-      item={...item,kind:modelState?.models.find(m=>m.id===item.id)?.kind??item.kind};
-      if(item.kind==='video-lora'||item.kind==='video'||item.kind==='reference-video'){if(item.kind==='video')setVideoModel(item.id);const ref2va=item.kind==='reference-video'||(item.kind==='video-lora'&&modelState?.models.find(m=>m.id===item.id)?.made_for==='Ref2VA');setPendingVideoLora(item.kind==='video-lora'?{id:item.id,key:Date.now(),target:ref2va?'reference':'create'}:null);showVideo(ref2va?'reference':'create');setNotice('');return;}
-      if(item.kind==='image-lora')setParams(p=>({...p,loras:p.loras.some(l=>l.id===item.id)?p.loras:[...p.loras,{id:item.id,strength:modelState?.models.find(m=>m.id===item.id)?.default_strength??1}].slice(0,4)}));
-      else setParams(p=>({...p,model_id:item.id,steps:null,cfg:null}));
-      setTab('image');window.history.replaceState(null,'','#images');setNotice(item.kind==='image-lora'?'LoRA added. Its strength is under LoRAs.':'Model selected.');}}/>
+    <CivitaiPage api={api} visible={tab==='civitai'} models={modelState} onUse={applyInstalled}/>
+    <TrainPage api={api} visible={tab==='train'} models={modelState} results={history} people={people} onPeople={loadPeople} onUse={id=>applyInstalled({id,kind:'image-lora'})}/>
     <Gallery onSendVideo={sendVideo} api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>
+
     <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):showExamples?t('examples'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':'content-dialog'}><button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>
       {showSettings?<ModelSettings initialView={settingsView} enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
       {lightbox?<ZoomView className="lightbox-image checker" src={lightbox} alt={t('preview')}/>:null}

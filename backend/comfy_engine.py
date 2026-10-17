@@ -3,6 +3,7 @@ from __future__ import annotations
 import gc
 import importlib.util
 import json
+import re
 from pathlib import Path
 import sys
 import time
@@ -12,6 +13,27 @@ from .image_cache import ConditioningCache, PositiveOnlyEncoder, retain_cpu_weig
 
 _components = {}
 _conditioning = ConditioningCache()
+FUSED_MLP = re.compile(r'([._])img_mlp([._])gate_up([._])')
+
+
+def split_fused_mlp(weights):
+    """LoRAs trained on the fused Qwen-Image-2.1 MLP (ai-toolkit trains the Comfy-Org file, whose img_mlp.gate_up
+    holds gate_layer and proj on top of each other) as LoRAs for the two halves, which is how ComfyUI addresses
+    them in both the fused and the split (GGUF) model. Up/B rows split in half; down/A and alpha apply to both."""
+    if not any(FUSED_MLP.search(key) for key in weights):
+        return weights
+    out = {}
+    for key, value in weights.items():
+        if not FUSED_MLP.search(key):
+            out[key] = value
+            continue
+        gate, proj = (FUSED_MLP.sub(lambda m, name=name: f'{m[1]}img_mlp{m[2]}{name}{m[3]}', key) for name in ('gate_layer', 'proj'))
+        if re.search(r'lora_(?:B|up)[._]', key):
+            half = value.shape[0] // 2
+            out[gate], out[proj] = value[:half], value[half:]
+        else:
+            out[gate] = out[proj] = value
+    return out
 
 def generate(request, prompt, images, width, height, progress):
     import torch
@@ -179,7 +201,7 @@ def generate(request, prompt, images, width, height, progress):
         for lora_id,strength in stack:
             lora=entry(lora_id)
             if lora_id not in loras:
-                loras[lora_id]=comfy.utils.load_torch_file(str(local_path(lora,lora['files'][0])),safe_load=True)
+                loras[lora_id]=split_fused_mlp(comfy.utils.load_torch_file(str(local_path(lora,lora['files'][0])),safe_load=True))
             model,_=comfy.sd.load_lora_for_models(model,None,loras[lora_id],strength,0)
             applied.append(f"{lora['title']} ({strength:g})")
         retain_lora_clone(model,_components['model'])

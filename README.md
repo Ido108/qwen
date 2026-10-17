@@ -16,12 +16,13 @@ One double-click to install. No API keys, no subscription, no cloud required.
 
 ## What it does
 
-- **Create images** from a prompt with Qwen-Image-2.1. It writes clear text inside images, too.
+- **Create images** from a prompt with Qwen-Image-2.1, Krea 2 or Z-Image. Qwen-Image-2.1 writes clear text inside images, too.
 - **Edit images**: add up to 10 images, then describe the change.
 - **Turbo models**: the official 8-step Qwen-Image-2.1 Turbo, about 3 times faster.
 - **Tools**: outfit swap, photo restore, expand image, new camera angle, remove object and character swap.
 - **Civitai**: browse civitai.red inside the app and add LoRAs and models in one click. The app reads each model's own steps, CFG, sampler and VAE from its page.
 - **LoRAs**: stack up to 4 LoRAs on an image or a video, each with its own strength.
+- **Train LoRAs**: teach a model a person, a character or a style from your images, on your GPU.
 - **People**: named avatars with photos, for quick selection as input images. Import your contacts from Moise in one click.
 - **Create videos** from a prompt or from a first and last frame.
 - **Change videos**: replace people, change the camera angle, or build a new scene from reference images.
@@ -131,6 +132,20 @@ Open a card to see every version on the page. For each version the app shows its
 The app checks every file before it uses it: the checksum and the shape of the model, so a file for another model type is refused.
 
 LTX 2.5 checkpoints come in two kinds. A **distilled** checkpoint runs as it is. A **dev** checkpoint gets the official Lightricks distilled LoRA (8.9 GB, downloaded once) at strength 0.5, as the model pages describe, and then runs the same 8-step schedule. When a page does not say which kind it is, the app does not offer it, because the wrong kind makes broken video. **Connect Civitai account** is needed only for files that require a signed-in account.
+
+## Train a LoRA
+
+Open the **Train** tab to make your own LoRA from your images: a person, a character or a style. It uses [ai-toolkit](https://github.com/ostris/ai-toolkit) by Ostris with the settings of its own UI for each model.
+
+1. **Install the trainer** once (about 9 GB in the app's runtime folder: ai-toolkit and its own PyTorch). Your models and images are not changed.
+2. Enter a **Name**, choose the **Base model** (Qwen-Image-2.1, Qwen-Image-2.1 Turbo, Krea 2 Raw, Krea 2 Turbo, Z-Image Turbo or Z-Image Base) and a **Trigger word**: a rare word that calls the LoRA in a prompt.
+3. Add 15 to 40 images from the library (uploads, results, People) or upload them. For a person, use sharp images with different clothes, places, light and angles.
+4. Click **Write captions with Antigravity**, then check them. For a person the captions describe clothes, place and pose, not the face: the trigger word learns the face. You can also write them yourself.
+5. Click **Start training**. The training is a queue job, so image and video jobs wait until it ends. The card shows the step, the loss, the time left and sample images at every save.
+
+The first training of each base model downloads it (Z-Image Turbo about 25 GB). Krea 2 needs access on its Hugging Face page with the account on this computer. Turbo models train with the official training adapter, so the LoRA keeps Turbo fast. A LoRA works with the models of the type it was trained on, also Civitai models of that type: a test LoRA trained on Z-Image Turbo did nothing on Z-Image Base. When the training ends, the LoRA is in the LoRA list. **Use this LoRA** opens Images with the LoRA and a model it works with.
+
+**Stop** ends the training and keeps the saved steps. **Continue** (or a new training with the same name and base model) starts from the last saved step. Settings: steps (auto: about 100 per image, 1000 to 3000), rank, learning rate, image sizes and sample prompts. Qwen-Image-2.1 LoRAs made with ai-toolkit (here or on Civitai) train one fused MLP layer; the app splits it into the two layers the model uses, so the whole LoRA applies.
 
 ## Settings
 
