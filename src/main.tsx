@@ -17,6 +17,7 @@ import {BoxEditor} from './BoxEditor';
 import {ZoomView} from './ZoomView';
 import {CivitaiPage,type InstalledItem} from './CivitaiPage';
 import {TrainPage} from './TrainPage';
+import {SwapPanel,swapDefaults,type SwapState} from './SwapPanel';
 import {LoraStack,type LoraChoice} from './LoraStack';
 import {LibraryPopover} from './LibraryPopover';
 import {ResultsRail} from './ResultsRail';
@@ -85,6 +86,10 @@ function App(){
   const chosenModel=modelState?.models.find(m=>m.id===params.model_id);
   const validSteps=params.steps===null||(Number.isInteger(params.steps)&&params.steps>=1&&params.steps<=80);
   const tools=modelState?.tools||[];
+  const swapTools=tools.filter(t=>t.swap);
+  const [imageSection,setImageSection]=useState<'create'|'swap'>(()=>location.hash==='#swap'?'swap':'create');
+  const [swap,setSwapState]=useState<SwapState>(()=>{try{return {...swapDefaults,...JSON.parse(localStorage.getItem('qwen-swap-v1')||'{}')};}catch{return swapDefaults;}});
+  const setSwap=(next:SwapState)=>{setSwapState(next);try{localStorage.setItem('qwen-swap-v1',JSON.stringify(next));}catch{}};
   const activeTool=tools.find(t=>t.id===params.tool_id&&t.families.includes(chosenModel?.family||'qwen-image-2.1'));
   const family=chosenModel?.family||'qwen-image-2.1';const krea=family.startsWith('krea-2');const zimage=family.startsWith('z-image');
   // Krea 2 and Z-Image have their own text encoders; Qwen models pick INT8 or BF16 by the model format.
@@ -114,7 +119,13 @@ function App(){
     else if(saved.kind==='multi-reference'){setMultiRestore({job:saved,key:Date.now()});showVideo('multi-reference');}
     else if(saved.kind==='reference-video'){setReferenceRestore({job:saved,key:Date.now()});showVideo('reference');}
     else if(saved.kind==='upscale'){setUpscaleRestore({job:saved,key:Date.now()});showVideo('upscale');}
-    else{setParams({...defaults,...saved.request,seed:saved.seed,randomize_seed:true});setInputs((saved.request.images||[]).map(inputImage));if(saved.status==='succeeded')setResult(saved as Job);setTab('image');window.history.replaceState(null,'','#images');setNotice('Original prompt, input images, seed and settings loaded.');setError('');}
+    else if(swapTools.some(t=>t.id===saved.request.tool_id)){
+      // A swap opens in Swap with its two pictures, strength and extra instructions.
+      const tool=swapTools.find(t=>t.id===saved.request.tool_id)!;const images=(saved.request.images||[]).map(inputImage);const prompt=String(saved.request.prompt||'');
+      setParams({...defaults,...saved.request,tool_id:null,tool_options:{},lora_strength:null,prompt:'',seed:saved.seed,randomize_seed:true});
+      setSwap({tool:tool.id,slots:[images[0]??null,images[1]??null],strength:saved.request.lora_strength??tool.strength,extra:prompt.startsWith(tool.prompt)?prompt.slice(tool.prompt.length).trim():''});
+      if(saved.status==='succeeded')setResult(saved as Job);setTab('image');setImageSection('swap');window.history.replaceState(null,'','#swap');setNotice('The swap pictures, strength and settings are loaded.');setError('');}
+    else{setImageSection('create');setParams({...defaults,...saved.request,seed:saved.seed,randomize_seed:true});setInputs((saved.request.images||[]).map(inputImage));if(saved.status==='succeeded')setResult(saved as Job);setTab('image');window.history.replaceState(null,'','#images');setNotice('Original prompt, input images, seed and settings loaded.');setError('');}
   }
   function applyInstalled(item:InstalledItem){
       item={...item,kind:modelState?.models.find(m=>m.id===item.id)?.kind??item.kind};
@@ -162,7 +173,7 @@ function App(){
   const loadPeople=useCallback(()=>{api('/api/people').then(setPeople).catch(()=>{});},[api]);
   useEffect(()=>{if(config)loadPeople();},[config,loadPeople]);
   // Ctrl+Enter generates from anywhere on the Images page, not only from the prompt box.
-  useEffect(()=>{if(tab!=='image')return;function key(e:KeyboardEvent){if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.repeat&&!document.querySelector('dialog[open]')){e.preventDefault();generate();}}
+  useEffect(()=>{if(tab!=='image')return;function key(e:KeyboardEvent){if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!e.repeat&&!document.querySelector('dialog[open]')){e.preventDefault();if(imageSection==='swap')generateSwap();else generate();}}
     document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key);});
   // Ctrl+V anywhere on the Images page adds copied images as inputs.
   useEffect(()=>{if(tab!=='image')return;function paste(e:ClipboardEvent){if(e.defaultPrevented||modal.current?.open||document.querySelector('dialog[open]'))return;const files=Array.from(e.clipboardData?.files||[]).filter(f=>f.type.startsWith('image/'));if(!files.length)return;e.preventDefault();upload(files);}
@@ -182,6 +193,22 @@ function App(){
     try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,prompt,tool_id:activeTool?.id??null,lora_strength:activeTool?(params.lora_strength??toolStrength(activeTool,params.tool_options)):null,enhance:false,loras:activeLoras,images:inputs.map(i=>i.id),denoise:zimage&&inputs.length?params.denoise??0.7:null})});rememberPrompt('images',prompt);setJob(created);setPollId(created.id);setNotice('Added to queue. You can keep editing and send another request.');queue.refresh();}
     catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
   }
+  // Images > Swap: the chosen swap tool with picture 1 (scene) and picture 2 (head or person), on a Qwen-Image-2.1 model.
+  async function generateSwap(){
+    const tool=swapTools.find(t=>t.id===swap.tool)??swapTools[0];
+    if(locked||!tool)return;if(!validSteps){setError('Enter a whole number of steps from 1 to 80.');return;}
+    if(!imageReady||!tool.families.includes(chosenModel?.family||'')){setError('Swap runs on a Qwen-Image-2.1 model. Choose one above.');return;}
+    if(!swap.slots[0]||!swap.slots[1]){setError(`Add both pictures: 1 ${tool.inputs.labels[0]}, 2 ${tool.inputs.labels[1]}.`);return;}
+    const prompt=tool.prompt+(swap.extra.trim()?' '+swap.extra.trim():'');
+    setSubmitting(true);setError('');setNotice('');setJob(null);
+    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,prompt,tool_id:tool.id,tool_options:{},custom_size:false,auto_resolution:2048,lora_strength:swap.strength,enhance:false,loras:activeLoras,images:swap.slots.map(i=>i!.id),denoise:null})});
+      setJob(created);setPollId(created.id);setNotice('Added to queue. You can change the pictures and send another swap.');queue.refresh();}
+    catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
+  }
+  function showImageSection(next:'create'|'swap'){setImageSection(next);window.history.replaceState(null,'',next==='swap'?'#swap':'#');setError('');
+    // Swap runs on Qwen-Image-2.1: switch from Krea 2 or Z-Image to a ready Qwen model, Turbo first (the author's 8-step setup).
+    if(next==='swap'&&!(chosenModel?.family||'').startsWith('qwen-image-2.1')){const qwen=(modelState?.models||[]).filter(m=>m.kind==='image'&&(m.family||'').startsWith('qwen-image-2.1'));
+      const pick=qwen.find(m=>m.family==='qwen-image-2.1-turbo'&&m.installed)??qwen.find(m=>m.installed)??qwen[0];if(pick)setParams(p=>({...p,model_id:pick.id,steps:null,cfg:null}));}}
   function reorder(index:number,delta:number){setInputs(old=>{const next=[...old];[next[index],next[index+delta]]=[next[index+delta],next[index]];return next;});}
   function applyExample(example:Example){setParams(p=>({...p,prompt:example.prompt,enhance:example.prompt_extend}));setInputs(example.inputs.map((name)=>({id:`example:${name}`,name,url:`/examples/${name}`})));setActiveExample(null);setJob(null);setNotice(t('promptLoaded'));promptRef.current?.focus();}
   // The preview steps through the list it was opened from: results (newest first, like the Recent rail) or the input images.
@@ -196,7 +223,7 @@ function App(){
   async function copyPrompt(text:string){try{await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1600);}catch(e){setError(String(e));}}
   const stageElapsed=job?.stage_started_at?Math.max(0,Math.floor((clock-job.stage_started_at*1000)/1000)):0;
   const elapsed=job?.started_at ? Math.max(0,Math.round(((job.finished_at?job.finished_at*1000:clock)-job.started_at*1000)/1000)):0;
-  const settingsProps={value:params,model:chosenModel,models:modelState,modelId:params.model_id,tools,tool:activeTool,toolState:{tool_id:activeTool?.id??null,tool_options:params.tool_options,lora_strength:params.lora_strength},disabled:locked,
+  const settingsProps={value:params,model:chosenModel,models:modelState,modelId:params.model_id,tools:tools.filter(t=>!t.swap),tool:activeTool,toolState:{tool_id:activeTool?.id??null,tool_options:params.tool_options,lora_strength:params.lora_strength},disabled:locked,
     onChange:(values:Partial<ImageOptions>)=>setParams(p=>({...p,...values})),
     onModel:(id:string)=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null}));setError('');},
     onTool:(state:ToolState)=>{const next=tools.find(t=>t.id===state.tool_id);setParams(p=>({...p,...state,prompt:next?toolPrompt(next,state.tool_options):(p.tool_id?'':p.prompt)}));setError('');}};
@@ -208,6 +235,10 @@ function App(){
     </header>
     {inputs.length?<BoxEditor src={inputs[0].url} open={boxOpen} onClose={()=>setBoxOpen(false)} onApply={async png=>{const data=new FormData();data.append('files',new File([png],'marked.png',{type:'image/png'}));const [marked]=await api('/api/uploads',{method:'POST',body:data});setInputs(old=>[marked,...old.slice(1)]);}}/>:null}
     <JobQueue api={api} state={queue.state} error={queue.error} refresh={queue.refresh} open={queueOpen} onOpen={setQueueOpen} onRestore={restoreJob} onView={viewJob}/>
+    {tab==='image'&&swapTools.length?<nav className="video-workflow-nav" role="tablist" aria-label="Image tools">
+      <button role="tab" aria-selected={imageSection==='create'} onClick={()=>showImageSection('create')}>Create and edit</button>
+      <button role="tab" aria-selected={imageSection==='swap'} onClick={()=>showImageSection('swap')}>Swap</button>
+    </nav>:null}
     {tab==='video'?<nav className="video-workflow-nav" role="tablist" aria-label="Video tools">
       <button role="tab" aria-selected={videoSection==='create'} onClick={()=>showVideo('create')}>Create video</button>
       <button role="tab" aria-selected={videoSection==='reference'} onClick={()=>showVideo('reference')}>Video to video</button>
@@ -224,7 +255,8 @@ function App(){
             onBrowse={()=>{setTab('civitai');window.history.replaceState(null,'','#civitai');}}/>
           {config&&missingModels.length?<small className="model-missing">Missing model files download automatically when you generate.</small>:null}
         </section>
-        <section ref={inputPanel} className="panel input-panel"><div className="section-heading"><h2>{t('input')}</h2>{inputs.length>0?<span className="count">{inputs.length}/10</span>:null}{activeTool?.needs_box&&inputs.length?<button className="text-button mark-object" disabled={locked} onClick={()=>setBoxOpen(true)}><SquareDashed size={15}/>Mark object</button>:null}{inputs.length>0?<button className="text-button" disabled={locked} onClick={()=>setInputs([])}>Clear</button>:null}<button type="button" className={`library-toggle ${libraryOpen?'open':''}`} aria-expanded={libraryOpen} aria-haspopup="dialog" onClick={()=>libraryOpen?closeLibrary():openLibrary(null)} title="Uploads, results and people"><Images size={14}/>Library<ChevronDown size={13}/></button></div>
+        {imageSection==='swap'?<SwapPanel api={api} tools={swapTools} value={swap} onChange={setSwap} disabled={locked} results={history} people={people} onPeople={loadPeople} revision={libraryRevision}/>:null}
+        <section ref={inputPanel} className="panel input-panel" hidden={imageSection==='swap'}><div className="section-heading"><h2>{t('input')}</h2>{inputs.length>0?<span className="count">{inputs.length}/10</span>:null}{activeTool?.needs_box&&inputs.length?<button className="text-button mark-object" disabled={locked} onClick={()=>setBoxOpen(true)}><SquareDashed size={15}/>Mark object</button>:null}{inputs.length>0?<button className="text-button" disabled={locked} onClick={()=>setInputs([])}>Clear</button>:null}<button type="button" className={`library-toggle ${libraryOpen?'open':''}`} aria-expanded={libraryOpen} aria-haspopup="dialog" onClick={()=>libraryOpen?closeLibrary():openLibrary(null)} title="Uploads, results and people"><Images size={14}/>Library<ChevronDown size={13}/></button></div>
           <div className={`upload-area ${dragging?'dragging':''} ${inputs.length?'has-images':''}`} onDragOver={e=>{e.preventDefault();if(!locked)setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);upload(Array.from(e.dataTransfer.files));}}>
             <input ref={uploadRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={e=>upload(Array.from(e.target.files||[]))}/>
             {inputs.length===0?<div className="upload-empty-row"><button className="upload-empty compact" disabled={locked} onClick={()=>uploadRef.current?.click()}><UploadCloud size={20} strokeWidth={1.6}/><span><strong>{uploading?t('uploadBusy'):'Drop, paste (Ctrl + V) or upload'}</strong></span></button><button type="button" className="upload-library" disabled={locked} onClick={()=>openLibrary(null)}><Images size={18} strokeWidth={1.6}/><span>Pick from library</span></button></div>:<div className="input-grid">{inputs.map((input,index)=><div className={`input-thumb ${libraryOpen&&replaceAt===index?'target':''}`} key={input.id}><button className="thumb-preview checker" disabled={locked} title="Replace this image" onClick={()=>openLibrary(index)} aria-label={`Replace image ${index+1}`}><img src={input.url} alt={`${index+1}. ${input.name}`}/></button><button className="thumb-zoom" onClick={()=>openInputPreview(input.url)} aria-label={`${t('preview')} ${index+1}`} title={t('preview')}><Expand size={12}/></button><span className="image-number">{index+1}{activeTool?.inputs.labels[index]?` · ${activeTool.inputs.labels[index]}`:''}{people.find(p=>p.image_ids.includes(input.id))?` · ${people.find(p=>p.image_ids.includes(input.id))!.name}`:''}</span><button disabled={locked} className="remove-image" onClick={()=>setInputs(old=>old.filter((_,i)=>i!==index))} aria-label={`${t('remove')} ${index+1}`}><X size={13}/></button><div className="reorder"><button disabled={locked||index===0} onClick={()=>reorder(index,-1)} aria-label={`${t('left')} ${index+1}`}><ChevronLeft size={14}/></button><button disabled={locked||index===inputs.length-1} onClick={()=>reorder(index,1)} aria-label={`${t('right')} ${index+1}`}><ChevronRight size={14}/></button></div></div>)}{inputs.length<10?<button className="add-image" disabled={locked} onClick={()=>openLibrary(null)} aria-label="Add an image" title="Add an image"><Plus size={25}/></button>:null}</div>}
@@ -236,7 +268,7 @@ function App(){
             <InputLibrary api={api} inputs={inputs} onChange={setInputs} results={history} people={people} onPeople={loadPeople} replace={replaceAt!==null} target={replaceAt??0} revision={libraryRevision} disabled={locked} limit={10} onUpload={()=>uploadRef.current?.click()} onClose={closeLibrary}/>
           </LibraryPopover>
         </section>
-        <section className="panel controls-panel">
+        <section className="panel controls-panel" hidden={imageSection==='swap'}>
         <div className="prompt-row"><label htmlFor="prompt" className="prompt-label">{t('prompt')}<span className="mode-label">{inputs.length?(zimage?'Image to image':krea?'Style reference':t('editMode')):t('createMode')}</span></label><button type="button" className="prompt-chip" disabled={!examples.length} onClick={()=>setShowExamples(true)} title="Example prompts"><LayoutGrid size={13}/>Examples</button><PromptHistory scope="images" disabled={locked} onLoad={text=>{change('prompt',text);promptRef.current?.focus();}} onRun={text=>generate(text)}/></div>
         <textarea ref={promptRef} id="prompt" dir="auto" className="prompt-input" placeholder={t('placeholder')} value={params.prompt} disabled={locked} onChange={e=>change('prompt',e.target.value)}/>
         <ImageSettings part="main" {...settingsProps}/>
@@ -254,7 +286,7 @@ function App(){
         </section>
       </div>
       <div className="panel generate-dock">
-        <div className="generate-row"><div className="generate-controls">{busy?<button className="button secondary cancel" title={job?.status==='queued'?'This job has not started. Remove it from the queue.':'Stop the image that is generating now.'} onClick={async()=>{try{if(pollId)await api(`/api/jobs/${pollId}/cancel`,{method:'POST'});}catch(e){setError(String(e));}}}>{job?.status==='queued'?'Remove from queue':'Stop this job'}</button>:null}<button className="button primary" disabled={locked||!ready} onClick={()=>generate()} title={t('keyboard')}>{submitting?<Loader2 size={20} className="spin"/>:<Sparkles size={20}/>}<span>{submitting?'Adding…':queue.count||queue.state.paused?'Add image to queue':t('generate')}</span></button></div></div>
+        <div className="generate-row"><div className="generate-controls">{busy?<button className="button secondary cancel" title={job?.status==='queued'?'This job has not started. Remove it from the queue.':'Stop the image that is generating now.'} onClick={async()=>{try{if(pollId)await api(`/api/jobs/${pollId}/cancel`,{method:'POST'});}catch(e){setError(String(e));}}}>{job?.status==='queued'?'Remove from queue':'Stop this job'}</button>:null}<button className="button primary" disabled={locked||!ready} onClick={()=>imageSection==='swap'?generateSwap():generate()} title={t('keyboard')}>{submitting?<Loader2 size={20} className="spin"/>:<Sparkles size={20}/>}<span>{submitting?'Adding…':queue.count||queue.state.paused?'Add image to queue':t('generate')}</span></button></div></div>
         {error?<div className="message error" role="alert"><span>{error}</span><button className="icon-button" aria-label={t('close')} onClick={()=>setError('')}><X size={16}/></button></div>:null}
         {notice?<div className="notice" role="status">{notice}</div>:null}
         {job?.status==='cancelled'?<div className="notice">{t('cancelled')}</div>:null}

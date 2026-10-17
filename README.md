@@ -219,6 +219,16 @@ These are in the `scripts` folder:
 
 To close Qwen, close its window.
 
+## Swap (head or body)
+
+**Images > Swap** puts the head or the whole person from one picture into another, with the BFS LoRAs for Qwen-Image-2.1 (Alissonerdx/BFS-Best-Face-Swap, MIT). The LoRA downloads on first use.
+
+1. Choose **Head swap**, **Head swap, stronger expression** (copies an open mouth or strong expression more fully) or **Body swap** (face, clothing and body shape).
+2. Picture 1 is the scene: its body or pose, expression, light and background stay. Picture 2 gives the head or the person. Upload, or pick from the library or People.
+3. Click **Generate image**. The result has the shape of picture 1, at about 2 MP.
+
+The app feeds the pictures as the author does: both at about 2 MP for a head swap; for a body swap the person at about 0.59 MP. Body swap works best when picture 2 shows the person full body, facing the camera, on a plain light background. Effect strength 1.0 is the author's setting. Use it only with pictures of people who agreed.
+
 ## Remote use (phone)
 
 While Qwen runs on the PC, it also connects to the Moise server, and the whole app opens at `<Moise address>/qwen-studio/` (link in the Moise dashboard). Everything works there: images, inputs from the phone, video, Civitai, training and the queue. The PC opens no ports: Qwen keeps an outbound connection to Moise, and Moise asks for the dashboard login.

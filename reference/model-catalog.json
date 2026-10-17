@@ -881,6 +881,60 @@
     "dependencies": []
   },
   {
+    "id": "lora-bfs-head",
+    "title": "BFS Head Swap V1.1 LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "Alissonerdx/BFS-Best-Face-Swap",
+    "revision": "0ca3913ade4b4ada458d60c232354e8586c4c181",
+    "directory": "loras/bfs",
+    "files": [
+      {
+        "path": "bfs_head_v1.1_qwen_2.1.safetensors",
+        "bytes": 260096144,
+        "sha256": "d1d748d5601077f3b6d05766f6823510e901970d916afa404a97e85dc92fa88e"
+      }
+    ],
+    "bytes": 260096144,
+    "dependencies": []
+  },
+  {
+    "id": "lora-bfs-head-expression",
+    "title": "BFS Head Swap V1.1 alternative LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "Alissonerdx/BFS-Best-Face-Swap",
+    "revision": "0ca3913ade4b4ada458d60c232354e8586c4c181",
+    "directory": "loras/bfs",
+    "files": [
+      {
+        "path": "bfs_head_v1.1_alternative_qwen_2.1.safetensors",
+        "bytes": 318821008,
+        "sha256": "c5332bbc2f826856e7a09bce9740e97d39514b849368212e1f2c3c2c2d81c217"
+      }
+    ],
+    "bytes": 318821008,
+    "dependencies": []
+  },
+  {
+    "id": "lora-bfs-body",
+    "title": "BFS Body Swap V1.0 LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "Alissonerdx/BFS-Best-Face-Swap",
+    "revision": "0ca3913ade4b4ada458d60c232354e8586c4c181",
+    "directory": "loras/bfs",
+    "files": [
+      {
+        "path": "bfs_body_swap_v1.0_qwen_2.1.safetensors",
+        "bytes": 209753576,
+        "sha256": "7dc0a53aba4dbc70c204f498936a619d226559da11011f748c389189af46b664"
+      }
+    ],
+    "bytes": 209753576,
+    "dependencies": []
+  },
+  {
     "id": "vae-texture-fix",
     "title": "Texture-fix VAE",
     "kind": "vae",

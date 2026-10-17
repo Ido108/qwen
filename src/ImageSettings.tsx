@@ -3,7 +3,7 @@ import type {ModelEntry,ModelState} from './ModelSettings';
 
 export type ImageOptions={custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null};
 export type ToolField={key:string;label:string;placeholder?:string;default:string;options?:{value:string;label:string;prompt?:string;strength?:number}[]};
-export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;families:string[];tested_on:string[];inputs:{min:number;max:number;labels:string[]};
+export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;families:string[];tested_on:string[];swap?:boolean;inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
 export type ToolState={tool_id:string|null;tool_options:Record<string,string>;lora_strength:number|null};
 

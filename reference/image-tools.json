@@ -354,5 +354,98 @@
     "prompt": "Swap the person in Picture 1 with the character in Picture 2. Keep the background, lighting and everything else unchanged.",
     "reference_resolution": 1024,
     "source": "https://huggingface.co/akhaliq/Qwen-Image-2.1-Turbo-Character-Swap-LoRA"
+  },
+  {
+    "id": "head-swap",
+    "title": "Head swap",
+    "swap": true,
+    "summary": "Put the head from picture 2 (face, hair, eyes) on the person in picture 1. Body, pose, expression, light and background of picture 1 stay.",
+    "lora": "lora-bfs-head",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 2,
+      "max": 2,
+      "labels": [
+        "Scene",
+        "Head"
+      ]
+    },
+    "fields": [],
+    "prompt": "head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, nose structure from <image2>. copy the direction of the eye, head rotation, micro expressions from <image1>, high quality, sharp details, 4k",
+    "reference_resolution": 0,
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/main/docs/qwen-image-2.1.md",
+    "fit_inputs": [
+      "budget",
+      "budget"
+    ]
+  },
+  {
+    "id": "head-swap-expression",
+    "title": "Head swap, stronger expression",
+    "swap": true,
+    "summary": "Like Head swap, but copies the expression of picture 1 more fully (open mouth, eyes) and keeps more skin detail. The head angle can be about 1 degree less exact.",
+    "lora": "lora-bfs-head-expression",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 2,
+      "max": 2,
+      "labels": [
+        "Scene",
+        "Head"
+      ]
+    },
+    "fields": [],
+    "prompt": "head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, nose structure from <image2>. copy the direction of the eye, head rotation, micro expressions from <image1>, high quality, sharp details, 4k",
+    "reference_resolution": 0,
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/main/docs/qwen-image-2.1.md",
+    "fit_inputs": [
+      "budget",
+      "budget"
+    ]
+  },
+  {
+    "id": "body-swap",
+    "title": "Body swap",
+    "swap": true,
+    "summary": "Replace the whole person in picture 1 with the person from picture 2 (face, clothing, body shape). Pose, framing, light and background of picture 1 stay. Best with picture 2 full body, facing the camera, on a plain light background.",
+    "lora": "lora-bfs-body",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 2,
+      "max": 2,
+      "labels": [
+        "Scene",
+        "Person"
+      ]
+    },
+    "fields": [],
+    "prompt": "body_swap: start with <image1> as the base image, keeping its lighting, environment, and background. replace the body from <image1> with the body from <image2>, strictly preserving the clothing, body shape and proportions from <image2>. copy the pose, direction of the eye, head rotation, micro expressions from <image1>",
+    "reference_resolution": 0,
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/main/docs/qwen-image-2.1-body.md",
+    "fit_inputs": [
+      "budget",
+      590000
+    ]
   }
 ]
