@@ -21,7 +21,7 @@ import {LoraStack,type LoraChoice} from './LoraStack';
 import {LibraryPopover} from './LibraryPopover';
 import {ResultsRail} from './ResultsRail';
 import {JobQueue,useQueue,type SavedJob} from './JobQueue';
-import {promptSettingsCopy,type EnhancementState} from './PromptSettings';
+import type {EnhancementState} from './PromptSettings';
 import type {SendVideo,VideoInput} from './SendVideoTo';
 import type {UploadedVideo} from './mediaUpload';
 import {GenerationTiming,type Timing} from './GenerationTiming';
@@ -94,9 +94,8 @@ function App(){
   const vaes=(modelState?.models||[]).filter(m=>m.kind==='vae'&&(m.families||['qwen-image-2.1','qwen-image-2.1-turbo']).includes(family));const vaeTitle=(id:string)=>id==='vae'?'Standard':id==='vae-texture-fix'?'Texture fix':vaes.find(v=>v.id===id)?.title||id;
   const autoVae=chosenModel?.recommended_vae||(krea?'krea2-vae':zimage?'zimage-vae':'vae-texture-fix');const resolvedVae=params.vae_id==='auto'||!vaes.some(v=>v.id===params.vae_id)?autoVae:params.vae_id;
   const requiredIds=[params.model_id,chosenEncoder,resolvedVae,...(krea&&inputs.length?['krea2-lora-style-reference']:[]),...(activeTool?[activeTool.lora]:[]),...activeLoras.map(l=>l.id)];
-  const enhanceOn=params.enhance&&!activeTool;
   const imageReady=modelState?.remote?!!chosenModel?.ready:!!chosenModel;
-  const ready=imageReady&&!!chosenModel?.generation_defaults&&validSteps&&(!enhanceOn||!!enhancement?.connected);
+  const ready=imageReady&&!!chosenModel?.generation_defaults&&validSteps;
   const missingModels=modelState?.remote?[]:requiredIds.map(id=>modelState?.models.find(m=>m.id===id)).filter(m=>m&&!m.installed);
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
   const downloading=modelState?.transfer.status==='running'||!!modelState?.downloads?.some(d=>d.status==='running');
@@ -178,9 +177,9 @@ function App(){
   async function generate(override?:string){
     if(override!==undefined)setParams(p=>({...p,prompt:override}));const prompt=override??params.prompt;
     if(!validSteps){setError('Enter a whole number of steps from 1 to 80.');return;}
-    if(locked)return;if(!imageReady){setError('Choose an available model first.');return;}if(activeTool&&(inputs.length<activeTool.inputs.min||inputs.length>activeTool.inputs.max)){setError(`${activeTool.title} needs ${activeTool.inputs.labels.map((l,i)=>`image ${i+1}: ${l}`).join(', ')}.`);return;}if(zimage&&inputs.length>1){setError('Z-Image redraws one input image. Keep only image 1, or choose a Qwen-Image-2.1 model to combine images.');return;}if(enhanceOn&&!enhancement?.connected){openSettings('enhance');return;}if(!prompt.trim()){setError(t('enterPrompt'));promptRef.current?.focus();return;}
+    if(locked)return;if(!imageReady){setError('Choose an available model first.');return;}if(activeTool&&(inputs.length<activeTool.inputs.min||inputs.length>activeTool.inputs.max)){setError(`${activeTool.title} needs ${activeTool.inputs.labels.map((l,i)=>`image ${i+1}: ${l}`).join(', ')}.`);return;}if(zimage&&inputs.length>1){setError('Z-Image redraws one input image. Keep only image 1, or choose a Qwen-Image-2.1 model to combine images.');return;}if(!prompt.trim()){setError(t('enterPrompt'));promptRef.current?.focus();return;}
     setSubmitting(true);setError('');setNotice('');setJob(null);
-    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,prompt,tool_id:activeTool?.id??null,lora_strength:activeTool?(params.lora_strength??toolStrength(activeTool,params.tool_options)):null,enhance:enhanceOn,loras:activeLoras,images:inputs.map(i=>i.id),denoise:zimage&&inputs.length?params.denoise??0.7:null})});rememberPrompt('images',prompt);setJob(created);setPollId(created.id);setNotice('Added to queue. You can keep editing and send another request.');queue.refresh();}
+    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,prompt,tool_id:activeTool?.id??null,lora_strength:activeTool?(params.lora_strength??toolStrength(activeTool,params.tool_options)):null,enhance:false,loras:activeLoras,images:inputs.map(i=>i.id),denoise:zimage&&inputs.length?params.denoise??0.7:null})});rememberPrompt('images',prompt);setJob(created);setPollId(created.id);setNotice('Added to queue. You can keep editing and send another request.');queue.refresh();}
     catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
   }
   function reorder(index:number,delta:number){setInputs(old=>{const next=[...old];[next[index],next[index+delta]]=[next[index+delta],next[index]];return next;});}
@@ -255,8 +254,7 @@ function App(){
         </section>
       </div>
       <div className="panel generate-dock">
-        <div className="generate-row"><label className="toggle-label" title={activeTool?'Tools use their own prompt wording, so enhancement is off.':undefined}><input type="checkbox" role="switch" checked={enhanceOn} disabled={locked||!!activeTool} onChange={e=>{change('enhance',e.target.checked);setJob(null);}}/><span className="switch"/><span>{t('enhance')}</span></label><div className="generate-controls">{busy?<button className="button secondary cancel" title={job?.status==='queued'?'This job has not started. Remove it from the queue.':'Stop the image that is generating now.'} onClick={async()=>{try{if(pollId)await api(`/api/jobs/${pollId}/cancel`,{method:'POST'});}catch(e){setError(String(e));}}}>{job?.status==='queued'?'Remove from queue':'Stop this job'}</button>:null}<button className="button primary" disabled={locked||!ready} onClick={()=>generate()} title={t('keyboard')}>{submitting?<Loader2 size={20} className="spin"/>:<Sparkles size={20}/>}<span>{submitting?'Adding…':queue.count||queue.state.paused?'Add image to queue':t('generate')}</span></button></div></div>
-        {enhanceOn&&!enhancement?.connected?<div className="connection-hint"><span>{promptSettingsCopy[lang].description}</span><button className="text-button" onClick={()=>openSettings('enhance')}>{promptSettingsCopy[lang].connect}<ArrowUpRight size={15}/></button></div>:null}
+        <div className="generate-row"><div className="generate-controls">{busy?<button className="button secondary cancel" title={job?.status==='queued'?'This job has not started. Remove it from the queue.':'Stop the image that is generating now.'} onClick={async()=>{try{if(pollId)await api(`/api/jobs/${pollId}/cancel`,{method:'POST'});}catch(e){setError(String(e));}}}>{job?.status==='queued'?'Remove from queue':'Stop this job'}</button>:null}<button className="button primary" disabled={locked||!ready} onClick={()=>generate()} title={t('keyboard')}>{submitting?<Loader2 size={20} className="spin"/>:<Sparkles size={20}/>}<span>{submitting?'Adding…':queue.count||queue.state.paused?'Add image to queue':t('generate')}</span></button></div></div>
         {error?<div className="message error" role="alert"><span>{error}</span><button className="icon-button" aria-label={t('close')} onClick={()=>setError('')}><X size={16}/></button></div>:null}
         {notice?<div className="notice" role="status">{notice}</div>:null}
         {job?.status==='cancelled'?<div className="notice">{t('cancelled')}</div>:null}
@@ -275,8 +273,8 @@ function App(){
       </div>
       <footer><span className="local-status"><i/>{modelState?.remote?'Runs on RunPod GPU':t('local')}</span><span>{modelState?.remote?'Results saved on this computer':config?.device||''}</span></footer>
     </main>
-    <VideoTab addLora={pendingVideoLora?.target==='create'?pendingVideoLora:null} onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='create'} api={api} models={modelState} enhancement={enhancement} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)}/>
-    <ReferenceTab addLora={pendingVideoLora?.target==='reference'?pendingVideoLora:null} onSendVideo={sendVideo} videoInput={videoInput?.target!=='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='reference'} api={api} token={token.current} models={modelState} enhancement={enhancement} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
+    <VideoTab addLora={pendingVideoLora?.target==='create'?pendingVideoLora:null} onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='create'} api={api} models={modelState} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)}/>
+    <ReferenceTab addLora={pendingVideoLora?.target==='reference'?pendingVideoLora:null} onSendVideo={sendVideo} videoInput={videoInput?.target!=='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='reference'} api={api} token={token.current} models={modelState} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
     <MultiReferenceTab onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='multi-reference'} api={api} models={modelState} queue={queue.state} onQueued={queue.refresh} restoreRequest={multiRestore} onView={job=>setGalleryView({job,key:Date.now()})}/>
     <UpscaleTab onSendVideo={sendVideo} videoInput={videoInput?.target==='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='upscale'} api={api} token={token.current} models={modelState} restoreRequest={upscaleRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
     <CivitaiPage api={api} visible={tab==='civitai'} models={modelState} onUse={applyInstalled}/>

@@ -54,8 +54,7 @@ When the installation is done, Qwen opens in its own window. To open it later, d
 ## Create your first image
 
 1. Write a prompt, for example: `A small coffee shop with a wooden sign that reads "QWEN CAFE"`.
-2. Turn **Enhance prompt** off, or connect a Google account to use it (see below).
-3. Click **Generate image**.
+2. Click **Generate image**.
 
 The first image also downloads the model (about 18 GB). A small download indicator at the bottom left shows the progress, speed and time left on every page, and the download continues when you switch pages. After that, a 1K image takes about 20 seconds with a standard model and about 6 seconds with Turbo (RTX 5090, model already loaded).
 
@@ -115,7 +114,7 @@ All Qwen image models share one text encoder and VAE (about 10 GB, downloaded on
 | **Remove object** (experimental) | 1 image | Click **Mark object**, draw a box around the object, then generate. |
 | **Character swap** (experimental, Turbo only) | 1 scene, 2 character | Puts the character from picture 2 into picture 1. Results vary. |
 
-Every tool has an **Effect strength** slider. Prompt enhancement turns off while a tool is selected, because each tool needs its own exact wording.
+Every tool has an **Effect strength** slider.
 
 **Output size.** One list: **Auto 1K**, **Auto 2K**, the fixed sizes, and **Custom…** for any width and height.
 
@@ -152,19 +151,14 @@ The first training of each base model downloads it (Z-Image Turbo about 25 GB). 
 Open **Settings** (the gear icon). It has three tabs:
 
 - **Models**: download or remove any model, tool or video model. Removing a model does not delete your images or videos.
-- **Prompt enhancement**: connect your Google account.
+- **Google account**: writes training captions on the Train tab.
 - **Processing**: run on this computer or on a RunPod cloud GPU.
 
 <img src=".github/assets/models.png" alt="Image models in Settings" width="70%">
 
-## Prompt enhancement (optional)
+## Google account (optional)
 
-Prompt enhancement rewrites your short prompt into a detailed one, which usually gives better images. It uses Gemini through your Google account, so you do not need an API key.
-
-1. Open **Settings**.
-2. Click **Connect Google Account** and sign in.
-
-When enhancement is on, your prompt and input images go to Google. When it is off, nothing leaves your computer.
+The Train tab can write the captions of your training images with Gemini through your Google account (no API key). Open **Settings** and click **Connect Google Account**. Only the training images you caption go to Google. The app sends your prompts to the model exactly as you write them.
 
 ## Video
 
