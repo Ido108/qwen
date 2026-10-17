@@ -36,6 +36,24 @@ class CivitaiTests(unittest.TestCase):
         self.assertEqual(civitai.find_sampler('Euler Simple - 12 Steps'), 'euler')
         self.assertEqual(civitai.find_sampler('DPM++ 2M SDE Karras'), 'dpmpp_2m_sde')
 
+    def test_author_settings_on_a_page_for_several_architectures(self):
+        page = ('KreaEdit and KreaGlam are finetunes of Krea 2. They are more photorealistic. '
+                'Settings are 8 steps (3-4 steps for upscaling), cfg1, er_sde sampler, Beta scheduler. '
+                'To add more texture to editing results, activate upscaling and use 4-5 steps. '
+                'Big Love Zia and Zora are fine-tunes of Z-Image(-Turbo). '
+                'To make them work you additionally need to place qwen3_4b.safetensors in the text_encoder folder. '
+                'Settings are 8 steps, cfg1, Euler sampler, Simple scheduler. '
+                'Big Love Eryn is a fine-tune of Ernie-Image. Settings are 4 steps, cfg1, Euler sampler. '
+                'Big Love XL is based on SDXL. Settings are DMD2 lora, LCM Exponential, 12 steps, cfg 1.5.')
+        krea = civitai.author_settings('To add more texture to editing results, activate upscaling and use 4-5 steps.', page, arch='krea-2')
+        self.assertEqual((krea['steps'], krea['cfg'], krea['sampler'], krea['scheduler']), (8, 1.0, 'er_sde', 'beta'))
+        zimage = civitai.author_settings('', page, arch='z-image')
+        self.assertEqual((zimage['steps'], zimage['sampler'], zimage['scheduler']), (8, 'euler', 'simple'), 'a file name does not move the paragraph to Qwen')
+        self.assertEqual(civitai.author_settings('', page, arch='qwen-image-2.1'), {}, 'no Qwen paragraph: no settings from another architecture')
+        faster = civitai.author_settings('If you want to render 30% faster with minimal quality loss, you can use 4 steps.', page, arch='krea-2')
+        self.assertEqual(faster['steps'], 8, 'an optional faster choice does not replace the main settings')
+        self.assertEqual(civitai.author_settings('If you want it faster, you can use 4 steps.', '', arch='krea-2')['steps'], 4)
+
     def test_status_is_connected_only_while_civitai_accepts_the_sign_in(self):
         from unittest import mock
         import httpx

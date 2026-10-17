@@ -252,7 +252,7 @@ def _slim(model: dict) -> dict:
 
 def _index_path(key) -> Path:
     # v4: Z-Image base models; an index saved before them would hide Z-Image files for hours.
-    return INDEX_DIR / ('-'.join(str(part) for part in key).replace(' ', '_') + '-v4.json')
+    return INDEX_DIR / ('-'.join(str(part) for part in key).replace(' ', '_') + '-v5.json')
 
 
 def _build_index(key) -> None:
@@ -409,6 +409,15 @@ def find_scheduler(text: str) -> str | None:
 # Words a page uses to name an architecture in a settings heading ("ZIT Usage", "For Krea 2:").
 ARCH_WORDS = {'z-image': r'\bzit\b|\bzib\b|z[ _-]?image', 'krea-2': r'krea', 'qwen-image-2.1': r'qwen',
               'ltx25': r'\bltx', 'minimax-h3': r'\bh3\b|minimax'}
+# Architectures the app does not run; a page paragraph about one of them is not about the model's own versions.
+OTHER_ARCH_WORDS = r'\bsdxl\b|\bpony\b|\bflux\b|\bklein\b|\bernie\b|\blongcat\b|illustrious|\bsd ?1\.5\b|hidream|chroma|\bwan\b|hunyuan'
+# Settings for a second pass (upscaling, img2img, hires fix), not for making the image.
+SECOND_PASS = re.compile(r'upscal|hires|hi-res|img2img|image to image|refine|detailer|denoise', re.I)
+# A sentence that says what a version is built on ("Zia is a fine-tune of Z-Image"); a file name such as
+# qwen3_4b.safetensors in a Z-Image paragraph does not change the paragraph's architecture.
+BUILT_ON = re.compile(r'fine-?tunes?\s+of|based\s+on|merges?\s+of|built\s+on|trained\s+on|distill\w*\s+(?:of|from)', re.I)
+# A faster or optional choice next to the recommended settings ("If you want it 30% faster, you can use 4 steps").
+OPTIONAL = re.compile(r'\bif you\b|\byou can\b|\bor even\b|faster|speed', re.I)
 
 
 def _setting_key(key: str) -> str:
@@ -484,14 +493,33 @@ def _labeled_settings(text: str, arch: str | None = None) -> dict:
 def author_settings(*texts: str, arch: str | None = None) -> dict:
     """Steps, CFG, sampler and scheduler that the page recommends. The version text wins over the model text,
     a labeled settings list wins over prose, and a sentence that names the author or a recommendation wins
-    over example-image captions."""
+    over example-image captions. An optional faster choice ("you can use 4 steps") counts only when no text
+    gives the main settings."""
+    optional = {}
     for text in texts:
         labeled = _labeled_settings(text, arch)
         if labeled:
             return labeled
         sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text or '') if s.strip()]
-        rank = lambda s: 0 if re.search(r'author|recommend|\bbest\b|suggested|default', s, re.I) else 1 if re.search(r'setting|use', s, re.I) else 2
-        for sentence in sorted(sentences, key=rank):
+        # A page about several architectures ("KreaGlam is a finetune of Krea 2. Settings are 8 steps...
+        # Zia is a fine-tune of Z-Image. Settings are..."): each sentence belongs to the last architecture named before it.
+        about, context = [], None
+        for sentence in sentences:
+            if BUILT_ON.search(sentence):
+                own = [name for name, words in ARCH_WORDS.items() if re.search(words, sentence, re.I)]
+                other = re.search(OTHER_ARCH_WORDS, sentence, re.I)
+                if len(own) == 1 and not other:
+                    context = own[0]
+                elif other and not own:
+                    context = 'other'
+            about.append(context)
+        mine = lambda i: about[i] is None or about[i] == arch or (arch is None and about[i] != 'other')
+        rank = lambda i: (bool(OPTIONAL.search(sentences[i])), 0 if re.search(r'author|recommend|\bbest\b|suggested|default', sentences[i], re.I) else 1 if re.search(r'setting|use', sentences[i], re.I) else 2)
+        for sentence in [sentences[i] for i in sorted((i for i in range(len(sentences)) if mine(i)), key=rank)]:
+            # "Use 4-5 steps when upscaling" is a second pass; "8 steps (3-4 for upscaling)" keeps its first number.
+            lead = re.split(r'\(|\bfor upscal', sentence, maxsplit=1, flags=re.I)[0]
+            if SECOND_PASS.search(lead):
+                continue
             match = re.search(r'\b(\d{1,3})\s*(?:[-\u2013~]\s*\d{1,3}\s*)?steps?\b', sentence, re.I) or re.search(r'\bsteps?\s*[:=]?\s*(\d{1,3})\b', sentence, re.I)
             if not match or not 1 <= int(match.group(1)) <= 150:
                 continue
@@ -504,8 +532,10 @@ def author_settings(*texts: str, arch: str | None = None) -> dict:
                 found['sampler'] = sampler
             if scheduler:
                 found['scheduler'] = scheduler
-            return found
-    return {}
+            if not OPTIONAL.search(sentence):
+                return found
+            optional = optional or found
+    return optional
 
 
 def detect_turbo(version_name: str, settings: dict) -> bool | None:
@@ -619,6 +649,9 @@ def details(model_id: int) -> dict:
         info = BASE_MODELS.get(version.get('baseModel'))
         settings = author_settings(version_text, description, arch=(info or {}).get('arch')) or example_settings(version)
         turbo = version_turbo(model, version, settings)
+        # Where the type comes from, so the app can say it: the Civitai tag, the version name, the page settings or the model name.
+        source = ('tag' if 'turbo' in (info or {}) else 'name' if detect_turbo(version['name'], {}) is not None
+                  else 'page' if detect_turbo(version['name'], settings) is not None else 'model name' if turbo is not None else None)
         files = [{'id': f['id'], 'name': f['name'], 'type': f.get('type', 'Model'), 'bytes': int(f.get('sizeKB', 0) * 1024),
                   'format': _file_format(f), 'precision': (f.get('metadata') or {}).get('fp', ''),
                   'primary': bool(f.get('primary')), 'sha256': ((f.get('hashes') or {}).get('SHA256') or '').lower()}
@@ -633,7 +666,7 @@ def details(model_id: int) -> dict:
                          'trained_words': [w.strip() for w in version.get('trainedWords') or [] if w.strip()],
                          'description': version_text, 'files': files, 'default_file': (sorted(usable, key=rank)[0]['id'] if usable else None),
                          'suggested_strength': suggested_strength(version_text + '\n' + description),
-                         'turbo_hint': bool(turbo), 'turbo_known': turbo is not None,
+                         'turbo_hint': bool(turbo), 'turbo_known': turbo is not None, 'turbo_source': source,
                          'author_settings': settings or None,
                          'vae_hint': _known_vae(next((f['name'] for f in files if f['type'] == 'VAE'), '')) or recommended_vae(version_text + '\n' + description)
                                      or ('file' if any(f['type'] == 'VAE' for f in files) else None),
@@ -904,7 +937,7 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     return entry
 
 
-SETTINGS_VERSION = 4  # 3: settings lists, Euler A, en dash ranges and "Best:" lines; 4: the list for the model's own architecture
+SETTINGS_VERSION = 5  # 3: settings lists, Euler A, en dash ranges and "Best:" lines; 4: the list for the model's own architecture; 5: plain-text settings for the model's own architecture, never an upscaling pass
 
 
 def _known_vae(name: str) -> str | None:

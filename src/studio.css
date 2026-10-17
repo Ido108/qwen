@@ -318,7 +318,9 @@
 .civitai-version small{grid-column:1;font-size:11px;color:#8a85a0}
 .civitai-version em{grid-column:2;grid-row:1/3;align-self:center;display:inline-flex;align-items:center;gap:3px;font-style:normal;font-size:11px;color:#1e7a46}
 .civitai-version[aria-checked=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#f6f4ff}
-.civitai-variants{display:flex;gap:4px}
+.civitai-variants{display:flex;flex-wrap:wrap;gap:4px}
+.civitai-trigger{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.civitai-source{display:block;margin-top:2px;font-size:11.5px;color:#8a85a0}
 .civitai-variants em{font-style:normal;font-size:10.5px;padding:1px 6px;border-radius:8px;background:#efedf7;color:#5d5874}
 .civitai-variants em.turbo{background:#fff1dc;color:#9a5b00}
 .civitai-total{font-size:12px;color:#7a7494;white-space:nowrap}
