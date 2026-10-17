@@ -116,6 +116,7 @@
   .studio-main .rail-open{top:76px}
 }
 @media(min-width:1280px){.studio-main.with-rail .studio-grid{grid-template-columns:minmax(380px,460px) minmax(0,1fr) 236px}}
+@media(min-width:760px){.studio-main.with-queue .studio-grid{grid-template-columns:minmax(330px,440px) minmax(0,1fr) 220px}.studio-main .results-rail.queue-only{position:static;height:100%;width:auto;box-shadow:none;background:#ffffffc4;z-index:auto}}
 /* Medium windows: the Recent panel opens as a drawer over the result. */
 @media(min-width:760px) and (max-width:1279px){
   .studio-main .results-rail{position:fixed;right:12px;top:76px;bottom:12px;height:auto;width:250px;z-index:20;box-shadow:0 12px 40px #1d163a33;background:#fff}
@@ -290,8 +291,10 @@
 .prompt-history-remove:hover{background:#fde8ea;color:#b4232f}
 
 /* Replace mode in the input library. */
-.library-replace{display:inline-flex;align-items:center;gap:5px;margin-left:auto;font-size:12px;color:#5d5874;cursor:pointer;user-select:none}
-.library-replace input{accent-color:var(--accent);margin:0}
+.library-replace{display:inline-flex;align-items:center;margin-left:auto;font-size:12px;color:var(--accent);font-weight:550}
+.thumb-zoom{position:absolute;bottom:26px;inset-inline-end:3px;width:21px;height:21px;display:grid;place-items:center;background:#ffffffe8;border-radius:50%;box-shadow:0 1px 5px #16162b20;opacity:0;transition:opacity .12s}
+.input-thumb:hover .thumb-zoom,.thumb-zoom:focus-visible{opacity:1}
+.input-thumb .image-number{max-width:calc(100% - 30px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px}
 .library-replace+.library-upload{margin-left:10px}
 .input-thumb.target{outline:2.5px solid var(--accent);outline-offset:2px;border-radius:10px}
 
@@ -312,6 +315,7 @@
 .civitai-version{display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:start;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fff}
 .civitai-version b{font-size:13px;color:#2b2540}
 .civitai-version span{grid-column:1;font-size:11.5px;color:#6b6585}
+.civitai-version small{grid-column:1;font-size:11px;color:#8a85a0}
 .civitai-version em{grid-column:2;grid-row:1/3;align-self:center;display:inline-flex;align-items:center;gap:3px;font-style:normal;font-size:11px;color:#1e7a46}
 .civitai-version[aria-checked=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);background:#f6f4ff}
 .civitai-variants{display:flex;gap:4px}
@@ -321,7 +325,8 @@
 .field-label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
 
 /* Background download indicator. */
-.download-pill{position:fixed;left:16px;bottom:16px;z-index:60;display:flex;align-items:center;gap:10px;max-width:min(420px,calc(100vw - 32px));padding:9px 10px 9px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:0 8px 28px #1b14402e;color:#3c3556}
+.download-pills{position:fixed;left:16px;bottom:16px;z-index:60;display:flex;flex-direction:column;gap:8px}
+.download-pill{display:flex;align-items:center;gap:10px;max-width:min(420px,calc(100vw - 32px));padding:9px 10px 9px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:0 8px 28px #1b14402e;color:#3c3556}
 .download-pill-text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .download-pill-text b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .download-pill-text span{font-size:11px;color:#6b6585;white-space:nowrap}
@@ -344,7 +349,7 @@ body:has(.studio-main:not([hidden])){--controls-w:min(440px,50vw)}
   .controls-panel>.prompt-input{flex:1 1 auto}
   .generate-dock{flex:none}
   /* The download indicator sits over the result, not over the Generate button. */
-  body:has(.studio-main:not([hidden])) .download-pill{left:calc(var(--controls-w) + 44px);bottom:84px}
+  body:has(.studio-main:not([hidden])) .download-pills{left:calc(var(--controls-w) + 44px);bottom:84px}
 }
 @media(min-width:1280px){
   body:has(.studio-main.with-rail:not([hidden])){--controls-w:460px}
@@ -472,3 +477,7 @@ body:has(.studio-main:not([hidden])){--controls-w:min(440px,50vw)}
 .gallery-selection.active{color:#2b2540;font-weight:600}
 .gallery-selection .button.danger{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:8px;border:0;background:#c62f3b;color:#fff;font-weight:600}
 .gallery-selection .button.danger:disabled{opacity:.6}
+.input-note{margin:8px 2px 0;font-size:12px;line-height:1.5;color:#7a4d00;background:#fff7e6;border:1px solid #f3dfb5;border-radius:8px;padding:7px 10px}
+.civitai-type-choice{display:flex;flex-direction:column;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #f3dfb5;background:#fff7e6;border-radius:10px}
+.civitai-type-choice p{margin:0;font-size:12.5px;line-height:1.5;color:#6b4a0c}
+.civitai-type-choice .segmented{align-self:flex-start}

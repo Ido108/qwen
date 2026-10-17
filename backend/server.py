@@ -629,8 +629,9 @@ def civitai_disconnect():
 @app.get('/api/civitai/search')
 def civitai_search(query: str = '', kind: Literal['LORA', 'Checkpoint'] = 'LORA',
                    sort: Literal['Most Downloaded', 'Highest Rated', 'Newest'] = 'Most Downloaded', cursor: str | None = None,
-                   area: Literal['image', 'video'] = 'image', variant: Literal['all', 'standard', 'turbo'] = 'all'):
-    return civitai_call(civitai.search, query, kind, sort, cursor, True, area, variant)
+                   area: Literal['image', 'video'] = 'image', variant: Literal['all', 'standard', 'turbo'] = 'all',
+                   arch: Literal['all', 'qwen-image-2.1', 'krea-2', 'minimax-h3', 'ltx25'] = 'all'):
+    return civitai_call(civitai.search, query, kind, sort, cursor, True, area, variant, arch)
 
 
 @app.get('/api/civitai/models/{model_id}')
@@ -643,24 +644,38 @@ def civitai_resolve(body: CivitaiLink):
     return civitai_call(civitai.resolve_link, body.link)
 
 
+# Civitai downloads run side by side (each file has its own target), one record and Cancel switch per version.
+civitai_downloads: dict[str, dict] = {}
+civitai_cancels: dict[str, threading.Event] = {}
+
+
+def civitai_download_list() -> list[dict]:
+    with models.lock:
+        old = [key for key, item in civitai_downloads.items() if item['status'] != 'running' and time.time() - item.get('ended_at', 0) > 600]
+        for key in old:
+            civitai_downloads.pop(key, None)
+            civitai_cancels.pop(key, None)
+        return [dict(item) for item in civitai_downloads.values()]
+
+
 @app.post('/api/civitai/install')
 def civitai_install(body: CivitaiInstall):
+    key = str(body.version_id)
     with models.lock:
-        if models._download_running_locked():
-            raise HTTPException(409, 'Another model is downloading. Wait for it to finish.')
-        models.transfer.clear()
-        models.transfer.update(status='running', stage='preparing', requested_id=f'civitai:{body.version_id}', title=body.title,
-                               completed_bytes=0, total_bytes=0)
-        models.cancel_event.clear()
+        if civitai_downloads.get(key, {}).get('status') == 'running':
+            raise HTTPException(409, 'This version is already downloading.')
+        record = civitai_downloads[key] = {'status': 'running', 'stage': 'preparing', 'requested_id': f'civitai:{body.version_id}', 'title': body.title,
+                                           'completed_bytes': 0, 'total_bytes': 0}
+        cancel = civitai_cancels[key] = threading.Event()
 
     def run():
         started, printed = time.monotonic(), [0.0]
 
         def progress(done, total, stage):
-            if models.cancel_event.is_set():
+            if cancel.is_set():
                 raise models.DownloadCancelled()
             with models.lock:
-                models.transfer.update(completed_bytes=done, total_bytes=total, stage=stage)
+                record.update(completed_bytes=done, total_bytes=total, stage=stage)
             now = time.monotonic()
             if now - printed[0] > 5 or stage != 'downloading':
                 printed[0] = now
@@ -669,14 +684,23 @@ def civitai_install(body: CivitaiInstall):
         try:
             entry = civitai.install(body.version_id, body.file_id, body.turbo, progress)
             with models.lock:
-                models.transfer.update(status='succeeded', stage='complete', title=entry['title'], model_id=entry['id'], installed_id=entry['id'])
+                record.update(status='succeeded', stage='complete', title=entry['title'], model_id=entry['id'], installed_id=entry['id'], ended_at=time.time())
         except models.DownloadCancelled:
             with models.lock:
-                models.transfer.update(status='cancelled', message='Download cancelled. Add it again to resume.')
+                record.update(status='cancelled', message='Download cancelled. Add it again to resume.', ended_at=time.time())
         except Exception as exc:
             with models.lock:
-                models.transfer.update(status='failed', message=str(exc)[:400])
-    threading.Thread(target=run, daemon=True).start()
+                record.update(status='failed', message=str(exc)[:400], ended_at=time.time())
+    threading.Thread(target=run, name=f'civitai-{key}', daemon=True).start()
+    return {'ok': True}
+
+
+@app.post('/api/civitai/install/{version_id}/cancel')
+def civitai_install_cancel(version_id: int):
+    with models.lock:
+        cancel = civitai_cancels.get(str(version_id))
+    if cancel:
+        cancel.set()
     return {'ok': True}
 
 
@@ -758,7 +782,7 @@ def import_status():
 
 @app.get('/api/models')
 def get_models():
-    return catalog_state() | {'resident': image_worker.status() if cloud.settings()['mode'] == 'local' else None}
+    return catalog_state() | {'resident': image_worker.status() if cloud.settings()['mode'] == 'local' else None, 'downloads': civitai_download_list()}
 
 @app.post('/api/models/release')
 def release_models():

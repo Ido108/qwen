@@ -1417,7 +1417,7 @@
   },
   {
     "id": "krea2-encoder-bf16",
-    "title": "Qwen3-VL 4B · BF16 (Krea 2)",
+    "title": "Krea 2 text encoder (Qwen3-VL 4B, BF16)",
     "kind": "encoder",
     "format": "BF16",
     "repo": "Comfy-Org/Krea-2",

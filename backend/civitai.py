@@ -141,6 +141,9 @@ def access_token() -> str | None:
         if not tokens.get('refresh_token'):
             return None
         response = _auth_post('/api/auth/oauth/token', {'grant_type': 'refresh_token', 'refresh_token': tokens['refresh_token'], 'client_id': CLIENT_ID})
+        if response.status_code in (400, 401, 403):
+            _forget()  # Civitai ended the sign-in: show Connect, not a connection that does not work
+            return None
         if response.status_code != 200:
             return None
         data = response.json()
@@ -158,7 +161,32 @@ def save_api_key(key: str) -> dict:
     return status()
 
 
+def _forget() -> None:
+    TOKEN_FILE.unlink(missing_ok=True)
+    _checked['at'] = 0
+
+
+_checked = {'at': 0.0}
+CHECK_EVERY = 600
+
+
+def token_rejected(token: str) -> bool:
+    """True only when Civitai answers that the token is not valid (not when Civitai is unreachable)."""
+    try:
+        response = httpx.get(AUTH + '/api/auth/oauth/userinfo', headers={**HEADERS, 'Authorization': f'Bearer {token}'}, timeout=20)
+    except Exception:
+        return False
+    return response.status_code in (401, 403)
+
+
 def status() -> dict:
+    """Connected only while Civitai accepts the saved sign-in or key; checked again every 10 minutes."""
+    if _load() and time.time() - _checked['at'] > CHECK_EVERY:
+        token = access_token()
+        if token and token_rejected(token):
+            _forget()
+        elif token:
+            _checked['at'] = time.time()
     tokens = _load()
     return {'connected': bool(tokens), 'username': tokens.get('username', ''), 'method': 'key' if tokens.get('api_key') else 'account' if tokens else ''}
 
@@ -213,12 +241,12 @@ def _slim(model: dict) -> dict:
     return {'id': model['id'], 'name': model['name'], 'type': model['type'], 'nsfw': model.get('nsfw', False),
             'creator': {'username': (model.get('creator') or {}).get('username', '')}, 'tags': model.get('tags', []),
             'stats': {key: (model.get('stats') or {}).get(key, 0) for key in ('downloadCount', 'thumbsUpCount')},
-            'modelVersions': [{'id': v['id'], 'name': v['name'], 'baseModel': v.get('baseModel'), 'images': v.get('images', [])[:1]}
-                              for v in model.get('modelVersions', [])]}
+            'modelVersions': [{'id': v['id'], 'name': v['name'], 'baseModel': v.get('baseModel'), 'images': v.get('images', [])[:1],
+                               'variant': _variant(model, v)} for v in model.get('modelVersions', [])]}
 
 
 def _index_path(key) -> Path:
-    return INDEX_DIR / ('-'.join(str(part) for part in key).replace(' ', '_') + '.json')
+    return INDEX_DIR / ('-'.join(str(part) for part in key).replace(' ', '_') + '-v3.json')
 
 
 def _build_index(key) -> None:
@@ -276,20 +304,32 @@ def warm_indexes() -> None:
             _listing(kind, 'Most Downloaded', area, True)
 
 
-def _variant(model: dict, version: dict) -> str:
+def version_turbo(model: dict, version: dict, settings: dict | None = None) -> bool | None:
+    """Turbo or not for one version: the base model tag, then the version name, then the page settings
+    (8 steps at CFG 1 is a Turbo model), then the model name. None when nothing tells."""
     if (BASE_MODELS.get(version.get('baseModel')) or {}).get('turbo'):
-        return 'turbo'
-    turbo = detect_turbo(version['name'], {})
-    if turbo is None:
-        turbo = detect_turbo(model['name'], {})
-    return 'turbo' if turbo else 'standard'
+        return True
+    if settings is None:
+        settings = author_settings(_text(version.get('description')), _text(model.get('description'))) or example_settings(version)
+    turbo = detect_turbo(version['name'], settings)
+    return detect_turbo(model['name'], {}) if turbo is None else turbo
+
+
+def _variant(model: dict, version: dict) -> str:
+    """'turbo', 'standard', or 'unknown' when neither the page nor the names tell (the app does not guess)."""
+    if 'variant' in version:
+        return version['variant']  # worked out from the full page when the index was built
+    turbo = version_turbo(model, version)
+    return 'unknown' if turbo is None else 'turbo' if turbo else 'standard'
 
 
 def search(query: str = '', kind: str = 'LORA', sort: str = 'Most Downloaded', cursor: str | None = None, nsfw: bool = True,
-           area: str = 'image', variant: str = 'all') -> dict:
-    bases = tuple(name for name, info in BASE_MODELS.items() if info['area'] == area)
+           area: str = 'image', variant: str = 'all', arch: str = 'all') -> dict:
+    bases = tuple(name for name, info in BASE_MODELS.items() if info['area'] == area and arch in ('all', info['arch']))
     words = [word for word in query.casefold().split() if word]
-    if not words and (variant == 'all' or kind != 'Checkpoint'):
+    if not bases:
+        return {'items': [], 'total': 0, 'next': None, 'indexing': False}
+    if not words and (variant == 'all' or kind != 'Checkpoint') and arch == 'all':
         # Plain browsing: Civitai's own pages are complete and fast.
         params = {'limit': PAGE, 'types': kind, 'baseModels': list(bases), 'sort': sort, 'period': 'AllTime', 'nsfw': str(nsfw).lower()}
         if cursor:
@@ -339,23 +379,91 @@ SAMPLERS = ('euler_ancestral_cfg_pp', 'euler_ancestral', 'euler_cfg_pp', 'euler'
 SCHEDULERS = ('simple', 'normal', 'beta', 'karras', 'sgm_uniform', 'exponential', 'ddim_uniform', 'linear_quadratic', 'kl_optimal')
 
 
+# Names authors write for ComfyUI samplers, longest first ("Euler A" is euler_ancestral, not euler).
+SAMPLER_ALIASES = (('euler ancestral cfg++', 'euler_ancestral_cfg_pp'), ('euler a cfg++', 'euler_ancestral_cfg_pp'), ('euler cfg++', 'euler_cfg_pp'),
+                   ('euler ancestral', 'euler_ancestral'), ('euler_a', 'euler_ancestral'), ('euler a', 'euler_ancestral'),
+                   ('dpm++ 2m sde', 'dpmpp_2m_sde'), ('dpm++ 3m sde', 'dpmpp_3m_sde'), ('dpm++ 2m', 'dpmpp_2m'), ('dpm++ sde', 'dpmpp_sde'),
+                   ('res multistep', 'res_multistep'), ('unipc', 'uni_pc'))
+
+
+def find_sampler(text: str) -> str | None:
+    lower = text.lower()
+    for alias, name in SAMPLER_ALIASES + tuple((name, name) for name in SAMPLERS):
+        if re.search(rf'(?<![a-z_+]){re.escape(alias)}(?![a-z_+])', lower):
+            return name
+    return None
+
+
+def find_scheduler(text: str) -> str | None:
+    lower = text.lower()
+    return next((name for name in SCHEDULERS if re.search(rf'(?<![a-z_]){name}(?![a-z_])', lower)), None)
+
+
+def _labeled_settings(text: str) -> dict:
+    """A settings list such as "Sampler: Euler A + BETA" and "Steps: 8" on their own lines. Among several lists,
+    the first one after a "recommended settings" line wins, else the first list."""
+    lines = [line.strip(' \t•*-·>') for line in (text or '').split('\n')]
+    label = re.compile(r'(sampler|sampling method|scheduler|schedule type|sampling steps|steps?|cfg(?:\s*scale)?|guidance(?:\s*scale)?)\s*[:：=]\s*(.+)', re.I)
+    groups, current, last, recommended = [], None, -10, False
+    for index, line in enumerate(lines):
+        # "Steps: 10, Sampler: Euler a, CFG scale: 2" holds three settings on one line.
+        matches = [label.match(part) for part in re.split(r'\s*[,;|]\s*(?=[A-Za-z][A-Za-z ]{1,20}[:：=])', line)]
+        matches = [match for match in matches if match]
+        if re.search(r'recommend|setting', line, re.I) and not matches:
+            recommended = True
+        if not matches:
+            continue
+        if current is None or index - last > 3:
+            current = {'recommended': recommended, 'lines': []}
+            groups.append(current)
+            recommended = False
+        current['lines'] += [match.groups() for match in matches]
+        last = index
+    for group in sorted(groups, key=lambda g: not g['recommended']):
+        found = {}
+        for key, value in group['lines']:
+            key = key.lower()
+            if key.startswith(('sampler', 'sampling method')):
+                if find_sampler(value):
+                    found.setdefault('sampler', find_sampler(value))
+                if find_scheduler(value):
+                    found.setdefault('scheduler', find_scheduler(value))
+            elif key.startswith('schedule'):
+                if find_scheduler(value):
+                    found.setdefault('scheduler', find_scheduler(value))
+            elif key.startswith(('cfg', 'guidance')):
+                number = re.match(r'\s*(\d+(?:\.\d+)?)', value)
+                if number and 0.5 <= float(number.group(1)) <= 15:
+                    found.setdefault('cfg', float(number.group(1)))
+            else:
+                number = re.match(r'\s*(\d{1,3})\b', value)
+                if number and 1 <= int(number.group(1)) <= 150:
+                    found.setdefault('steps', int(number.group(1)))
+        if 'steps' in found:
+            found['quote'] = '; '.join(f'{key}: {value.strip()}' for key, value in group['lines'])[:300]
+            return found
+    return {}
+
+
 def author_settings(*texts: str) -> dict:
     """Steps, CFG, sampler and scheduler that the page recommends. The version text wins over the model text,
-    and a sentence that names the author or a recommendation wins over example-image captions."""
+    a labeled settings list wins over prose, and a sentence that names the author or a recommendation wins
+    over example-image captions."""
     for text in texts:
+        labeled = _labeled_settings(text)
+        if labeled:
+            return labeled
         sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text or '') if s.strip()]
-        rank = lambda s: 0 if re.search(r'author|recommend|best result|suggested', s, re.I) else 1 if re.search(r'setting|use', s, re.I) else 2
+        rank = lambda s: 0 if re.search(r'author|recommend|\bbest\b|suggested|default', s, re.I) else 1 if re.search(r'setting|use', s, re.I) else 2
         for sentence in sorted(sentences, key=rank):
-            match = re.search(r'\b(\d{1,3})\s*(?:-\s*\d{1,3}\s*)?steps?\b', sentence, re.I) or re.search(r'\bsteps?\s*[:=]?\s*(\d{1,3})\b', sentence, re.I)
+            match = re.search(r'\b(\d{1,3})\s*(?:[-\u2013~]\s*\d{1,3}\s*)?steps?\b', sentence, re.I) or re.search(r'\bsteps?\s*[:=]?\s*(\d{1,3})\b', sentence, re.I)
             if not match or not 1 <= int(match.group(1)) <= 150:
                 continue
             found = {'steps': int(match.group(1)), 'quote': sentence[:300]}
             cfg = re.search(r'\bcfg\s*(?:scale)?\s*[:=]?\s*(\d+(?:\.\d+)?)', sentence, re.I)
             if cfg and 0.5 <= float(cfg.group(1)) <= 15:
                 found['cfg'] = float(cfg.group(1))
-            lower = sentence.lower()
-            sampler = next((name for name in SAMPLERS if re.search(rf'(?<![a-z_]){name}(?![a-z_])', lower)), None)
-            scheduler = next((name for name in SCHEDULERS if re.search(rf'(?<![a-z_]){name}(?![a-z_])', lower)), None)
+            sampler, scheduler = find_sampler(sentence), find_scheduler(sentence)
             if sampler:
                 found['sampler'] = sampler
             if scheduler:
@@ -366,10 +474,14 @@ def author_settings(*texts: str) -> dict:
 
 def detect_turbo(version_name: str, settings: dict) -> bool | None:
     """True for distilled few-step models, False for base models, None when the page does not say."""
-    if re.search(r'\b(base|standard|full)\b', version_name, re.I):
+    # "Raw" is the Krea 2 base only as a type word ("krea2_raw_int8", "Raw v2"), not in a theme name like "Raw Studio Shots".
+    if re.search(r'(?<![a-z])(base|standard|full)(?![a-z])', version_name, re.I) or \
+            re.search(r'(?<![a-z])raw(?=$|[ _.-]*(?:int|fp|bf|nv|mx|q\d|gguf|v?\d))', version_name, re.I):
         return False
     if re.search(r'turbo|lightning|distill|hyper|\b[48][ -]?steps?\b', version_name, re.I):
         return True
+    if settings.get('cfg') is not None and settings['cfg'] <= 1.5:
+        return True  # guidance off (CFG 1) is a distilled model; a base model needs CFG 2.5 or more
     if settings.get('steps'):
         return settings['steps'] <= 10
     return None
@@ -466,11 +578,11 @@ def details(model_id: int) -> dict:
     versions = []
     for version in model.get('modelVersions', []):
         version_text = _text(version.get('description'))
-        settings = author_settings(version_text, description)
+        settings = author_settings(version_text, description) or example_settings(version)
         info = BASE_MODELS.get(version.get('baseModel'))
-        turbo = True if (info or {}).get('turbo') else detect_turbo(version['name'], settings)
+        turbo = version_turbo(model, version, settings)
         files = [{'id': f['id'], 'name': f['name'], 'type': f.get('type', 'Model'), 'bytes': int(f.get('sizeKB', 0) * 1024),
-                  'format': (f.get('metadata') or {}).get('format', ''), 'precision': (f.get('metadata') or {}).get('fp', ''),
+                  'format': _file_format(f), 'precision': (f.get('metadata') or {}).get('fp', ''),
                   'primary': bool(f.get('primary')), 'sha256': ((f.get('hashes') or {}).get('SHA256') or '').lower()}
                  for f in version.get('files', [])]
         usable = [f for f in files if _usable_file(model['type'], f)]
@@ -490,6 +602,13 @@ def details(model_id: int) -> dict:
                          'images': [_image(i, 700) for i in version.get('images', [])[:8]]})
     return {**summary, 'description': description, 'url': f"{SITE}/models/{model['id']}", 'versions': versions,
             'installed_versions': sorted(_installed_versions())}
+
+
+def _file_format(file: dict) -> str:
+    """The file format from Civitai, or from the file name when the uploader left it empty."""
+    found = (file.get('metadata') or {}).get('format') or ''
+    name = file.get('name', '').lower()
+    return found or ('SafeTensor' if name.endswith('.safetensors') else 'GGUF' if name.endswith('.gguf') else '')
 
 
 def _usable_file(model_type: str, file: dict) -> bool:
@@ -626,11 +745,11 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     if problem:
         raise ValueError(problem)
     files = [f for f in version.get('files', []) if file_id is None or f['id'] == file_id]
-    candidates = [f for f in files if _usable_file(model['type'], {'type': f.get('type', 'Model'), 'format': (f.get('metadata') or {}).get('format', '')})]
+    candidates = [f for f in files if _usable_file(model['type'], {'type': f.get('type', 'Model'), 'format': _file_format(f)})]
     if not candidates:
         raise ValueError('This version has no LoRA or diffusion model file that this app can load.')
     file = sorted(candidates, key=lambda f: _file_rank({'primary': bool(f.get('primary')), 'precision': (f.get('metadata') or {}).get('fp', ''), 'bytes': f.get('sizeKB', 0),
-                                                        'format': (f.get('metadata') or {}).get('format', ''), 'name': f['name']},
+                                                        'format': _file_format(f), 'name': f['name']},
                                                        _best_quality(model['type'], base)))[0]
     lora = model['type'] == 'LORA'
     entry_id = f"civitai-{'lora' if lora else 'model'}-{version['id']}"
@@ -648,12 +767,10 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
         reason = 'a Qwen-Image 1 file' if info['arch'] == 'qwen-image-1' else f"not a {version.get('baseModel')} {'LoRA' if lora else 'model'}"
         raise ValueError(f'The downloaded file is {reason}, so this app cannot use it. It was removed.')
     description = _text(version.get('description')) + '\n' + _text(model.get('description'))
-    settings = author_settings(_text(version.get('description')), _text(model.get('description')))
-    if base['arch'] == 'krea-2' and not settings:
-        # Civitai's "Krea 2" holds both Raw and Turbo merges; the example images tell which (and how to run it).
-        settings = example_settings(version)
-    detected = True if base.get('turbo') else detect_turbo(version['name'], settings)
-    turbo = turbo if detected is None else detected
+    # Civitai's "Krea 2" holds both Raw and Turbo merges; without page settings the example images tell which.
+    settings = author_settings(_text(version.get('description')), _text(model.get('description'))) or example_settings(version)
+    detected = version_turbo(model, version, settings)
+    turbo = turbo if detected is None else detected  # the type the user chose when the page does not say
     size = target.stat().st_size
     entry = {'id': entry_id, 'title': model['name'] if len(model.get('modelVersions', [])) < 2 else f"{model['name']} · {version['name']}",
              'repo': 'civitai', 'source': 'civitai', 'revision': str(version['id']), 'directory': directory,
@@ -729,7 +846,7 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     return entry
 
 
-SETTINGS_VERSION = 2
+SETTINGS_VERSION = 3  # 3: settings lists, Euler A, en dash ranges and "Best:" lines on the page
 
 
 def _known_vae(name: str) -> str | None:
@@ -777,13 +894,12 @@ def _install_vae(version: dict, model: dict, progress) -> str | None:
 
 def repair_entries() -> list[str]:
     """Recheck Civitai image models installed by older versions of the app: Base models that were saved
-    as Turbo got the wrong steps and CFG. Uses the page again; changes only the settings."""
+    as Turbo got the wrong steps and CFG, and older page parsing missed settings lists and sampler names.
+    Uses the page again; changes only the settings."""
     fixed = []
     for item in user_catalog():
         if item.get('kind') != 'image' or 'civitai' not in item or item.get('settings_version', 0) >= SETTINGS_VERSION:
             continue
-        if item.get('family', '').startswith('krea-2'):
-            continue  # this repair is for Qwen-Image-2.1 entries only
         try:
             version = _get(f"/api/v1/model-versions/{item['civitai']['version_id']}")
             model = _get(f"/api/v1/models/{item['civitai']['model_id']}")
@@ -791,13 +907,18 @@ def repair_entries() -> list[str]:
             continue  # offline: try again on the next start
         version_text, model_text = _text(version.get('description')), _text(model.get('description'))
         settings = author_settings(version_text, model_text)
-        detected = detect_turbo(version['name'], settings)
-        turbo = item.get('family') == 'qwen-image-2.1-turbo' if detected is None else detected
-        item.update(family='qwen-image-2.1-turbo' if turbo else 'qwen-image-2.1',
-                    generation_defaults=image_defaults(turbo, settings, item['civitai']['url']), settings_version=SETTINGS_VERSION)
+        if item.get('family', '').startswith('krea-2'):
+            # A Krea 2 entry keeps the type it was installed as; only the page settings are read again.
+            turbo = item['family'] == 'krea-2-turbo'
+            item.update(generation_defaults=image_defaults(turbo, settings, item['civitai']['url'], 'krea-2'), settings_version=SETTINGS_VERSION)
+        else:
+            detected = detect_turbo(version['name'], settings)
+            turbo = item.get('family') == 'qwen-image-2.1-turbo' if detected is None else detected
+            item.update(family='qwen-image-2.1-turbo' if turbo else 'qwen-image-2.1',
+                        generation_defaults=image_defaults(turbo, settings, item['civitai']['url']), settings_version=SETTINGS_VERSION)
         vae_file = next((f['name'] for f in version.get('files', []) if f.get('type') == 'VAE'), '')
         vae_id = _known_vae(vae_file) or recommended_vae(version_text + '\n' + model_text)
-        if vae_id:
+        if vae_id and not item['family'].startswith('krea-2'):
             item['recommended_vae'] = vae_id
         _register(item)
         fixed.append(item['id'])
@@ -812,7 +933,15 @@ def _download(url: str, target: Path, total: int, expected: str, progress, parts
     # Resolve the signed storage address once and learn whether it accepts ranges.
     with httpx.stream('GET', url, headers={**headers, 'Range': 'bytes=0-0'}, timeout=60, follow_redirects=True) as probe:
         if probe.status_code in (401, 403):
-            raise PermissionError('Civitai needs you to sign in for this download. Click Connect Civitai account, then try again.')
+            if not token or token_rejected(token):
+                if token:
+                    _forget()
+                raise PermissionError('Civitai needs you to sign in for this download. Click Connect Civitai account, then try again.')
+            try:
+                reason = json.loads(probe.read() or b'{}').get('message') or ''
+            except ValueError:
+                reason = ''
+            raise PermissionError(f"Civitai refused this file for your account: {reason or 'for example an early access or paid version.'} Open it on Civitai to see the terms.")
         if probe.status_code not in (200, 206):
             raise ConnectionError(f'Civitai download failed ({probe.status_code}).')
         final = str(probe.url)

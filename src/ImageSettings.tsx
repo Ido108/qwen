@@ -53,8 +53,12 @@ export function ImageSettings({part='main',value,onChange,model,models,modelId,o
   }
   const options=toolState.tool_options;
   const strength=toolState.lora_strength??(tool?toolStrength(tool,options):1);
+  const hintSteps=defaults?.steps??(family.endsWith('turbo')?8:family==='krea-2'?52:25);const hintCfg:number|null=defaults?.cfg??(family==='krea-2'?4.5:family.endsWith('turbo')?1:null);
+  const hintSampler=defaults?.sampler&&defaults.sampler!=='euler'?defaults.sampler.replace(/_/g,' '):'';const hintScheduler=defaults?.scheduler&&defaults.scheduler!=='simple'?defaults.scheduler.replace(/_/g,' '):'';
+  // CFG 1 runs one pass without the negative branch, so a negative prompt changes nothing.
+  const settingsHint=`${family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':'Standard'}, ${hintSteps} steps, ${hintCfg===null?'CFG 2 with a negative prompt, else 1':`CFG ${hintCfg}`}${hintSampler?`, ${hintSampler}`:''}${hintScheduler?` / ${hintScheduler}`:''}${hintCfg!==null&&hintCfg<=1?' (negative prompt has no effect at CFG 1)':''}`;
   const status=[model?.id==='gguf-q8_0'||model?.id==='turbo-gguf-q8_0'?'★ Recommended':'',model?.ready?'✓ Installed':model?'Downloads when you generate':'',
-    family==='qwen-image-2.1-turbo'?'Turbo, 8 steps, no negative prompt':family==='krea-2-turbo'?'Krea 2 Turbo, 8 steps, no negative prompt':family==='krea-2'?'Krea 2 Raw, 52 steps, CFG 4.5':'Standard, 25 steps',pageText?'Author settings':''].filter(Boolean).join(' · ');
+    settingsHint,pageText?'Author settings':''].filter(Boolean).join(' · ');
   const cls=`image-generation-settings studio-settings settings-${part}`;
   if(part==='model')return <fieldset className={cls} disabled={disabled} aria-label="Model">
     <div className="field model-field"><label htmlFor="image-model">Model</label>

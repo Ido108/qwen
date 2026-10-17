@@ -9,11 +9,11 @@ export type LibraryTab='uploads'|'results'|'people';
 export type Person={id:string;name:string;image_id:string;image_ids:string[];thumb_url:string;url:string};
 
 /** Every image you have used, with a checkmark: checked images are the inputs, in the order you check them. */
-export function InputLibrary({api,inputs,onChange,results,people,onPeople,revision,disabled,onUpload,limit,replace,onReplace,target,onClose}:{api:Api;inputs:InputImage[];onChange:(next:InputImage[])=>void;
+export function InputLibrary({api,inputs,onChange,results,people,onPeople,revision,disabled,onUpload,limit,replace,target,onClose}:{api:Api;inputs:InputImage[];onChange:(next:InputImage[])=>void;
   results:Result[];people:Person[];onPeople:()=>void;revision:number;disabled:boolean;onUpload:()=>void;limit:number;
-  replace:boolean;onReplace:(on:boolean)=>void;target:number;onClose?:()=>void}){
+  replace:boolean;target:number;onClose?:()=>void}){
   const swap=replace&&inputs.length>0;
-  function add(image:InputImage){if(swap){const next=[...inputs];next[Math.min(target,inputs.length-1)]=image;onChange(next);}else if(inputs.length<limit)onChange([...inputs,image]);}
+  function add(image:InputImage){if(swap){const next=[...inputs];next[Math.min(target,inputs.length-1)]=image;onChange(next);onClose?.();}else if(inputs.length<limit)onChange([...inputs,image]);}
   const [filter,setFilter]=useState('');const [importing,setImporting]=useState<{state:string;message:string;done?:number;total?:number}|null>(null);const [message,setMessage]=useState('');
   const [tab,setTab]=useState<LibraryTab>(()=>(localStorage.getItem('qwen-input-tab') as LibraryTab)||'uploads');
   const [uploads,setUploads]=useState<Upload[]>([]);const [total,setTotal]=useState(0);
@@ -61,7 +61,7 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
       <button role="tab" aria-selected={tab==='uploads'} onClick={()=>setTab('uploads')}>Uploads <span>{total}</span></button>
       <button role="tab" aria-selected={tab==='results'} onClick={()=>setTab('results')}>Results <span>{results.length}</span></button>
       <button role="tab" aria-selected={tab==='people'} onClick={()=>setTab('people')}>People <span>{people.length}</span></button>
-      <label className="library-replace" title="On: a click replaces the selected input image instead of adding one"><input type="checkbox" checked={replace} onChange={e=>onReplace(e.target.checked)}/>Replace</label>
+      {swap?<span className="library-replace">Replacing image {Math.min(target,inputs.length-1)+1}</span>:null}
       <button type="button" className="text-button library-upload" disabled={disabled} onClick={onUpload}><Upload size={14}/>Upload</button>
       {onClose?<button type="button" className="icon-button library-close" onClick={onClose} aria-label="Close library" title="Close (Esc)"><X size={15}/></button>:null}
     </div>

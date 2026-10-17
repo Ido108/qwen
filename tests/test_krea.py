@@ -112,7 +112,9 @@ class KreaCivitaiTests(unittest.TestCase):
         self.assertEqual(civitai.BASE_MODELS['Krea 2']['arch'], 'krea-2')
         self.assertEqual({name for name, info in civitai.BASE_MODELS.items() if info['area'] == 'image'}, {'Qwen 2.1', 'Krea 2', 'Krea 2 Turbo'})
         self.assertEqual(civitai._variant({'name': 'Muse'}, {'name': 'v3.0', 'baseModel': 'Krea 2 Turbo'}), 'turbo')
-        self.assertEqual(civitai._variant({'name': 'Mix'}, {'name': 'v8', 'baseModel': 'Krea 2'}), 'standard')
+        self.assertEqual(civitai._variant({'name': 'Mix'}, {'name': 'v8', 'baseModel': 'Krea 2'}), 'unknown')  # nothing tells: the app does not guess
+        self.assertEqual(civitai._variant({'name': 'Mix'}, {'name': 'v8', 'baseModel': 'Krea 2', 'description': 'Use 8 steps, CFG 1.'}), 'turbo')
+        self.assertEqual(civitai._variant({'name': 'Krea 2 Turbo Official'}, {'name': 'krea2_raw_int8_convrot', 'baseModel': 'Krea 2'}), 'standard')
 
     def test_inspect_finds_krea_models_and_loras(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -67,7 +67,7 @@ To **edit** an image, add it to **Input images** and describe the change, for ex
 - Open the library and check images in **Uploads**, **Results** or **People**. The number on a checkmark is the input position.
 - Click **Use as input** on a result in the **Recent** panel, or **Use for editing** under the result.
 
-Turn on **Replace** in the library to swap images instead of adding them: click an input image to select it (it gets a ring), then click a library image to put it in that place.
+Click an input image to replace it: the library opens, and the image you pick (or upload) takes its place. Click **+** or **Library** to add images instead. The small zoom button on an input image opens it large.
 
 **People.** Each person has a round face avatar, a name and one or more photos. Click an avatar to add the person's main photo. Click the small photo count under the name to choose another photo of that person, or to make a photo the main one. **New** makes a person from the checked images. **Moise** imports your contacts and their photos from your Moise assistant (the first import asks Railway for the password once and keeps it encrypted).
 
@@ -97,7 +97,7 @@ All image settings are in one row under the prompt.
 
 All Qwen image models share one text encoder and VAE (about 10 GB, downloaded once).
 
-**Krea 2.** The Model list also has **Krea 2 Turbo** (8 steps, fast) and **Krea 2 Raw** (52 steps, CFG 4.5, best detail up to 1K). They use their own text encoder and VAE, which download the first time. The app sets the official steps, CFG, sampler and schedule when you pick a Krea model. Krea 2 cannot edit images: input images become a style reference instead. Qwen tools and Qwen LoRAs do not work with Krea, and the app says so.
+**Krea 2.** The Model list also has **Krea 2 Turbo** (8 steps, fast) and **Krea 2 Raw** (52 steps, CFG 4.5, best detail up to 1K). They use their own text encoder and VAE, which download the first time. The app sets the official steps, CFG, sampler and schedule when you pick a Krea model. Krea 2 cannot edit images or keep a person: input images go through the official Style Reference LoRA, which copies colors, light and clothing style only. The Input images panel says so when a Krea model is chosen. Qwen tools and Qwen LoRAs do not work with Krea, and the app says so.
 
 **Steps and CFG** start at the model's own values: 25 steps for standard models, 8 for Turbo, and for a Civitai model the values its page asks for. You can type other values, and **Reset** returns to the model's value. Turbo is trained for 8 steps; another count follows the same schedule, stretched to the new length. A CFG above 1 runs a second guidance pass, so each step takes about twice as long.
 
@@ -122,9 +122,9 @@ Every tool has an **Effect strength** slider. Prompt enhancement turns off while
 
 ## Civitai
 
-Open the **Civitai** tab to browse [civitai.red](https://civitai.red) for **Images** (Qwen-Image-2.1 and Krea 2) or **Video** (MiniMax H3 and LTX 2.5), **LoRAs** or **Models**. Only files that run in this app are listed. Search by name, creator or tag, filter models by **Standard** or **Turbo**, or paste a Civitai link. The app keeps a full list of these models on your computer for 6 hours, so a search covers everything and answers at once (the first list builds in the background after the app starts).
+Open the **Civitai** tab to browse [civitai.red](https://civitai.red) for **Images** (Qwen-Image-2.1 and Krea 2) or **Video** (MiniMax H3 and LTX 2.5), **LoRAs** or **Models**. Only files that run in this app are listed. Search by name, creator or tag, filter by architecture (Qwen-Image 2.1 or Krea 2; MiniMax H3 or LTX 2.5) and models by **Standard** (Raw for Krea 2) or **Turbo**, or paste a Civitai link. The type comes from the base model tag, the version name, or the page's settings (CFG 1 or 10 steps and fewer is Turbo). When none of these tells, the card says **Type not stated**, the filters leave it out, and the dialog asks you to choose. The app keeps a full list of these models on your computer for 6 hours, so a search covers everything and answers at once (the first list builds in the background after the app starts).
 
-Open a card to see every version on the page. For each version the app shows its type (Standard or Turbo), the steps, CFG, sampler and scheduler that the author recommends, and the VAE. Click **Add to Qwen**. The download uses 8 parallel connections and continues if you close the dialog. If you cancel, **Add to Qwen** later continues from where it stopped.
+Open a card to see every version on the page. For each version the app shows its type, the file format and size, and the steps, CFG, sampler and scheduler: the page's values are marked "from the page", the rest are the defaults. It reads settings lists ("Sampler: Euler A + BETA", "Steps: 8") and the example images too. Click **Add to Qwen**. Several models can download at the same time, each with its own progress and Cancel. A download uses 8 parallel connections and continues if you close the dialog. If Civitai refuses a file (for example Early Access), the app shows Civitai's reason. The account shows as connected only while Civitai accepts it. If you cancel, **Add to Qwen** later continues from where it stopped.
 
 The app checks every file before it uses it: the checksum and the shape of the model, so a file for another model type is refused.
 
@@ -190,6 +190,7 @@ Video models are large (4 to 20 GB each). Each one downloads the first time you 
 <img src=".github/assets/gallery.png" alt="Gallery" width="100%">
 
 - Click **Generate** as many times as you want. Each click adds a job to the **Queue**, and you can keep working.
+- On the Images page, the last finished image stays in **Result**. Running and waiting jobs show beside it with their progress, also when Recent is hidden. Each image that finishes appears in Result by itself.
 - In **Queue**, **Stop** ends the job that runs now, **Remove** takes one waiting job out, and **Remove all waiting** clears the line. You can also move jobs up or pause the queue. Waiting jobs stay saved when you close the app. The button next to **Generate** says what it does: **Stop this job** while your job runs, **Remove from queue** while it waits.
 - **Recent** (the panel on the right of the Images page) shows your latest results and the running jobs. Hover a result to use it as input or to load its settings. Click **>>** to hide the panel.
 - **Delete results** in the **Gallery**: hover a result and click its circle to check it, or click **Select all**. **Delete** removes the checked results and their files from your computer. Running and waiting jobs are never deleted.

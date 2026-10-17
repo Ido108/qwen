@@ -24,12 +24,51 @@ class CivitaiTests(unittest.TestCase):
         self.assertEqual(civitai.author_settings('', model)['sampler'], 'euler_ancestral_cfg_pp')
         self.assertEqual(civitai.author_settings('No numbers here.'), {})
 
+    def test_author_settings_read_lists_sampler_names_and_ranges(self):
+        # Real page texts: a settings list on separate lines, "Euler A" (ancestral), an en dash range and a one-line list.
+        moody = 'Skin Texture Demo (Euler Ancestral, bata, 8 Steps)\nRecommended Settings\nmy current recommended settings are:\n• Sampler: Euler A + BETA\n\n• Steps: 8'
+        found = civitai.author_settings('', moody)
+        self.assertEqual({k: found.get(k) for k in ('steps', 'sampler', 'scheduler')}, {'steps': 8, 'sampler': 'euler_ancestral', 'scheduler': 'beta'})
+        realism = '- Fast: 8 steps · CFG 1 · drafts.\n- Best: 12 steps · CFG 1.5 · the richest version.\n- Extended range. CFG 1\u20133 and 8\u201320 steps.'
+        self.assertEqual({k: civitai.author_settings(realism)[k] for k in ('steps', 'cfg')}, {'steps': 12, 'cfg': 1.5})
+        line = civitai.author_settings('Steps: 10, Sampler: Euler a, CFG scale: 2, Seed: 3573086999')
+        self.assertEqual({k: line.get(k) for k in ('steps', 'cfg', 'sampler')}, {'steps': 10, 'cfg': 2.0, 'sampler': 'euler_ancestral'})
+        self.assertEqual(civitai.find_sampler('Euler Simple - 12 Steps'), 'euler')
+        self.assertEqual(civitai.find_sampler('DPM++ 2M SDE Karras'), 'dpmpp_2m_sde')
+
+    def test_status_is_connected_only_while_civitai_accepts_the_sign_in(self):
+        from unittest import mock
+        import httpx
+        answer = lambda code: mock.Mock(status_code=code, json=lambda: {})
+        try:
+            civitai._save({'api_key': 'k' * 32, 'username': 'me'})
+            civitai._checked['at'] = 0
+            with mock.patch.object(civitai.httpx, 'get', side_effect=httpx.ConnectError('offline')):
+                self.assertTrue(civitai.status()['connected'])  # unreachable is not a rejection
+            civitai._checked['at'] = 0
+            with mock.patch.object(civitai.httpx, 'get', return_value=answer(200)):
+                self.assertTrue(civitai.status()['connected'])
+            civitai._checked['at'] = 0
+            with mock.patch.object(civitai.httpx, 'get', return_value=answer(401)):
+                self.assertEqual(civitai.status(), {'connected': False, 'username': '', 'method': ''})
+            civitai._save({'access_token': 'a', 'refresh_token': 'r', 'expires_at': 0, 'username': 'me'})
+            civitai._checked['at'] = 0
+            with mock.patch.object(civitai, '_auth_post', return_value=answer(400)):
+                self.assertFalse(civitai.status()['connected'])
+            self.assertFalse(civitai.TOKEN_FILE.exists())
+        finally:
+            civitai._forget()
+
     def test_turbo_detection_trusts_base_over_step_counts(self):
         self.assertIs(civitai.detect_turbo('V4.0 Base NVFP4', {'steps': 8}), False)
         self.assertIs(civitai.detect_turbo('turbo v1.3 int8', {}), True)
         self.assertIs(civitai.detect_turbo('v2', {'steps': 10}), True)
         self.assertIs(civitai.detect_turbo('v2', {'steps': 25}), False)
         self.assertIsNone(civitai.detect_turbo('v2', {}))
+        self.assertIs(civitai.detect_turbo('krea2_raw_int8_convrot', {}), False)
+        self.assertIs(civitai.detect_turbo('Krea 2 Raw FP8', {}), False)
+        self.assertIsNone(civitai.detect_turbo('4. Raw Studio Shots', {}))  # a theme name, not the type
+        self.assertIs(civitai.detect_turbo('v2', {'steps': 12, 'cfg': 1.0}), True)  # CFG 1 is a distilled model
 
     def test_page_settings_reach_generation_defaults(self):
         base = civitai.image_defaults(False, {'steps': 25, 'cfg': 3.0, 'sampler': 'euler', 'scheduler': 'simple', 'quote': 'q'}, 'u')
