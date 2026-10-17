@@ -225,6 +225,16 @@ These are in the `scripts` folder:
 
 To close Qwen, close its window.
 
+## Remote use (phone)
+
+While Qwen runs on the PC, it also connects to the Moise server, and the whole app opens at `<Moise address>/qwen-studio/` (link in the Moise dashboard). Everything works there: images, inputs from the phone, video, Civitai, training and the queue. The PC opens no ports: Qwen keeps an outbound connection to Moise, and Moise asks for the dashboard login.
+
+- Settings (Windows user environment variables, the same as for MoiseGpuServer): `MOISE_SERVER_URL` (https) and `MOISE_RELAY_TOKEN` (the Moise dashboard key). Without them, Qwen runs only locally.
+- One Qwen at a time can be connected. `QWEN_REMOTE=0` turns the connection off for a copy.
+- An upload through the remote page can be at most 200 MB.
+
+If the Qwen window closes because the computer ran out of memory, Qwen and its jobs keep running and the window opens again. Closing the window yourself still stops Qwen.
+
 ## Troubleshooting
 
 | Problem | Solution |

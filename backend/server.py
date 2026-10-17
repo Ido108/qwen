@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, GenerationRequest, VideoRequest, ReferenceVideoRequest, UpscaleRequest, model_status, resolve_image, resolve_video, read_json, write_json
 from .reference_timing import probe_video_duration, resolve_reference_clip
-from . import models, antigravity, cloud, civitai, people, training
+from . import models, antigravity, cloud, civitai, people, training, moise_remote
 from .resident_worker import ImageWorker
 
 from .common import AUDIO_UPLOADS_DIR, resolve_audio
@@ -453,7 +453,11 @@ async def lifespan(app):
     # Fix the settings of Civitai models saved by older versions (for example a Base model saved as Turbo).
     threading.Thread(target=civitai.repair_entries, name='civitai-repair', daemon=True).start()
     threading.Thread(target=civitai.warm_indexes, name='civitai-index-warm', daemon=True).start()
+    # Remote use from the Moise dashboard (also on the phone), when this PC has the Moise connection settings.
+    remote = moise_remote.start(int(os.environ['QWEN_SERVER_PORT'])) if os.environ.get('QWEN_SERVER_PORT', '').isdigit() else None
     yield
+    if remote:
+        remote.set()
     with active_lock:
         shutting_down = True
         save_queue_locked()

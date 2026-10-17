@@ -156,7 +156,7 @@ def run(args):
         url = f'http://127.0.0.1:{port}'
         log_dir = data / 'logs'
         log_dir.mkdir(parents=True, exist_ok=True)
-        env = dict(os.environ, QWEN_DATA_DIR=str(data), PYTHONUTF8='1')
+        env = dict(os.environ, QWEN_DATA_DIR=str(data), QWEN_SERVER_PORT=str(port), PYTHONUTF8='1')
         job = Job()
         command = [sys.executable, '-u', '-m', 'uvicorn', 'backend.server:app', '--host', '127.0.0.1',
                    '--port', str(port), '--loop', 'backend.windows_loop:new_event_loop']
@@ -175,16 +175,22 @@ def run(args):
                 raise RuntimeError(f'Qwen could not start. See {log_dir / "server.err.log"}')
             time.sleep(.2)
         browser = None
-        if not args.no_browser:
-            # A dedicated profile prevents an existing Edge background process
-            # from taking ownership of the app window outside our Job Object.
-            profile = Path(os.environ['QWEN_BROWSER_PROFILE']) if os.environ.get('QWEN_BROWSER_PROFILE') else APP / '.local' / ('browser-' + identity)
-            browser = job.spawn([args.browser or browser_executable(), f'--app={url}',
+        # A dedicated profile prevents an existing Edge background process
+        # from taking ownership of the app window outside our Job Object.
+        profile = Path(os.environ['QWEN_BROWSER_PROFILE']) if os.environ.get('QWEN_BROWSER_PROFILE') else APP / '.local' / ('browser-' + identity)
+
+        def open_window():
+            window = job.spawn([args.browser or browser_executable(), f'--app={url}',
                 f'--user-data-dir={profile}', '--no-first-run', '--disable-background-mode',
                 '--disable-session-crashed-bubble', '--no-default-browser-check', '--window-size=1440,1000'],
                 cwd=APP, hidden=False)
-            state['browser_pid'] = browser.pid
+            state['browser_pid'] = window.pid
             runtime.write_text(json.dumps(state, indent=2), encoding='utf-8')
+            return window
+
+        if not args.no_browser:
+            browser = open_window()
+        reopened = []
         print(f'Qwen is ready: {url}\nClosing this terminal or the Qwen window stops Qwen and local jobs.\n', flush=True)
         if not args.no_console:
             log_thread = threading.Thread(target=watch, args=(url, data), kwargs={'stop_event': logs_done}, daemon=True)
@@ -193,7 +199,19 @@ def run(args):
             if server.poll() is not None:
                 raise RuntimeError('Qwen stopped. See the server output above.')
             if browser and browser.poll() is not None:
-                break
+                code = browser.poll()
+                # Closed by the user: exit code 0, Qwen stops. A window that crashed (for example when the
+                # computer runs out of memory) does not stop Qwen and its jobs: the window opens again.
+                reopened[:] = [t for t in reopened if time.monotonic() - t < 120]
+                if code == 0 or len(reopened) >= 3:
+                    if code:
+                        print(f'The Qwen window keeps closing (code {code}). Qwen stopped.', flush=True)
+                    break
+                print(f'The Qwen window closed unexpectedly (code {code}, often: not enough free memory). '
+                      'Qwen and its jobs keep running. Opening the window again.', flush=True)
+                reopened.append(time.monotonic())
+                time.sleep(2)
+                browser = open_window()
             if wait_handle(instance.focus, 0) == 0:
                 focus_job(job)
             time.sleep(.1)
