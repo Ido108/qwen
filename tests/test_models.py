@@ -27,8 +27,8 @@ class ModelTests(unittest.TestCase):
                 defaults=item['generation_defaults']
                 self.assertEqual((defaults['steps'],defaults['fixed_steps'],defaults['cfg']),(8,True,1.0),item['id'])
                 self.assertEqual(defaults['sigmas'],[1.0,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0.0])
-            elif item['kind']=='image' and models.is_krea(item):
-                continue  # tests/test_krea.py checks the official Krea 2 settings
+            elif item['kind']=='image' and models.own_architecture(item):
+                continue  # tests/test_krea.py and tests/test_zimage.py check the official Krea 2 and Z-Image settings
             elif item['kind']=='image':
                 self.assertEqual(item['generation_defaults']['steps'],25,item['id'])
                 self.assertIn('workflow_templates',item['generation_defaults']['source'])

@@ -34,7 +34,7 @@ export function ImageSettings({part='main',value,onChange,model,models,modelId,o
   const defaultCfg=defaults?.cfg??1;const validCfg=value.cfg==null||(value.cfg>=1&&value.cfg<=15);
   const family=model?.family||'qwen-image-2.1';
   const imageModels=(models?.models||[]).filter(m=>m.kind==='image');
-  const groups=[['qwen-image-2.1','Qwen 2.1 Standard · 25 steps'],['qwen-image-2.1-turbo','Qwen 2.1 Turbo · 8 steps, fast'],['krea-2-turbo','Krea 2 Turbo · 8 steps, fast'],['krea-2','Krea 2 Raw · 52 steps']] as const;
+  const groups=[['qwen-image-2.1','Qwen 2.1 Standard · 25 steps'],['qwen-image-2.1-turbo','Qwen 2.1 Turbo · 8 steps, fast'],['krea-2-turbo','Krea 2 Turbo · 8 steps, fast'],['krea-2','Krea 2 Raw · 52 steps'],['z-image-turbo','Z-Image Turbo · 8 steps, fast'],['z-image','Z-Image Base · 30 steps']] as const;
   const order=['Q8_0','Q6_K','Q5_K_M','Q4_K_M','Q4_0','FP8','NVFP4','INT8','BF16'];
   const quant=(m:ModelEntry)=>m.title.split(' · ').at(-1)||m.title;
   const isPreset=presets.some(([w,h])=>w===value.width&&h===value.height);
@@ -53,10 +53,10 @@ export function ImageSettings({part='main',value,onChange,model,models,modelId,o
   }
   const options=toolState.tool_options;
   const strength=toolState.lora_strength??(tool?toolStrength(tool,options):1);
-  const hintSteps=defaults?.steps??(family.endsWith('turbo')?8:family==='krea-2'?52:25);const hintCfg:number|null=defaults?.cfg??(family==='krea-2'?4.5:family.endsWith('turbo')?1:null);
+  const hintSteps=defaults?.steps??(family.endsWith('turbo')?8:family==='krea-2'?52:family==='z-image'?30:25);const hintCfg:number|null=defaults?.cfg??(family==='krea-2'?4.5:family==='z-image'?4:family.endsWith('turbo')?1:null);
   const hintSampler=defaults?.sampler&&defaults.sampler!=='euler'?defaults.sampler.replace(/_/g,' '):'';const hintScheduler=defaults?.scheduler&&defaults.scheduler!=='simple'?defaults.scheduler.replace(/_/g,' '):'';
   // CFG 1 runs one pass without the negative branch, so a negative prompt changes nothing.
-  const settingsHint=`${family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':'Standard'}, ${hintSteps} steps, ${hintCfg===null?'CFG 2 with a negative prompt, else 1':`CFG ${hintCfg}`}${hintSampler?`, ${hintSampler}`:''}${hintScheduler?` / ${hintScheduler}`:''}${hintCfg!==null&&hintCfg<=1?' (negative prompt has no effect at CFG 1)':''}`;
+  const settingsHint=`${family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':family==='z-image-turbo'?'Z-Image Turbo':family==='z-image'?'Z-Image Base':'Standard'}, ${hintSteps} steps, ${hintCfg===null?'CFG 2 with a negative prompt, else 1':`CFG ${hintCfg}`}${hintSampler?`, ${hintSampler}`:''}${hintScheduler?` / ${hintScheduler}`:''}${hintCfg!==null&&hintCfg<=1?' (negative prompt has no effect at CFG 1)':''}`;
   const status=[model?.id==='gguf-q8_0'||model?.id==='turbo-gguf-q8_0'?'★ Recommended':'',model?.ready?'✓ Installed':model?'Downloads when you generate':'',
     settingsHint,pageText?'Author settings':''].filter(Boolean).join(' · ');
   const cls=`image-generation-settings studio-settings settings-${part}`;

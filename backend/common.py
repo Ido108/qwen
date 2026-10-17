@@ -77,6 +77,8 @@ class GenerationRequest(BaseModel):
     tool_options: dict[str, str] = Field(default_factory=dict)
     # Extra LoRAs, for example ones added from Civitai: [{"id": ..., "strength": ...}].
     loras: list['LoraChoice'] = Field(default_factory=list, max_length=4)
+    # Z-Image image to image: how much of the input image is redrawn (None is the default 0.7).
+    denoise: float | None = Field(default=None, ge=0.05, le=1)
 
     @field_validator('prompt')
     @classmethod

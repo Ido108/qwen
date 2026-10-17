@@ -173,7 +173,8 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
                 write_json(directory / 'status.json', current)
             if kind == 'image':
                 from .prompt_enhancer import enhance
-                rewrite = enhance(request['prompt'], pictures, request.get('enhancement_model') or antigravity.selected_model(), enhancement_progress)
+                rewrite = enhance(request['prompt'], pictures, request.get('enhancement_model') or antigravity.selected_model(), enhancement_progress,
+                                  redraw=models.is_zimage(models.entry(request['model_id'])))
                 work['prompt'] = rewrite.get('positive_prompt') or request['prompt']
                 work['enhancement_result'] = rewrite
             elif task_kind == 'video':
@@ -630,7 +631,7 @@ def civitai_disconnect():
 def civitai_search(query: str = '', kind: Literal['LORA', 'Checkpoint'] = 'LORA',
                    sort: Literal['Most Downloaded', 'Highest Rated', 'Newest'] = 'Most Downloaded', cursor: str | None = None,
                    area: Literal['image', 'video'] = 'image', variant: Literal['all', 'standard', 'turbo'] = 'all',
-                   arch: Literal['all', 'qwen-image-2.1', 'krea-2', 'minimax-h3', 'ltx25'] = 'all'):
+                   arch: Literal['all', 'qwen-image-2.1', 'krea-2', 'z-image', 'minimax-h3', 'ltx25'] = 'all'):
     return civitai_call(civitai.search, query, kind, sort, cursor, True, area, variant, arch)
 
 

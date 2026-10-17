@@ -67,16 +67,25 @@ def is_installed(model_id):
 QWEN_ENCODERS=('encoder-int8','encoder-bf16')
 KREA_ENCODERS=('krea2-encoder-bf16',)
 KREA_STYLE_LORA='krea2-lora-style-reference'
+ZIMAGE_ENCODERS=('zimage-encoder-bf16',)
 
 def is_krea(item):
     """Krea 2 (Raw or Turbo): its own DiT, Qwen3-VL 4B encoder and Qwen-Image VAE, run by krea_engine."""
     return item.get('family','').startswith('krea-2')
 
+def is_zimage(item):
+    """Z-Image (Base or Turbo): its own DiT, Qwen3 4B encoder and Flux VAE, run by zimage_engine."""
+    return item.get('family','').startswith('z-image')
+
+def own_architecture(item):
+    """Models with their own encoder, VAE and LoRAs (not Qwen-Image-2.1)."""
+    return is_krea(item) or is_zimage(item)
+
 def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
     item=entry(model_id)
     if item['kind']!='image':
         raise ValueError('Select an image model.')
-    if encoder not in ('auto',*QWEN_ENCODERS,*KREA_ENCODERS):
+    if encoder not in ('auto',*QWEN_ENCODERS,*KREA_ENCODERS,*ZIMAGE_ENCODERS):
         raise ValueError('Unknown text encoder.')
     vae=resolve_vae(item,vae)
     if is_krea(item):
@@ -86,6 +95,12 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
             raise ValueError('Krea 2 uses input images as style references: add at most 3 images.')
         # A Qwen encoder chosen for Qwen models does not fit Krea 2; it always uses Qwen3-VL 4B.
         ids=[model_id,encoder if encoder in KREA_ENCODERS else item.get('text_encoder',KREA_ENCODERS[0]),vae]
+    elif is_zimage(item):
+        if tool_id:
+            raise ValueError(f"{image_tool(tool_id)['title']} is a Qwen-Image-2.1 tool. Z-Image models cannot use it: choose a Qwen-Image-2.1 model or remove the tool.")
+        if images>1:
+            raise ValueError('Z-Image redraws one input image (it has no edit model): add only 1 image.')
+        ids=[model_id,item.get('text_encoder',ZIMAGE_ENCODERS[0]),vae]
     else:
         default_encoder='encoder-int8' if item['format']=='GGUF' else 'encoder-bf16'
         ids=[model_id,encoder if encoder in QWEN_ENCODERS else default_encoder,vae]
@@ -99,7 +114,7 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
         if lora['kind']!='image-lora':
             raise ValueError('Choose a LoRA for the LoRA list.')
         # A LoRA without a family list is a Qwen-Image-2.1 tool LoRA; Krea 2 needs one made for Krea 2.
-        if item.get('family','qwen-image-2.1') not in lora.get('families',[] if is_krea(item) else [item.get('family')]):
+        if item.get('family','qwen-image-2.1') not in lora.get('families',[] if own_architecture(item) else [item.get('family')]):
             raise ValueError(f"{lora['title']} does not work with {item['title']}.")
         ids.append(lora_id)
     if is_krea(item) and images:
@@ -109,12 +124,12 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
 def resolve_vae(item,vae='auto'):
     """'auto' is the model's own VAE when its page names one, else the texture-fix VAE: the same
     Qwen-Image-2.1 latent space with cleaner textures and no checkerboard artifacts.
-    Krea 2 has its own latent space: a VAE made for the other architecture changes to the model's automatic VAE."""
+    Krea 2 and Z-Image have their own latent spaces: a VAE made for another architecture changes to the model's automatic VAE."""
     family=item.get('family','qwen-image-2.1')
-    if vae!='auto' and family not in entry(vae).get('families',[] if is_krea(item) else [family]):
+    if vae!='auto' and family not in entry(vae).get('families',[] if own_architecture(item) else [family]):
         vae='auto'
     if vae=='auto':
-        vae=item.get('recommended_vae') or ('krea2-vae' if is_krea(item) else 'vae-texture-fix')
+        vae=item.get('recommended_vae') or ('krea2-vae' if is_krea(item) else 'zimage-vae' if is_zimage(item) else 'vae-texture-fix')
     if entry(vae)['kind']!='vae':
         raise ValueError('Unknown VAE.')
     return vae

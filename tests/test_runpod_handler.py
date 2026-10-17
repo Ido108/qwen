@@ -94,6 +94,17 @@ class RunpodHandlerTests(unittest.TestCase):
             self.assertIn(needed, self.needed)
         self.assertNotIn('encoder-bf16', self.needed)
 
+    def test_zimage_turbo_redraws_an_input_image(self):
+        image = 'd' * 32 + '.png'
+        request = {'model_id': 'zimage-turbo-bf16', 'prompt': 'a lighthouse', 'images': [image], 'seed': 1, 'enhance': False, 'denoise': 0.7,
+                   'text_encoder': 'auto', 'vae_id': 'auto', 'loras': [], 'tool_id': None, 'steps': 8, 'auto_resolution': 1024}
+        result, saved, started = self.run_job('image', request, [('image', image)])
+        self.assertEqual(started, [['image-worker']])
+        self.assertEqual(saved['denoise'], 0.7)
+        for needed in ('zimage-turbo-bf16', 'zimage-encoder-bf16', 'zimage-vae'):
+            self.assertIn(needed, self.needed)
+        self.assertNotIn('encoder-bf16', self.needed)
+
     def test_ltx_text_and_first_last_frame_in_create_video(self):
         base = {'model_id': 'ltx25-msr-q4_k_m', 'prompt': 'a kite', 'seed': 2, 'enhance': False, 'quality': 'standard', 'steps': 8,
                 'audio': True, 'kind': 'video', 'loras': [], 'randomize_seed': False}

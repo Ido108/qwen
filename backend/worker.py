@@ -36,13 +36,18 @@ def update(**values):
 def rewrite_prompt(images):
     from .prompt_enhancer import enhance
     from .antigravity import selected_model
-    return enhance(request['prompt'], images, request.get('enhancement_model') or selected_model(), update)
+    from .models import entry, is_zimage
+    return enhance(request['prompt'], images, request.get('enhancement_model') or selected_model(), update,
+                   redraw=is_zimage(entry(request['model_id'])))
 
 def image_engine(saved):
-    """Krea 2 models run in krea_engine; Qwen-Image-2.1 models in comfy_engine."""
-    from .models import entry, is_krea
-    if is_krea(entry(saved.get('model_id', 'official-bf16'))):
+    """Krea 2 models run in krea_engine, Z-Image models in zimage_engine; Qwen-Image-2.1 models in comfy_engine."""
+    from .models import entry, is_krea, is_zimage
+    item = entry(saved.get('model_id', 'official-bf16'))
+    if is_krea(item):
         from .krea_engine import generate
+    elif is_zimage(item):
+        from .zimage_engine import generate
     else:
         from .comfy_engine import generate
     return generate
@@ -94,7 +99,9 @@ def run():
         if entry(request['model_id']).get('family') == 'krea-2' and not request['custom_size']:
             # Krea 2 Raw is trained up to 1K (krea-ai/krea-2 README); Turbo makes 1K to 2K.
             sizing = {**request, 'auto_resolution': min(request.get('auto_resolution', 2048), 1024)}
-        width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if tool else rewrite)
+        # Z-Image redraws image 1, so the output keeps its shape.
+        follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith('z-image'))
+        width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if follow_first else rewrite)
     render_width = math.ceil(width / 32) * 32
     render_height = math.ceil(height / 32) * 32
     update(stage='loading_model', message=f"Loading {entry(request.get('model_id','official-bf16'))['title']}…", width=width, height=height)

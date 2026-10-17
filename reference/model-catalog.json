@@ -1483,5 +1483,229 @@
     "default_strength": 1.0,
     "source": "https://github.com/Comfy-Org/workflow_templates/blob/3e50a92ca02116ee513c3351db7b7c20a928aa53/templates/image_krea2_turbo_int8_image_style_reference.json",
     "note": "Used automatically when a Krea 2 job has input images: 1 to 3 images guide the style (ostris/krea2_turbo_style_reference)."
+  },
+  {
+    "id": "zimage-turbo-bf16",
+    "title": "Z-Image Turbo · BF16",
+    "kind": "image",
+    "family": "z-image-turbo",
+    "format": "BF16",
+    "layout": "comfy",
+    "repo": "Comfy-Org/z_image_turbo",
+    "revision": "6fc90a3b1b653e935a0d175e260736de25b84df5",
+    "directory": "Comfy-Org-z_image_turbo",
+    "files": [
+      {
+        "path": "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+        "bytes": 12309866400,
+        "sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6"
+      }
+    ],
+    "bytes": 12309866400,
+    "dependencies": [
+      "zimage-encoder-bf16",
+      "zimage-vae"
+    ],
+    "text_encoder": "zimage-encoder-bf16",
+    "recommended_vae": "zimage-vae",
+    "generation_defaults": {
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler": "res_multistep",
+      "scheduler": "simple",
+      "shift": 3.0,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/e7cd011d4ded3411c2f481200544f0be6fdc962e/templates/image_z_image_turbo.json",
+      "model_card": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+      "reviewed_on": "2026-10-17",
+      "note": "Official settings (the ComfyUI Z-Image-Turbo workflow): 8 steps, CFG 1 (no guidance), res_multistep, simple, AuraFlow shift 3."
+    }
+  },
+  {
+    "id": "zimage-turbo-int8",
+    "title": "Z-Image Turbo · INT8",
+    "kind": "image",
+    "family": "z-image-turbo",
+    "format": "INT8",
+    "layout": "comfy",
+    "repo": "Comfy-Org/z_image_turbo",
+    "revision": "6fc90a3b1b653e935a0d175e260736de25b84df5",
+    "directory": "Comfy-Org-z_image_turbo",
+    "files": [
+      {
+        "path": "split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
+        "bytes": 6201001296,
+        "sha256": "be517ebd47c912a5626a588e1aeea43e6be4a43c0cdcd2b48a2a780d9f358635"
+      }
+    ],
+    "bytes": 6201001296,
+    "dependencies": [
+      "zimage-encoder-bf16",
+      "zimage-vae"
+    ],
+    "text_encoder": "zimage-encoder-bf16",
+    "recommended_vae": "zimage-vae",
+    "generation_defaults": {
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler": "res_multistep",
+      "scheduler": "simple",
+      "shift": 3.0,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/e7cd011d4ded3411c2f481200544f0be6fdc962e/templates/image_z_image_turbo.json",
+      "model_card": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+      "reviewed_on": "2026-10-17",
+      "note": "Official settings (the ComfyUI Z-Image-Turbo workflow): 8 steps, CFG 1 (no guidance), res_multistep, simple, AuraFlow shift 3."
+    }
+  },
+  {
+    "id": "zimage-turbo-nvfp4",
+    "title": "Z-Image Turbo · NVFP4",
+    "kind": "image",
+    "family": "z-image-turbo",
+    "format": "NVFP4",
+    "layout": "comfy",
+    "repo": "Comfy-Org/z_image_turbo",
+    "revision": "6fc90a3b1b653e935a0d175e260736de25b84df5",
+    "directory": "Comfy-Org-z_image_turbo",
+    "files": [
+      {
+        "path": "split_files/diffusion_models/z_image_turbo_nvfp4.safetensors",
+        "bytes": 4509509600,
+        "sha256": "a553c889dbcb910de4c98293237573219a37007c1074a3f04576646a088bd5c8"
+      }
+    ],
+    "bytes": 4509509600,
+    "dependencies": [
+      "zimage-encoder-bf16",
+      "zimage-vae"
+    ],
+    "text_encoder": "zimage-encoder-bf16",
+    "recommended_vae": "zimage-vae",
+    "generation_defaults": {
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler": "res_multistep",
+      "scheduler": "simple",
+      "shift": 3.0,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/e7cd011d4ded3411c2f481200544f0be6fdc962e/templates/image_z_image_turbo.json",
+      "model_card": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo",
+      "reviewed_on": "2026-10-17",
+      "note": "Official settings (the ComfyUI Z-Image-Turbo workflow): 8 steps, CFG 1 (no guidance), res_multistep, simple, AuraFlow shift 3."
+    }
+  },
+  {
+    "id": "zimage-base-bf16",
+    "title": "Z-Image Base · BF16",
+    "kind": "image",
+    "family": "z-image",
+    "format": "BF16",
+    "layout": "comfy",
+    "repo": "Comfy-Org/z_image",
+    "revision": "94d47a468ec820d29a5dc09d4642539d76d49542",
+    "directory": "Comfy-Org-z_image",
+    "files": [
+      {
+        "path": "split_files/diffusion_models/z_image_bf16.safetensors",
+        "bytes": 12309866400,
+        "sha256": "996a67d3ff666946b1c25cbc16d1b1918b6cc0ac166309e23fe3b3d830263dee"
+      }
+    ],
+    "bytes": 12309866400,
+    "dependencies": [
+      "zimage-encoder-bf16",
+      "zimage-vae"
+    ],
+    "text_encoder": "zimage-encoder-bf16",
+    "recommended_vae": "zimage-vae",
+    "generation_defaults": {
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler": "res_multistep",
+      "scheduler": "simple",
+      "shift": 3.0,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/e7cd011d4ded3411c2f481200544f0be6fdc962e/templates/image_z_image.json",
+      "model_card": "https://huggingface.co/Tongyi-MAI/Z-Image",
+      "reviewed_on": "2026-10-17",
+      "note": "Official settings (the ComfyUI Z-Image workflow): 30 to 50 steps, CFG 3 to 5 (the app uses 30 and 4), res_multistep, simple, AuraFlow shift 3, negative prompt supported."
+    }
+  },
+  {
+    "id": "zimage-base-int8",
+    "title": "Z-Image Base · INT8",
+    "kind": "image",
+    "family": "z-image",
+    "format": "INT8",
+    "layout": "comfy",
+    "repo": "Comfy-Org/z_image",
+    "revision": "94d47a468ec820d29a5dc09d4642539d76d49542",
+    "directory": "Comfy-Org-z_image",
+    "files": [
+      {
+        "path": "split_files/diffusion_models/z_image_int8_convrot.safetensors",
+        "bytes": 6201001296,
+        "sha256": "eb2b470694fbd9778f15efd309000ea0091312c018c10a352c120b1da9bf4279"
+      }
+    ],
+    "bytes": 6201001296,
+    "dependencies": [
+      "zimage-encoder-bf16",
+      "zimage-vae"
+    ],
+    "text_encoder": "zimage-encoder-bf16",
+    "recommended_vae": "zimage-vae",
+    "generation_defaults": {
+      "steps": 30,
+      "cfg": 4.0,
+      "sampler": "res_multistep",
+      "scheduler": "simple",
+      "shift": 3.0,
+      "source": "https://github.com/Comfy-Org/workflow_templates/blob/e7cd011d4ded3411c2f481200544f0be6fdc962e/templates/image_z_image.json",
+      "model_card": "https://huggingface.co/Tongyi-MAI/Z-Image",
+      "reviewed_on": "2026-10-17",
+      "note": "Official settings (the ComfyUI Z-Image workflow): 30 to 50 steps, CFG 3 to 5 (the app uses 30 and 4), res_multistep, simple, AuraFlow shift 3, negative prompt supported."
+    }
+  },
+  {
+    "id": "zimage-encoder-bf16",
+    "title": "Z-Image text encoder (Qwen3 4B, BF16)",
+    "kind": "encoder",
+    "format": "BF16",
+    "repo": "Comfy-Org/z_image_turbo",
+    "revision": "6fc90a3b1b653e935a0d175e260736de25b84df5",
+    "directory": "Comfy-Org-z_image_turbo",
+    "files": [
+      {
+        "path": "split_files/text_encoders/qwen_3_4b.safetensors",
+        "bytes": 8044982048,
+        "sha256": "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a"
+      }
+    ],
+    "bytes": 8044982048,
+    "dependencies": [],
+    "families": [
+      "z-image",
+      "z-image-turbo"
+    ]
+  },
+  {
+    "id": "zimage-vae",
+    "title": "Z-Image VAE (Flux ae)",
+    "kind": "vae",
+    "format": "BF16",
+    "repo": "Comfy-Org/z_image_turbo",
+    "revision": "6fc90a3b1b653e935a0d175e260736de25b84df5",
+    "directory": "Comfy-Org-z_image_turbo",
+    "files": [
+      {
+        "path": "split_files/vae/ae.safetensors",
+        "bytes": 335304388,
+        "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38"
+      }
+    ],
+    "bytes": 335304388,
+    "dependencies": [],
+    "families": [
+      "z-image",
+      "z-image-turbo"
+    ]
   }
 ]

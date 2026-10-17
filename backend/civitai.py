@@ -1,8 +1,8 @@
 """Civitai (civitai.red) browsing, account connection and model installation.
 
-Images run on Qwen-Image-2.1 and Krea 2 files. Civitai calls those base models
-"Qwen 2.1", "Krea 2" and "Krea 2 Turbo"; "Qwen" is Qwen-Image 1, a different
-architecture. Every file is also checked after download: its tensor names and
+Images run on Qwen-Image-2.1, Krea 2 and Z-Image files. Civitai calls those base models
+"Qwen 2.1", "Krea 2", "Krea 2 Turbo", "ZImageBase" and "ZImageTurbo"; "Qwen" is Qwen-Image 1,
+a different architecture. Every file is also checked after download: its tensor names and
 shapes must match the architecture of its base model.
 """
 from __future__ import annotations
@@ -31,6 +31,9 @@ BASE_MODELS = {
     'Qwen 2.1': {'arch': 'qwen-image-2.1', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image'},
     'Krea 2': {'arch': 'krea-2', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image'},
     'Krea 2 Turbo': {'arch': 'krea-2', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image', 'turbo': True},
+    # Civitai keeps the two Z-Image types apart, so the tag alone tells Turbo from Base.
+    'ZImageTurbo': {'arch': 'z-image', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image', 'turbo': True},
+    'ZImageBase': {'arch': 'z-image', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image', 'turbo': False},
     'MiniMax H3':{'arch': 'minimax-h3', 'area': 'video', 'lora_kind': 'video-lora', 'model_kind': 'video'},
     'LTXV 2.5': {'arch': 'ltx25', 'area': 'video', 'lora_kind': 'video-lora', 'model_kind': 'video'},
 }
@@ -43,6 +46,8 @@ QWEN1_HIDDEN = 3072    # Qwen-Image 1 (Civitai base model "Qwen")
 H3_HIDDEN = 5376       # MiniMax H3 (blocks.N.attn.qkv_proj, audio_patch_proj)
 KREA2_HIDDEN = 6144    # Krea 2 single-stream DiT (blocks.N.attn.wq / transformer_blocks.N.attn.to_q)
 KREA2_FAMILIES = ['krea-2', 'krea-2-turbo']
+ZIMAGE_HIDDEN = 3840   # Z-Image single-stream DiT (layers.N.attention, cap_embedder.1 3840 x 2560)
+ZIMAGE_FAMILIES = ['z-image', 'z-image-turbo']
 LTX_AUDIO_HIDDEN = 2048  # LTX 2.5 audio stream (audio_attn1.to_q, audio_adaln_single)
 
 _lock = threading.RLock()
@@ -246,7 +251,8 @@ def _slim(model: dict) -> dict:
 
 
 def _index_path(key) -> Path:
-    return INDEX_DIR / ('-'.join(str(part) for part in key).replace(' ', '_') + '-v3.json')
+    # v4: Z-Image base models; an index saved before them would hide Z-Image files for hours.
+    return INDEX_DIR / ('-'.join(str(part) for part in key).replace(' ', '_') + '-v4.json')
 
 
 def _build_index(key) -> None:
@@ -307,10 +313,11 @@ def warm_indexes() -> None:
 def version_turbo(model: dict, version: dict, settings: dict | None = None) -> bool | None:
     """Turbo or not for one version: the base model tag, then the version name, then the page settings
     (8 steps at CFG 1 is a Turbo model), then the model name. None when nothing tells."""
-    if (BASE_MODELS.get(version.get('baseModel')) or {}).get('turbo'):
-        return True
+    base = BASE_MODELS.get(version.get('baseModel')) or {}
+    if 'turbo' in base:
+        return base['turbo']  # the base model tag names the type (Krea 2 Turbo, ZImageTurbo, ZImageBase)
     if settings is None:
-        settings = author_settings(_text(version.get('description')), _text(model.get('description'))) or example_settings(version)
+        settings = author_settings(_text(version.get('description')), _text(model.get('description')), arch=base.get('arch')) or example_settings(version)
     turbo = detect_turbo(version['name'], settings)
     return detect_turbo(model['name'], {}) if turbo is None else turbo
 
@@ -399,39 +406,67 @@ def find_scheduler(text: str) -> str | None:
     return next((name for name in SCHEDULERS if re.search(rf'(?<![a-z_]){name}(?![a-z_])', lower)), None)
 
 
-def _labeled_settings(text: str) -> dict:
-    """A settings list such as "Sampler: Euler A + BETA" and "Steps: 8" on their own lines. Among several lists,
-    the first one after a "recommended settings" line wins, else the first list."""
+# Words a page uses to name an architecture in a settings heading ("ZIT Usage", "For Krea 2:").
+ARCH_WORDS = {'z-image': r'\bzit\b|\bzib\b|z[ _-]?image', 'krea-2': r'krea', 'qwen-image-2.1': r'qwen',
+              'ltx25': r'\bltx', 'minimax-h3': r'\bh3\b|minimax'}
+
+
+def _setting_key(key: str) -> str:
+    key = key.lower()
+    return ('sampler' if key.startswith(('sampler', 'sampling method')) else 'scheduler' if key.startswith('schedule')
+            else 'cfg' if key.startswith(('cfg', 'guidance')) else 'steps')
+
+
+def _labeled_settings(text: str, arch: str | None = None) -> dict:
+    """A settings list such as "Sampler: Euler A + BETA" and "Steps: 8" on their own lines. A setting named twice
+    starts a new list. Among several lists, the one whose heading names the model's architecture wins (a page can
+    list "DMD2 Usage", "SDXL Usage" and "ZIT Usage"), then the first one after a "recommended settings" line,
+    else the first list."""
     lines = [line.strip(' \t•*-·>') for line in (text or '').split('\n')]
     label = re.compile(r'(sampler|sampling method|scheduler|schedule type|sampling steps|steps?|cfg(?:\s*scale)?|guidance(?:\s*scale)?)\s*[:：=]\s*(.+)', re.I)
-    groups, current, last, recommended = [], None, -10, False
+    # A heading glued to the end of a value when the page lost a line break: "CFG: 1SDXL Usage".
+    glued = re.compile(r'(?<=\d)\s*([A-Za-z][^:：]{0,40}?\b(?:usage|settings?|workflow))\s*$', re.I)
+    groups, current, last, recommended, heading = [], None, -10, False, ''
     for index, line in enumerate(lines):
         # "Steps: 10, Sampler: Euler a, CFG scale: 2" holds three settings on one line.
         matches = [label.match(part) for part in re.split(r'\s*[,;|]\s*(?=[A-Za-z][A-Za-z ]{1,20}[:：=])', line)]
         matches = [match for match in matches if match]
-        if re.search(r'recommend|setting', line, re.I) and not matches:
-            recommended = True
         if not matches:
+            if re.search(r'recommend|setting', line, re.I):
+                recommended = True
+            if line and len(line) <= 80:
+                heading = line
             continue
-        if current is None or index - last > 3:
-            current = {'recommended': recommended, 'lines': []}
+        keys = {_setting_key(match.group(1)) for match in matches}
+        if current is None or index - last > 3 or keys & current['keys']:
+            current = {'recommended': recommended, 'lines': [], 'keys': set(), 'heading': heading}
             groups.append(current)
             recommended = False
-        current['lines'] += [match.groups() for match in matches]
+        for match in matches:
+            key, value = match.groups()
+            tail = glued.search(value)
+            if tail:
+                heading = tail.group(1)  # names the next list
+                value = value[:tail.start()]
+            current['lines'].append((key, value))
+            current['keys'].add(_setting_key(key))
+        if not any(glued.search(match.group(2)) for match in matches):
+            heading = ''
         last = index
-    for group in sorted(groups, key=lambda g: not g['recommended']):
+    named = lambda g: bool(arch and arch in ARCH_WORDS and re.search(ARCH_WORDS[arch], g['heading'], re.I))
+    for group in sorted(groups, key=lambda g: (not named(g), not g['recommended'])):
         found = {}
         for key, value in group['lines']:
-            key = key.lower()
-            if key.startswith(('sampler', 'sampling method')):
+            kind = _setting_key(key)
+            if kind == 'sampler':
                 if find_sampler(value):
                     found.setdefault('sampler', find_sampler(value))
                 if find_scheduler(value):
                     found.setdefault('scheduler', find_scheduler(value))
-            elif key.startswith('schedule'):
+            elif kind == 'scheduler':
                 if find_scheduler(value):
                     found.setdefault('scheduler', find_scheduler(value))
-            elif key.startswith(('cfg', 'guidance')):
+            elif kind == 'cfg':
                 number = re.match(r'\s*(\d+(?:\.\d+)?)', value)
                 if number and 0.5 <= float(number.group(1)) <= 15:
                     found.setdefault('cfg', float(number.group(1)))
@@ -440,17 +475,18 @@ def _labeled_settings(text: str) -> dict:
                 if number and 1 <= int(number.group(1)) <= 150:
                     found.setdefault('steps', int(number.group(1)))
         if 'steps' in found:
-            found['quote'] = '; '.join(f'{key}: {value.strip()}' for key, value in group['lines'])[:300]
+            found['quote'] = ((group['heading'] + ': ') if group['heading'] else '') + '; '.join(f'{key}: {value.strip()}' for key, value in group['lines'])
+            found['quote'] = found['quote'][:300]
             return found
     return {}
 
 
-def author_settings(*texts: str) -> dict:
+def author_settings(*texts: str, arch: str | None = None) -> dict:
     """Steps, CFG, sampler and scheduler that the page recommends. The version text wins over the model text,
     a labeled settings list wins over prose, and a sentence that names the author or a recommendation wins
     over example-image captions."""
     for text in texts:
-        labeled = _labeled_settings(text)
+        labeled = _labeled_settings(text, arch)
         if labeled:
             return labeled
         sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text or '') if s.strip()]
@@ -551,10 +587,12 @@ def recommended_vae(text: str) -> str | None:
 
 def image_defaults(turbo: bool, settings: dict, url: str, arch: str = 'qwen-image-2.1') -> dict:
     from . import models
-    if arch == 'krea-2':
-        # The official Krea 2 settings (Turbo: 8 steps, CFG 1, mu 1.15; Raw: 52 steps, CFG 4.5, size-based mu).
-        # Krea 2 has no fixed sigma list, so the page's steps, CFG, sampler and scheduler all apply.
-        defaults = dict(models.entry('krea2-turbo-fp8' if turbo else 'krea2-raw-fp8')['generation_defaults'], source=url)
+    if arch in ('krea-2', 'z-image'):
+        # The official settings (Krea 2 Turbo: 8 steps, CFG 1, mu 1.15; Raw: 52 steps, CFG 4.5, size-based mu.
+        # Z-Image Turbo: 8 steps, CFG 1; Base: 30 steps, CFG 4; res_multistep, shift 3). Neither has a fixed
+        # sigma list, so the page's steps, CFG, sampler and scheduler all apply.
+        template = {'krea-2': ('krea2-turbo-fp8', 'krea2-raw-fp8'), 'z-image': ('zimage-turbo-bf16', 'zimage-base-bf16')}[arch]
+        defaults = dict(models.entry(template[0] if turbo else template[1])['generation_defaults'], source=url)
         if settings:
             defaults.update({key: settings[key] for key in ('steps', 'cfg', 'sampler', 'scheduler') if key in settings})
             defaults['note'] = 'From the Civitai page: ' + settings['quote']
@@ -578,8 +616,8 @@ def details(model_id: int) -> dict:
     versions = []
     for version in model.get('modelVersions', []):
         version_text = _text(version.get('description'))
-        settings = author_settings(version_text, description) or example_settings(version)
         info = BASE_MODELS.get(version.get('baseModel'))
+        settings = author_settings(version_text, description, arch=(info or {}).get('arch')) or example_settings(version)
         turbo = version_turbo(model, version, settings)
         files = [{'id': f['id'], 'name': f['name'], 'type': f.get('type', 'Model'), 'bytes': int(f.get('sizeKB', 0) * 1024),
                   'format': _file_format(f), 'precision': (f.get('metadata') or {}).get('fp', ''),
@@ -621,8 +659,8 @@ CHECKPOINT_ORDER = {'fp8': 0, 'fp8_scaled': 0, 'mxfp8': 1, 'nvfp4': 2, 'bf16': 3
 
 
 def _best_quality(model_type: str, info: dict | None) -> bool:
-    """Qwen-Image-2.1 and Krea 2 checkpoints: choose by quality, not by the page's primary file."""
-    return model_type != 'LORA' and bool(info) and info['arch'] in ('qwen-image-2.1', 'krea-2')
+    """Qwen-Image-2.1, Krea 2 and Z-Image checkpoints: choose by quality, not by the page's primary file."""
+    return model_type != 'LORA' and bool(info) and info['arch'] in ('qwen-image-2.1', 'krea-2', 'z-image')
 
 
 def _file_rank(file: dict, best_quality: bool = False):
@@ -673,6 +711,12 @@ def inspect(path: Path) -> dict:
         if lora and (re.search(r'(txtfusion|text_fusion)[._](layerwise|refiner)_blocks', name)
                      or (re.search(r'blocks[._]\d+[._]attn[._](wq|gate|to_gate)[._]', name) and max(shape) == KREA2_HIDDEN)):
             arch = 'krea-2'; break
+        # Z-Image: cap_embedder.1 (3840 x 2560) in a model; 3840-wide layers.N.attention or refiner blocks in a LoRA.
+        if not lora and re.search(r'(^|\.)cap_embedder\.1\.weight$', name) and sorted(shape) == [2560, ZIMAGE_HIDDEN]:
+            arch = 'z-image'; break
+        if lora and re.search(r'(^|[._])(layers|context_refiner|noise_refiner)[._]\d+[._]attention[._](to_q|to_k|to_v|qkv|to_out|out)', name) \
+                and re.search(r'lora_(?:A|B|up|down)', name) and max(shape) == ZIMAGE_HIDDEN:
+            arch = 'z-image'; break
         width = max(shape)
         if (lora and re.search(r'attn\.to_q\.(?:lora_A|lora_down)', name)) or (not lora and re.search(r'(^|\.)img_in\.weight$', name)):
             arch = ('qwen-image-2.1' if width == QWEN21_HIDDEN else 'qwen-image-1' if width == QWEN1_HIDDEN
@@ -768,7 +812,7 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
         raise ValueError(f'The downloaded file is {reason}, so this app cannot use it. It was removed.')
     description = _text(version.get('description')) + '\n' + _text(model.get('description'))
     # Civitai's "Krea 2" holds both Raw and Turbo merges; without page settings the example images tell which.
-    settings = author_settings(_text(version.get('description')), _text(model.get('description'))) or example_settings(version)
+    settings = author_settings(_text(version.get('description')), _text(model.get('description')), arch=base['arch']) or example_settings(version)
     detected = version_turbo(model, version, settings)
     turbo = turbo if detected is None else detected  # the type the user chose when the page does not say
     size = target.stat().st_size
@@ -821,6 +865,20 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
                      generation_defaults=image_defaults(turbo, settings, entry['civitai']['url'], 'krea-2'), settings_version=SETTINGS_VERSION)
         if not gguf:
             entry['layout'] = 'comfy'
+    elif lora and base['arch'] == 'z-image':
+        # Z-Image Base and Turbo share one architecture; Civitai LoRAs are used with both.
+        entry.update(kind='image-lora', format='LoRA', families=list(ZIMAGE_FAMILIES),
+                     trained_words=[w.strip() for w in version.get('trainedWords') or [] if w.strip()],
+                     default_strength=suggested_strength(description) or 1.0, summary=description[:400])
+    elif base['arch'] == 'z-image':
+        # Z-Image uses its own Qwen3 4B encoder and Flux VAE (an all-in-one file loads only its DiT).
+        gguf = target.suffix.lower() == '.gguf'
+        entry.update(kind='image', family='z-image-turbo' if turbo else 'z-image',
+                     format='GGUF' if gguf else ((file.get('metadata') or {}).get('fp') or 'BF16').upper(),
+                     dependencies=['zimage-encoder-bf16', 'zimage-vae'], text_encoder='zimage-encoder-bf16', recommended_vae='zimage-vae',
+                     generation_defaults=image_defaults(turbo, settings, entry['civitai']['url'], 'z-image'), settings_version=SETTINGS_VERSION)
+        if not gguf:
+            entry['layout'] = 'comfy'
     elif lora:
         entry.update(kind='image-lora', format='LoRA', families=['qwen-image-2.1', 'qwen-image-2.1-turbo'],
                      trained_words=[w.strip() for w in version.get('trainedWords') or [] if w.strip()],
@@ -846,7 +904,7 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     return entry
 
 
-SETTINGS_VERSION = 3  # 3: settings lists, Euler A, en dash ranges and "Best:" lines on the page
+SETTINGS_VERSION = 4  # 3: settings lists, Euler A, en dash ranges and "Best:" lines; 4: the list for the model's own architecture
 
 
 def _known_vae(name: str) -> str | None:
@@ -906,11 +964,13 @@ def repair_entries() -> list[str]:
         except Exception:
             continue  # offline: try again on the next start
         version_text, model_text = _text(version.get('description')), _text(model.get('description'))
-        settings = author_settings(version_text, model_text)
-        if item.get('family', '').startswith('krea-2'):
-            # A Krea 2 entry keeps the type it was installed as; only the page settings are read again.
-            turbo = item['family'] == 'krea-2-turbo'
-            item.update(generation_defaults=image_defaults(turbo, settings, item['civitai']['url'], 'krea-2'), settings_version=SETTINGS_VERSION)
+        arch = (BASE_MODELS.get(version.get('baseModel')) or {}).get('arch')
+        settings = author_settings(version_text, model_text, arch=arch)
+        own = 'krea-2' if item.get('family', '').startswith('krea-2') else 'z-image' if item.get('family', '').startswith('z-image') else None
+        if own:
+            # A Krea 2 or Z-Image entry keeps the type it was installed as; only the page settings are read again.
+            turbo = item['family'].endswith('-turbo')
+            item.update(generation_defaults=image_defaults(turbo, settings, item['civitai']['url'], own), settings_version=SETTINGS_VERSION)
         else:
             detected = detect_turbo(version['name'], settings)
             turbo = item.get('family') == 'qwen-image-2.1-turbo' if detected is None else detected
@@ -918,7 +978,7 @@ def repair_entries() -> list[str]:
                         generation_defaults=image_defaults(turbo, settings, item['civitai']['url']), settings_version=SETTINGS_VERSION)
         vae_file = next((f['name'] for f in version.get('files', []) if f.get('type') == 'VAE'), '')
         vae_id = _known_vae(vae_file) or recommended_vae(version_text + '\n' + model_text)
-        if vae_id and not item['family'].startswith('krea-2'):
+        if vae_id and not own:
             item['recommended_vae'] = vae_id
         _register(item)
         fixed.append(item['id'])
