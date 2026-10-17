@@ -41,6 +41,7 @@ type Config = {token:string; models:Record<string,boolean>; output_dir:string; a
 type VideoSection = 'create'|'reference'|'multi-reference'|'upscale';
 const defaults:Params = {loras:[],tool_id:null,tool_options:{},lora_strength:null,vae_id:'auto',model_id:'gguf-q8_0',text_encoder:'auto',prompt:'',images:[],enhance:true,custom_size:false,auto_resolution:2048,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:null};
 function loadDraft():Params {try {const saved=JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}');return {...defaults,...saved,randomize_seed:true,vae_id:saved.vae_choice?saved.vae_id:'auto',steps:saved.auto_resolution===undefined&&saved.steps===40?null:(saved.steps??null)};} catch {return defaults;}}
+const clearedResult=()=>{try{return localStorage.getItem('qwen-result-cleared');}catch{return null;}};
 function App(){
   const [tab,setTab]=useState<'image'|'video'|'gallery'|'civitai'>(()=>location.hash==='#civitai'?'civitai':location.hash==='#gallery'?'gallery':['#video','#reference','#video-to-video','#multi-reference','#upscale'].includes(location.hash)?'video':'image');
   const [videoSection,setVideoSection]=useState<VideoSection>(()=>['#reference','#video-to-video'].includes(location.hash)?'reference':location.hash==='#upscale'?'upscale':location.hash==='#multi-reference'?'multi-reference':'create');
@@ -117,7 +118,7 @@ function App(){
   function viewJob(saved:SavedJob){setGalleryView({job:saved,key:Date.now()});setTab('gallery');window.history.replaceState(null,'','#gallery');}
   useEffect(()=>{let alive=true; (async()=>{try{
     const [cfg,ex,old]=await Promise.all([api('/api/config'),api('/api/examples'),api('/api/history')]);
-    if(!alive)return; token.current=cfg.token; setConfig(cfg);setModelState(cfg.catalog);setEnhancement(cfg.enhancement); setExamples(ex); setHistory(old);setResult(old[0]||null);
+    if(!alive)return; token.current=cfg.token; setConfig(cfg);setModelState(cfg.catalog);setEnhancement(cfg.enhancement); setExamples(ex); setHistory(old);setResult(old[0]&&old[0].id!==clearedResult()?old[0]:null);
     setParams(p=>({...p,output_dir:p.output_dir||cfg.output_dir}));
     if(cfg.active_job){
       const active:Job=await api(`/api/jobs/${cfg.active_job}`);if(!alive)return;
@@ -145,6 +146,8 @@ function App(){
   const imageJobs=[queue.state.active,...queue.state.pending].filter((j):j is SavedJob=>!!j&&(j.kind||'image')==='image');
   // Each newly finished image becomes the result, also when it is not the last job sent.
   const newestResult=useRef<string|null>(null);
+  // Clear empties Result until the next image finishes; the cleared image stays in Recent and the gallery.
+  function clearResult(){const newest=history[0]?.id;if(newest)try{localStorage.setItem('qwen-result-cleared',newest);}catch{}setResult(null);setCompareResult(false);}
   useEffect(()=>{const newest=history[0];if(!newest)return;if(newestResult.current&&newestResult.current!==newest.id)setResult(newest as Job);newestResult.current=newest.id;},[history]);
   const loadPeople=useCallback(()=>{api('/api/people').then(setPeople).catch(()=>{});},[api]);
   useEffect(()=>{if(config)loadPeople();},[config,loadPeople]);
@@ -246,7 +249,7 @@ function App(){
         {job?.status==='cancelled'?<div className="notice">{t('cancelled')}</div>:null}
       </div>
       </div>
-        <section className="panel result-panel studio-result"><div className="section-heading"><h2>{t('result')}</h2>{result?<span className="result-size" dir="ltr">{result.width} × {result.height} · PNG</span>:null}{result?.request.images?.length?<label className="checkbox-label compare-toggle"><input type="checkbox" checked={compareResult} onChange={e=>setCompareResult(e.target.checked)}/>Compare</label>:null}{result?<button className="icon-button" onClick={()=>openResultPreview(result.image_url!)} aria-label={t('preview')}><Expand size={17}/></button>:null}</div>
+        <section className="panel result-panel studio-result"><div className="section-heading"><h2>{t('result')}</h2>{result?<span className="result-size" dir="ltr">{result.width} × {result.height} · PNG</span>:null}{result?.request.images?.length?<label className="checkbox-label compare-toggle"><input type="checkbox" checked={compareResult} onChange={e=>setCompareResult(e.target.checked)}/>Compare</label>:null}{result?<button className="text-button" onClick={clearResult} title="Empty the Result view. The image stays in Recent and the gallery.">Clear</button>:null}{result?<button className="icon-button" onClick={()=>openResultPreview(result.image_url!)} aria-label={t('preview')}><Expand size={17}/></button>:null}</div>
           <div className="result-canvas checker">{result&&compareResult&&result.request.images?.length?<CompareView before={inputImage(result.request.images[0]).url} after={result.image_url!} alt={result.request.prompt}/>:result?<button className="result-image-button" onClick={()=>openResultPreview(result.image_url!)} aria-label={t('preview')}><img className="result-image" src={result.image_url} alt={result.request.prompt}/></button>:<div className="result-empty"><ImageIcon size={42} strokeWidth={1.4}/><span>{t('empty')}</span></div>}
             {busy&&!result?<div className="generation-overlay" aria-live="polite"><Loader2 className="spin" size={28}/><strong>{job?.status==='queued'?'Waiting in queue':job?job.message||t(job.stage):t('starting')}</strong>{job?.stage==='downloading_models'?<ModelDownloadProgress job={job}/>:job?.stage==='generating'?<><progress value={job.step} max={job.total_steps}/><span>Step {job.step} / {job.total_steps} · {formatDuration(stageElapsed)} this stage · {formatDuration(elapsed)} total</span></>:<span>{elapsed>0?`${formatDuration(stageElapsed)} this stage · ${formatDuration(elapsed)} total`:''}{job?.stage==='rewriting'&&job.tokens?` · ${job.tokens} ${t('tokens')}`:''}</span>}</div>:null}
           </div>
