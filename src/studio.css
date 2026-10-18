@@ -538,3 +538,9 @@ body:has(.studio-main:not([hidden])){--controls-w:min(440px,50vw)}
 .swap-strength input{width:100%}
 .swap-panel .field small{font-size:11.5px;color:#8a85a0}
 @media (max-width:520px){.swap-slots{grid-template-columns:1fr}.swap-image,.swap-empty{height:160px}}
+
+/* iPhone Safari zooms the whole page in when a field under 16px gets focus, and the page then slides sideways.
+   On touch screens every text field, menu and prompt box is 16px. */
+@media (pointer:coarse),(max-width:760px){
+  input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=color]),select,textarea{font-size:16px!important}
+}
