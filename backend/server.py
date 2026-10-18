@@ -1503,7 +1503,11 @@ def library_delete(body: LibraryDelete):
                 sidecar.unlink()
             directory = JOBS_DIR / job['id']
             if directory.is_dir() and directory.parent == JOBS_DIR:
-                shutil.rmtree(directory)
+                def keep_open_log(function, path, error, directory=directory):
+                    # the model worker keeps the log of its last job open; the folder goes when it is free
+                    if Path(path).name != 'worker.log' and Path(path) != directory:
+                        raise error[1]
+                shutil.rmtree(directory, onerror=keep_open_log)
             deleted += 1
         except OSError as exc:
             failed.append(f"{job['id']}: {exc}")

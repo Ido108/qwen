@@ -54,6 +54,22 @@ class AppTests(unittest.TestCase):
                 self.assertFalse(made['c'].exists())
                 self.assertTrue(made['busy'].exists())
 
+    def test_library_delete_works_while_the_model_worker_holds_the_log_open(self):
+        from backend import server
+        with tempfile.TemporaryDirectory() as folder, patch.object(server, 'JOBS_DIR', Path(folder) / 'jobs'):
+            directory = Path(folder) / 'jobs' / 'held'
+            directory.mkdir(parents=True)
+            output = Path(folder) / 'held.png'
+            output.write_bytes(b'png')
+            (directory / 'input-1.png').write_bytes(b'png')
+            write_json(directory / 'status.json', {'id': 'held', 'status': 'succeeded', 'kind': 'image', 'created_at': time.time(),
+                                                   'output_path': str(output), 'request': {'prompt': 'p', 'model_id': 'gguf-q8_0'}})
+            with (directory / 'worker.log').open('a') as log:
+                result = self.client.post('/api/library/delete', json={'ids': ['held']}, headers=self.headers).json()
+                self.assertEqual((result['deleted'], result['failed']), (1, []))
+                self.assertFalse(output.exists() or (directory / 'status.json').exists() or (directory / 'input-1.png').exists())
+                self.assertEqual(self.client.get('/api/library').json()['total'], 0)
+
     def test_local_access_and_session_guard(self):
         self.assertEqual(self.client.post('/api/open-output').status_code, 403)
         self.assertEqual(self.client.get('/api/config', headers={'host':'evil.example'}).status_code, 403)
