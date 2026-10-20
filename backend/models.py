@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import threading
 import time
 from pathlib import Path
@@ -28,7 +29,9 @@ def catalog():
     if EXTENSION_CATALOG_PATH.is_file():
         items.extend(json.loads(EXTENSION_CATALOG_PATH.read_text(encoding='utf-8')))
     from .civitai import user_catalog
-    return items+user_catalog()
+    from .lora_preferences import read
+    preferences = read()
+    return [{**item, **preferences.get(item['id'], {})} for item in items+user_catalog()]
 
 def entry(model_id):
     for item in catalog():
@@ -68,6 +71,10 @@ QWEN_ENCODERS=('encoder-int8','encoder-bf16')
 KREA_ENCODERS=('krea2-encoder-bf16',)
 KREA_STYLE_LORA='krea2-lora-style-reference'
 ZIMAGE_ENCODERS=('zimage-encoder-bf16',)
+FLUX3_ENCODERS=('flux3-encoder-int8',)
+
+def is_flux3(item):
+    return item.get('family','').startswith('flux3-klein')
 
 def is_krea(item):
     """Krea 2 (Raw or Turbo): its own DiT, Qwen3-VL 4B encoder and Qwen-Image VAE, run by krea_engine."""
@@ -79,16 +86,20 @@ def is_zimage(item):
 
 def own_architecture(item):
     """Models with their own encoder, VAE and LoRAs (not Qwen-Image-2.1)."""
-    return is_krea(item) or is_zimage(item)
+    return is_krea(item) or is_zimage(item) or is_flux3(item)
 
 def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
     item=entry(model_id)
     if item['kind']!='image':
         raise ValueError('Select an image model.')
-    if encoder not in ('auto',*QWEN_ENCODERS,*KREA_ENCODERS,*ZIMAGE_ENCODERS):
+    if encoder not in ('auto',*QWEN_ENCODERS,*KREA_ENCODERS,*ZIMAGE_ENCODERS,*FLUX3_ENCODERS):
         raise ValueError('Unknown text encoder.')
     vae=resolve_vae(item,vae)
-    if is_krea(item):
+    if is_flux3(item):
+        if tool_id:raise ValueError('This image tool needs Qwen-Image. Remove the tool to use FLUX.3.')
+        if images>10:raise ValueError('FLUX.3 supports up to 10 reference images.')
+        ids=[model_id,item.get('text_encoder',FLUX3_ENCODERS[0]),vae,'flux3-prompt']
+    elif is_krea(item):
         if tool_id:
             raise ValueError(f"{image_tool(tool_id)['title']} is a Qwen-Image-2.1 tool. Krea 2 models cannot use it: choose a Qwen-Image-2.1 model or remove the tool.")
         if images>3:
@@ -154,9 +165,12 @@ def video_modes(item):
 
 
 def required_video(request):
+    if getattr(request,'workflow','create') == 'orbit':
+        from .orbit import validate
+        validate(request)
     item=entry(request.model_id)
     ltx=is_ltx_video(item)
-    if item['kind']!='video' and not ltx:
+    if item['kind']!='video' and not ltx and not (item.get('family')=='minimax-h3-ref2va' and item.get('modes')):
         raise ValueError('Select a video model.')
     if request.mode not in video_modes(item):
         raise ValueError('Choose MiniMax H3 or LTX 2.5 for image-to-video. FastH3 V2 is distilled for text-to-video.')
@@ -180,8 +194,10 @@ def required_video(request):
     if request.width>1344 or request.height>1344 or request.width*request.height>1344*768:
         raise ValueError('The video size must not exceed 1344 × 768 pixels.')
     ids=[item['id'],*item['dependencies']]
-    if request.quality=='turbo' and item['family']=='minimax-h3':
-        ids.append('h3-turbo')
+    from .video_sampling import video_sampling
+    profile=video_sampling(item,request.quality,request.steps)
+    if profile.get('lora_id'):
+        ids.append(profile['lora_id'])
     return ids+video_loras(item,request)
 
 
@@ -243,14 +259,37 @@ def required_upscale(request):
 
 def state():
     with lock:
+        # Read each catalog, manifest and file once per response. Re-reading them
+        # for every model and dependency delayed every model picker and held the
+        # download progress lock for seconds on external drives.
+        entries=catalog()
+        manifest=installed_manifest()
+        sizes={}
+        def file_size(item, file):
+            key=(item['directory'],file['path'])
+            if key not in sizes:
+                try:
+                    info=local_path(item,file).stat()
+                    sizes[key]=info.st_size if stat.S_ISREG(info.st_mode) else None
+                except FileNotFoundError:
+                    sizes[key]=None
+            return sizes[key]
+        installed_by_id={}
+        for item in entries:
+            saved=manifest.get(item['id'],{})
+            installed_by_id[item['id']]=bool(saved.get('verified') and saved.get('revision')==item['revision'] and
+                all(file_size(item,file)==file['bytes'] for file in item['files']))
         items=[]
-        for item in catalog():
-            installed=bool(is_installed(item['id']))
-            disk_bytes=sum(local_path(item,file).stat().st_size for file in item.get('removal_files',item['files']) if local_path(item,file).is_file())
+        from .orbit import LORA_ID, profile as orbit_profile
+        orbit_lora=next((item for item in entries if item['id']==LORA_ID),None)
+        for item in entries:
+            installed=installed_by_id[item['id']]
+            disk_bytes=sum(file_size(item,file) or 0 for file in item.get('removal_files',item['files']))
             items.append({k:v for k,v in item.items() if k not in ('files','removal_files','directory','revision')}|{
                 'installed':installed,
+                'orbit_profile':orbit_profile(item,orbit_lora) if orbit_lora else None,
                 'disk_bytes':disk_bytes,
-                'ready':installed and all(is_installed(d) for d in item['dependencies'])})
+                'ready':installed and all(installed_by_id.get(d,False) for d in item['dependencies'])})
         return {'models':items,'tools':image_tools(),'transfer':dict(transfer),'free_bytes':shutil.disk_usage(DATA_DIR).free}
 
 class DownloadCancelled(Exception): pass

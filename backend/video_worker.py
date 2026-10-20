@@ -138,6 +138,9 @@ def run(request, job, directory, update):
             if request.get(name):
                 with Image.open(resolve_image(request[name])) as source:
                     images[name] = source.convert('RGB')
+                    if request.get('workflow') == 'orbit':
+                        from .orbit import prepare_image
+                        images[name] = prepare_image(images[name])
                     images[name].save(directory / f'{name}.png')
         prompt = request['prompt']
         if request['enhance'] and is_ltx_video(entry(request['model_id'])):
@@ -145,6 +148,9 @@ def run(request, job, directory, update):
         elif request['enhance']:
             from .prompt_enhancer import enhance_video
             prompt = enhance_video(prompt, images, request, update)
+    from .lora_prompts import internal_prompt
+    prompt, lora_words = internal_prompt(prompt, request)
+    update(lora_prompt_words=lora_words)
     if reference and request['workflow']=='crossview' and request.get('replace_subjects_first'):
         steps=request['steps']
         def stage_progress(stage_number):
@@ -166,6 +172,8 @@ def run(request, job, directory, update):
             replacement_instructions=enhance_reference(replacement_instructions,images,
                 replacement_request,stage_progress(0))
         replacement_prompt=build_reference_prompt(request,replacement_instructions,replacement=True)
+        replacement_prompt, replacement_words = internal_prompt(replacement_prompt, replacement_request)
+        update(replacement_lora_prompt_words=replacement_words)
         update(subject_replacement_prompt=replacement_prompt)
         first_frames,_=generate(replacement_request,replacement_prompt,images,stage_progress(0),preview_directory=directory)
         intermediate=directory/'subject-replacement.mp4'

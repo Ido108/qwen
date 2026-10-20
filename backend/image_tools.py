@@ -82,7 +82,7 @@ def prepare(tool: dict, request: dict, images: list[Image.Image]):
         # Each picture at a set area, scaled up or down (the BFS swaps: the author feeds both at about 2 MP;
         # Body swap gives the reference person about 0.59 MP). The output keeps the shape of image 1.
         images = [fit_area(img, area if size == 'budget' else size) for img, size in zip(images, tool['fit_inputs'])]
-        return images, images[0].size, box
+        return images, (request['width'],request['height']) if request.get('custom_size') else images[0].size, box
     if tool['reference_resolution'] == 0:
         # References keep their size, so the output matches image 1 exactly.
         images = [images[0]] + [img if img.width * img.height <= area else fit_area(img, area) for img in images[1:]]

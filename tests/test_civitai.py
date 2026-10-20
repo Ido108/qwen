@@ -16,6 +16,20 @@ def safetensors(path: Path, shapes: dict):
 
 
 class CivitaiTests(unittest.TestCase):
+    def setUp(self):
+        # Never let an inherited launcher environment direct tests at real
+        # account files or the user's model list.
+        from unittest.mock import patch
+        self.directory = tempfile.TemporaryDirectory(prefix='civitai-isolated-')
+        self.addCleanup(self.directory.cleanup)
+        root = Path(self.directory.name)
+        self.isolation = patch.multiple(civitai, AUTH_DIR=root, TOKEN_FILE=root / 'civitai.dpapi',
+                                        USER_CATALOG=root / 'user-models.json')
+        self.isolation.start()
+        self.addCleanup(self.isolation.stop)
+        self.checked = dict(civitai._checked)
+        self.addCleanup(lambda: (civitai._checked.clear(), civitai._checked.update(self.checked)))
+
     def test_author_settings_prefer_the_version_and_the_author(self):
         version = "NVFP4 conversion. Author's settings for V4 Base: 25 steps, euler, simple, cfg 3 (cfg 1 runs about twice as fast)."
         model = 'The example images were made with: 80 steps, euler_ancestral_cfg_pp, beta, cfg 0.7. The author setting also works.'
@@ -110,7 +124,7 @@ class CivitaiTests(unittest.TestCase):
     def test_ltx_variant_reads_dev_before_distilled(self):
         self.assertEqual(civitai.ltx_variant('Joy-LTX 2.5 DEV merges - bring your own distilled LoRA', '070T30', {'steps': 25}, ''), 'dev')
         self.assertEqual(civitai.ltx_variant('LTX 2.5 INT8/INT4 ConvRot', 'LTX 2.5 DISTILLED INT8', {}, ''), 'distilled')
-        self.assertEqual(civitai.ltx_variant('Remix', 'Beta1', {'steps': 8}, ''), 'distilled')
+        self.assertIsNone(civitai.ltx_variant('Remix', 'Beta1', {'steps': 8}, ''))
         self.assertIsNone(civitai.ltx_variant('Surfaces', 'v1.0', {}, 'a style merge'))
 
     def test_inspect_tells_qwen21_from_qwen1_and_models_from_loras(self):

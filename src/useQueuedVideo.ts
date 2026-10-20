@@ -9,7 +9,7 @@ export function useQueuedVideo(api:Api,kind:string,currentId:string|null,onFound
     if(currentId)return;
     let alive=true,timer:number;
     async function check(){
-      try{const queue=await api('/api/queue');if(!alive)return;const job=queue.active?.kind===kind?queue.active:queue.pending?.find((item:SavedJob)=>item.kind===kind);if(job){callback.current(job);return;}}catch{}
+      try{const queue=await api('/api/queue');if(!alive)return;const matches=(item:SavedJob)=>item.kind===kind&&(kind!=='video'||item.request.workflow!=='orbit');const job=queue.active&&matches(queue.active)?queue.active:queue.pending?.find(matches);if(job){callback.current(job);return;}}catch{}
       if(alive)timer=window.setTimeout(check,2000);
     }
     check();return()=>{alive=false;clearTimeout(timer);};

@@ -1,0 +1,86 @@
+/* Keep catalog cards compact and reserve media space before remote files arrive. */
+.civitai-card{min-width:0;touch-action:manipulation}
+.civitai-thumb{width:100%;flex:none;overflow:hidden}
+.civitai-thumb>img,.civitai-thumb>video{position:absolute;inset:0}
+.civitai-creator{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.civitai-count{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.civitai-card small{margin-top:auto}
+.civitai-card strong,.civitai-variants{overflow-wrap:anywhere}
+.civitai-no-preview{display:grid;place-items:center;color:#8c849b;font-size:12px;text-align:center}
+.civitai-thumb>.civitai-no-preview{position:absolute;inset:0}
+
+/* Header and action stay in place. Only the details body scrolls on a phone. */
+dialog.civitai-details[open]{display:flex;flex-direction:column;width:min(1100px,95vw);height:min(900px,90dvh);max-height:90dvh;overflow:hidden;outline:none}
+.civitai-details-heading{display:flex;align-items:flex-start;gap:12px;flex:none;padding:16px 18px;border-bottom:1px solid var(--line);background:#fff}
+.civitai-details-heading>div{flex:1;min-width:0}
+.civitai-details-heading h2{margin:0;font-size:20px;line-height:1.3;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.civitai-details-heading p{margin:5px 0 0;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.civitai-details-heading a{display:inline-flex;align-items:center;gap:4px}
+.civitai-details-heading>.icon-button{flex:none;width:44px;height:44px;border:1px solid var(--line);border-radius:10px}
+.civitai-details-body{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);flex:1;min-height:0;min-width:0;overflow:hidden}
+.civitai-media{min-width:0;overflow:hidden}
+.civitai-preview{flex:1;position:relative;min-height:0;overflow:hidden}
+.civitai-preview .civitai-hero{position:absolute;inset:0;display:block;width:100%;height:100%;max-height:none;object-fit:contain}
+.civitai-preview .civitai-no-preview{display:grid;color:#d0cadb}
+.civitai-strip{flex:none;max-width:100%;overscroll-behavior-x:contain}
+.civitai-strip button{flex-shrink:0;touch-action:manipulation}
+.civitai-info{min-width:0;min-height:0;overscroll-behavior:contain;padding:20px}
+.civitai-info :is(select,.field,.disclosure){min-width:0;max-width:100%}
+.civitai-info :is(p,span,b,small){overflow-wrap:anywhere}
+.civitai-details-footer{flex:none;padding:12px 18px;border-top:1px solid var(--line);background:#fff;display:grid;gap:8px}
+.civitai-details-footer .button{min-height:44px}
+.civitai-details-footer .message{margin:0;max-height:100px;overflow:auto}
+.civitai-details-footer>small{font-size:11px;color:var(--muted)}
+
+@media(hover:none){.civitai-card:hover{transform:none}}
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){
+ .civitai-page{min-width:0}
+ .civitai-top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px}
+ .civitai-top h1{font-size:24px}
+ .civitai-top p{display:none}
+ .civitai-account{justify-content:flex-end;gap:7px;max-width:210px;font-size:11px}
+ .civitai-account .connection-status{padding:5px 7px}
+ .civitai-account .text-button{font-size:11px;min-height:40px}
+ .civitai-account>.button{font-size:11px;min-height:40px;padding:6px 10px}
+ .civitai-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:16px 0 12px}
+ .civitai-toolbar>*{min-width:0;max-width:100%}
+ .civitai-toolbar .segmented{width:100%;display:flex}
+ .civitai-toolbar .segmented button{min-height:40px;flex:1;padding:8px 9px;font-size:12px;white-space:normal}
+ .civitai-toolbar>select{width:100%;min-height:44px;font-size:14px}
+ .civitai-toolbar .civitai-search{grid-column:1/-1;grid-row:2;min-height:44px;width:100%}
+ .civitai-toolbar .civitai-search input{font-size:16px;min-width:0;width:100%}
+ .civitai-toolbar>.segmented:nth-of-type(3){grid-column:1/-1;grid-row:4}
+ .civitai-toolbar>.civitai-total{grid-column:1/-1;font-size:11px}
+ .civitai-toolbar>select[aria-label="Sort"]{grid-column:2;grid-row:3}
+ .civitai-toolbar>select[aria-label="Model architecture"]{grid-column:1;grid-row:3}
+ .civitai-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .civitai-thumb{aspect-ratio:1/1.08}
+ .civitai-card{gap:5px;border-radius:12px}
+ .civitai-card strong{font-size:12px;line-height:1.35;padding:3px 8px 0;min-height:35px}
+ .civitai-card .civitai-variants{padding:0 8px;gap:3px;max-height:42px;overflow:hidden}
+ .civitai-card .civitai-variants em{font-size:10px;padding:2px 4px}
+ .civitai-card small{padding:2px 8px 9px;gap:5px;flex-wrap:wrap;font-size:10px}
+ .civitai-creator{flex-basis:100%}
+ .civitai-badge{top:6px;left:6px;font-size:10px;padding:3px 5px}
+ .civitai-login{min-width:0;flex-wrap:wrap}
+ .civitai-login input{min-width:0;max-width:100%}
+ dialog.civitai-details[open]{width:100%;max-width:100%;height:calc(100dvh - 8px);max-height:calc(100dvh - 8px);margin:0;inset:8px 0 0;border:0;border-radius:16px 16px 0 0}
+ .civitai-details-heading{padding:12px;gap:10px}
+ .civitai-details-heading h2{font-size:17px}
+ .civitai-details-heading p{font-size:11px;line-height:1.5}
+ .civitai-details-body{display:block;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+ .civitai-media{height:clamp(180px,34dvh,300px)}
+ .civitai-strip{padding:6px;gap:6px}
+ .civitai-strip button{flex-basis:44px;height:44px;border-radius:5px}
+ .civitai-info{padding:16px 14px;overflow:visible;gap:14px}
+ .civitai-info .civitai-versions{max-height:220px;overscroll-behavior:auto}
+ .civitai-info .civitai-version{min-height:48px}
+ .civitai-usage{padding:12px}
+ .civitai-usage div{grid-template-columns:minmax(0,1fr);gap:3px}
+ .civitai-details-footer{padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+}
+@media(min-width:600px) and (max-width:1000px) and (pointer:coarse){.civitai-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-height:480px) and (pointer:coarse){
+ .civitai-details-heading{padding:8px 12px}.civitai-details-heading h2{-webkit-line-clamp:1}
+ .civitai-details-footer{padding-top:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+}

@@ -29,5 +29,5 @@ export function DownloadPill({api,state}:{api:Api;state:ModelState|null}){
     ...(transfer?.status==='running'?[{key:'models',name:transfer.title||state?.models.find(m=>m.id===transfer.model_id)?.title||'Model',stage:transfer.stage,completed_bytes:transfer.completed_bytes,total_bytes:transfer.total_bytes,cancel:'/api/models/download/cancel'}]:[]),
     ...(state?.downloads||[]).filter(d=>d.status==='running').map(d=>({key:d.requested_id,name:d.title||'Civitai model',stage:d.stage,completed_bytes:d.completed_bytes,total_bytes:d.total_bytes,cancel:`/api/civitai/install/${d.requested_id.split(':')[1]}/cancel`}))];
   if(!running.length)return null;
-  return <div className="download-pills">{running.map(item=><PillRow key={item.key} api={api} item={item}/>)}</div>;
+  return <details className="download-pills"><summary><Download size={14}/>{running.length} {running.length===1?'download':'downloads'} in progress</summary>{running.map(item=><PillRow key={item.key} api={api} item={item}/>)}</details>;
 }

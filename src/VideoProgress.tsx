@@ -23,7 +23,7 @@ function stagePlan(job:SavedJob):Step[]{
     add('Encode prompt and voices',['encoding_text','loading_video_vae','encoding_audio']);
     add('Load model and references',['loading_model','encoding_references']);
     add(r.refine?'Generate and refine':'Generate',['generating','upscaling_latent']);
-    add('Decode',['decoding']);add('Save video',SAVE);
+    add('Decode',['decoding','decoding_audio']);add('Save video',SAVE);
     return plan;
   }
   const reference=job.kind==='reference-video';
@@ -31,10 +31,10 @@ function stagePlan(job:SavedJob):Step[]{
   add('Read source video',['decoding_source','reading_audio','reading_references'],reference);
   add('Enhance prompt',['rewriting'],!!r.enhance);
   add('Build camera guide',['camera_depth','camera_warp'],reference&&r.workflow==='crossview'&&!r.warp_video);
-  add('Load text encoder',['initializing_video','loading_encoder']);
+  add('Load text encoder',['initializing_video','loading_encoder','loading_encoder_gpu']);
   add(reference?'Encode prompt and video':r.mode==='image'?'Encode prompt and images':'Encode prompt',
-    ['loading_video_vae','preparing_conditioning','encoding_prompt','encoding_reference_image','loading_audio_vae','encoding_source_video','encoding_source_audio']);
-  add('Load video model',['loading_model']);add('Generate',['generating']);add('Decode',['decoding']);add('Save video',SAVE);
+    ['loading_video_vae','loading_vae_gpu','preparing_conditioning','encoding_prompt','encoding_reference_image','loading_audio_vae','loading_audio_encoder_gpu','encoding_source_video','encoding_source_audio']);
+  add('Load video model',['loading_model','loading_model_gpu']);add('Generate',['generating']);add('Decode',['releasing_model','loading_video_decoder','loading_decoder_gpu','loading_audio_decoder','loading_audio_decoder_gpu','decoding','decoding_audio']);add('Save video',SAVE);
   return plan;
 }
 
@@ -69,7 +69,7 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
   // Steps finished before this stage started (second pass, or LTX refinement after the first 8 steps).
   const base=job.stage!=='generating'?0:pass===2?steps/2:job.kind==='multi-reference'&&job.request?.refine&&step>8?8:0;
   const measured=counter&&['generating','upscaling'].includes(job.stage)?counter.done-base:0;
-  const perStep=measured>=1?stageTime/measured:0;
+  const perStep=job.stage==='generating'?(Number(job.sampling_step_seconds)||0):measured>=1?stageTime/measured:0;
   const left=perStep&&counter&&counter.done<counter.total?perStep*(counter.total-counter.done):0;
   const offloaded=Number(job.model_offloaded_weight_gb)||0;
   const onGpu=Number(job.model_gpu_weight_gb)||0;
@@ -83,14 +83,14 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
       <span>{time(stageTime)} this stage</span><span>{time(total)} total</span>
       {left?<span className="vp-eta">About {time(left)} left · {time(perStep)} per {upscale?'batch':'step'}</span>:null}
     </div>
-    {job.stage==='generating'&&!step&&!job.preview_unavailable?<small className="vp-note">The first step takes longest. The preview and time estimate appear after it finishes.</small>:null}
-    {offloaded>=0.1?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of the model streams from RAM, so each step is slower. A smaller model version fits fully on the GPU.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU. GPU use rises and falls while the rest loads.`:''}</span></p>:null}
+    {job.stage==='generating'&&!step&&!job.preview_unavailable?<small className="vp-note">The first step takes longest. The preview appears after it finishes. The time estimate starts after two steps.</small>:null}
+    {job.stage==='generating'&&offloaded>=0.1?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of model weights are in RAM.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU.`:''} Transfers can increase generation time.</span></p>:null}
     <ol className="vp-steps" aria-label="Stages">{plan.map((item,i)=><li key={item.label} className={i<index?'done':i===index?'current':''} title={`${i+1}. ${item.label}`}><span className="sr-only">{i+1}. {item.label}{i<index?' (done)':i===index?' (current)':''}</span></li>)}</ol>
     {next?<small className="vp-next">Next: {next.label}</small>:null}
   </div>;
 }
 
-export type GpuMemory={available:boolean;free_gb?:number;total_gb?:number};
+export type GpuMemory={available:boolean;free_gb?:number;total_gb?:number;resident_image?:{loaded:boolean};job_active?:boolean};
 
 /** Dedicated GPU memory, refreshed while the tab is visible on a local GPU. */
 export function useGpuMemory(api:Api,enabled:boolean){
@@ -102,25 +102,22 @@ export function useGpuMemory(api:Api,enabled:boolean){
 const GIB=1024**3;
 /** Model weights plus about 4 GB of working memory for activations. */
 export const neededGb=(model:ModelEntry)=>model.bytes/GIB+4;
-const firstWord=(value?:string)=>(value||'').split(/[\s·]/)[0];
 
 /** The largest installed, smaller version of the same model family that fits in free GPU memory. */
 export function smallerFit(models:ModelEntry[],selected:ModelEntry,freeGb:number){
-  const options=models.filter(m=>m.id!==selected.id&&m.kind===selected.kind&&m.family===selected.family&&m.installed&&m.bytes<selected.bytes&&neededGb(m)<=freeGb);
-  const sameGroup=options.filter(m=>(m.model_group||'')===(selected.model_group||''));
-  const related=options.filter(m=>firstWord(m.model_group)===firstWord(selected.model_group));
-  const pool=sameGroup.length?sameGroup:related;
-  return pool.sort((a,b)=>b.bytes-a.bytes)[0]||null;
+  if(!selected.model_group)return null;
+  return models.filter(m=>m.id!==selected.id&&m.kind===selected.kind&&m.family===selected.family&&m.model_group===selected.model_group&&m.installed&&m.bytes<selected.bytes&&neededGb(m)<=freeGb).sort((a,b)=>b.bytes-a.bytes)[0]||null;
 }
 
 /** Warns before submitting when the chosen model will not fit in free GPU memory, and offers a smaller installed version. */
-export function VramFitHint({models,selected,gpu,onUse}:{models:ModelEntry[];selected:ModelEntry|undefined;gpu:GpuMemory|null;onUse:(id:string)=>void}){
+export function VramFitHint({selected,gpu,resident}:{models:ModelEntry[];selected:ModelEntry|undefined;gpu:GpuMemory|null;onUse:(id:string)=>void;resident?:{loaded:boolean}|null}){
   if(!selected?.bytes||!gpu?.available||typeof gpu.free_gb!=='number')return null;
+  if(gpu.job_active)return null;
   const need=neededGb(selected);
   if(gpu.free_gb>=need)return null;
-  const option=smallerFit(models,selected,gpu.free_gb);
+  if((gpu.resident_image||resident)?.loaded)return <div className="vs-memory-note" role="status">An image model is kept ready in GPU memory. Qwen releases it before video generation. The current free memory does not show how much will be available for this video.</div>;
   return <div className="vs-vram" role="status"><AlertTriangle size={15}/><div>
-    <p>{selected.title} needs about {need.toFixed(0)} GB of GPU memory. {gpu.free_gb.toFixed(1)} of {gpu.total_gb?.toFixed(1)} GB is free, so part of the model streams from RAM and each step is slower.</p>
-    {option?<button type="button" className="button secondary" onClick={()=>onUse(option.id)}>Use {option.title} ({(option.bytes/GIB).toFixed(1)} GB, fits)</button>:<small>Close other GPU workloads, or download a smaller version in Settings.</small>}
+    <p>{gpu.free_gb.toFixed(1)} of {gpu.total_gb?.toFixed(1)} GB is free now. The model weights use about {(selected.bytes/GIB).toFixed(1)} GB before working memory. Output size, duration and reference inputs also affect memory use.</p>
+    <small>Qwen can move part of the model to RAM when needed. This can make generation slower. Your selected model stays unchanged.</small>
   </div></div>;
 }

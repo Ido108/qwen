@@ -39,6 +39,9 @@ def run(request, job, directory, update):
         if audio is None:
             raise ValueError('This voice reference has no readable audio.')
         voices[f'audio_ref{index+1}'] = audio
+    from .lora_prompts import internal_prompt
+    settings.prompt, lora_words = internal_prompt(settings.prompt, settings.model_dump())
+    update(lora_prompt_words=lora_words)
     if is_ref2va(entry(settings.model_id)):
         frames, audio, prompt = run_ref2va(settings, images, voices, update, directory)
     else:

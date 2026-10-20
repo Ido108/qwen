@@ -34,6 +34,8 @@ BASE_MODELS = {
     # Civitai keeps the two Z-Image types apart, so the tag alone tells Turbo from Base.
     'ZImageTurbo': {'arch': 'z-image', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image', 'turbo': True},
     'ZImageBase': {'arch': 'z-image', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image', 'turbo': False},
+    'Flux.3 Klein': {'arch':'flux3-klein','area':'image','lora_kind':'image-lora','model_kind':'image','turbo':True},
+    'Flux.3 Klein-base': {'arch':'flux3-klein','area':'image','lora_kind':'image-lora','model_kind':'image','turbo':False},
     'MiniMax H3':{'arch': 'minimax-h3', 'area': 'video', 'lora_kind': 'video-lora', 'model_kind': 'video'},
     'LTXV 2.5': {'arch': 'ltx25', 'area': 'video', 'lora_kind': 'video-lora', 'model_kind': 'video'},
 }
@@ -220,7 +222,7 @@ def _image(image: dict, width: int = 450) -> dict:
 
 
 def _installed_versions() -> set[int]:
-    return {item['civitai']['version_id'] for item in user_catalog()}
+    return {item['civitai']['version_id'] for item in user_catalog() if (item.get('civitai') or {}).get('version_id') is not None}
 
 
 def _summary(model: dict, bases=tuple(BASE_MODELS)) -> dict:
@@ -251,8 +253,9 @@ def _slim(model: dict) -> dict:
 
 
 def _index_path(key) -> Path:
-    # v4: Z-Image base models; an index saved before them would hide Z-Image files for hours.
-    return INDEX_DIR / ('-'.join(str(part) for part in key).replace(' ', '_') + '-v5.json')
+    # v6 image indexes include FLUX.3 and its author-described Base variants.
+    version='v6' if key[2]=='image' else 'v5'
+    return INDEX_DIR / ('-'.join(str(part) for part in key).replace(' ', '_') + '-'+version+'.json')
 
 
 def _build_index(key) -> None:
@@ -314,6 +317,21 @@ def version_turbo(model: dict, version: dict, settings: dict | None = None) -> b
     """Turbo or not for one version: the base model tag, then the version name, then the page settings
     (8 steps at CFG 1 is a Turbo model), then the model name. None when nothing tells."""
     base = BASE_MODELS.get(version.get('baseModel')) or {}
+    if base.get('arch') == 'minimax-h3':
+        from .civitai_settings import video_variant
+        return video_variant(model, version)
+    if base.get('arch')=='flux3-klein':
+        name=version.get('name','')
+        if re.search(r'\bdistilled\b|\bsd\b',name,re.I):return True
+        if re.search(r'\bbase\b',name,re.I):return False
+        description=_text(model.get('description'))+'\n'+_text(version.get('description'))
+        # Some authors document the older *_sd_* naming scheme and tag their
+        # Base quantizations as generic Klein. Follow that explicit mapping;
+        # absence of SD alone is not evidence for other pages/new filenames.
+        if (re.search(r'Klein Base\s*\(flux3_image_klein_\*\)',description,re.I)
+                and re.search(r'Klein Distilled\s*\(flux3_image_klein_sd_\*\)',description,re.I)
+                and re.search(r'\bklein\s+(?:int\d|bf16|nvfp4)',name,re.I)):
+            return False
     if 'turbo' in base:
         return base['turbo']  # the base model tag names the type (Krea 2 Turbo, ZImageTurbo, ZImageBase)
     if settings is None:
@@ -374,20 +392,22 @@ def _text(description: str | None) -> str:
 
 
 def suggested_strength(description: str) -> float | None:
-    """A strength written in the description, such as "strength 0.8" or "weight: 0.7"."""
-    match = re.search(r'(?:strength|weight|scale)\D{0,24}?(\d(?:\.\d+)?)', description, re.I)
-    if match and 0.1 <= float(match.group(1)) <= 2:
-        return float(match.group(1))
-    return None
+    from .lora_author import strength
+    return strength(description)
 
 
-SAMPLERS = ('euler_ancestral_cfg_pp', 'euler_ancestral', 'euler_cfg_pp', 'euler', 'res_multistep', 'dpmpp_2m_sde', 'dpmpp_2m',
+def trained_words(version, model):
+    from .lora_author import profile
+    return profile(version, model)['trained_words']
+
+
+SAMPLERS = ('res_2m_ode', 'res_2s_ode', 'res_2m', 'res_2s', 'euler_ancestral_cfg_pp', 'euler_ancestral', 'euler_cfg_pp', 'euler', 'res_multistep', 'dpmpp_2m_sde', 'dpmpp_2m',
             'dpmpp_sde', 'dpmpp_3m_sde', 'uni_pc', 'lcm', 'heun', 'ddim', 'deis', 'er_sde', 'sa_solver')
 SCHEDULERS = ('simple', 'normal', 'beta', 'karras', 'sgm_uniform', 'exponential', 'ddim_uniform', 'linear_quadratic', 'kl_optimal')
 
 
 # Names authors write for ComfyUI samplers, longest first ("Euler A" is euler_ancestral, not euler).
-SAMPLER_ALIASES = (('euler ancestral cfg++', 'euler_ancestral_cfg_pp'), ('euler a cfg++', 'euler_ancestral_cfg_pp'), ('euler cfg++', 'euler_cfg_pp'),
+SAMPLER_ALIASES = (('res_mulistep', 'res_multistep'), ('euler ancestral cfg++', 'euler_ancestral_cfg_pp'), ('euler a cfg++', 'euler_ancestral_cfg_pp'), ('euler cfg++', 'euler_cfg_pp'),
                    ('euler ancestral', 'euler_ancestral'), ('euler_a', 'euler_ancestral'), ('euler a', 'euler_ancestral'),
                    ('dpm++ 2m sde', 'dpmpp_2m_sde'), ('dpm++ 3m sde', 'dpmpp_3m_sde'), ('dpm++ 2m', 'dpmpp_2m'), ('dpm++ sde', 'dpmpp_sde'),
                    ('res multistep', 'res_multistep'), ('unipc', 'uni_pc'))
@@ -407,7 +427,7 @@ def find_scheduler(text: str) -> str | None:
 
 
 # Words a page uses to name an architecture in a settings heading ("ZIT Usage", "For Krea 2:").
-ARCH_WORDS = {'z-image': r'\bzit\b|\bzib\b|z[ _-]?image', 'krea-2': r'krea', 'qwen-image-2.1': r'qwen',
+ARCH_WORDS = {'flux3-klein': r'flux[ ._-]*3|klein', 'z-image': r'\bzit\b|\bzib\b|z[ _-]?image', 'krea-2': r'krea', 'qwen-image-2.1': r'qwen',
               'ltx25': r'\bltx', 'minimax-h3': r'\bh3\b|minimax'}
 # Architectures the app does not run; a page paragraph about one of them is not about the model's own versions.
 OTHER_ARCH_WORDS = r'\bsdxl\b|\bpony\b|\bflux\b|\bklein\b|\bernie\b|\blongcat\b|illustrious|\bsd ?1\.5\b|hidream|chroma|\bwan\b|hunyuan'
@@ -424,6 +444,27 @@ def _setting_key(key: str) -> str:
     key = key.lower()
     return ('sampler' if key.startswith(('sampler', 'sampling method')) else 'scheduler' if key.startswith('schedule')
             else 'cfg' if key.startswith(('cfg', 'guidance')) else 'steps')
+
+
+STEP_SPEC = re.compile(r'(?<![\d+/])\b(\d{1,3})(?:\s*([-\u2013~/]|to|till|or)\s*(\d{1,3}))?[\s-]*steps?\b', re.I)
+
+
+def step_settings(text):
+    text=text.translate(str.maketrans({char:'-' for char in '\u2010\u2011\u2012\u2013\u2014\u2015\u2212'}))
+    # Quantization error ("within +/-1 step"), training iterations and numbered
+    # installation instructions are not denoising recommendations.
+    text=re.sub(r'(?:\u00b1|\+/-)\s*\d+\s*steps?\b','',text,flags=re.I)
+    text=re.sub(r'\b(?:training|trained for|calibration)\s*(?:steps?\s*[:=]?\s*\d+|\d+\s*steps?)\b','',text,flags=re.I)
+    match = STEP_SPEC.search(text) or re.search(r'\bsteps\s*[:=]?\s*(\d{1,3})\b|\bstep\s*[:=]\s*(\d{1,3})\b', text, re.I)
+    if match and match.re is not STEP_SPEC and match.group(1) is None:
+        return {'steps':int(match.group(2))} if 1 <= int(match.group(2)) <= 150 else {}
+    if not match or not 1 <= int(match.group(1)) <= 150:
+        return {}
+    result = {'steps': int(match.group(1))}
+    if match.re is STEP_SPEC and match.group(3) and 1 <= int(match.group(3)) <= 150:
+        values = sorted({int(match.group(1)), int(match.group(3))})
+        result['step_options' if match.group(2).lower() in ('or','/') else 'steps_range'] = values
+    return result
 
 
 def _labeled_settings(text: str, arch: str | None = None) -> dict:
@@ -480,9 +521,8 @@ def _labeled_settings(text: str, arch: str | None = None) -> dict:
                 if number and 0.5 <= float(number.group(1)) <= 15:
                     found.setdefault('cfg', float(number.group(1)))
             else:
-                number = re.match(r'\s*(\d{1,3})\b', value)
-                if number and 1 <= int(number.group(1)) <= 150:
-                    found.setdefault('steps', int(number.group(1)))
+                for name, number in step_settings(value+' steps').items():
+                    found.setdefault(name, number)
         if 'steps' in found:
             found['quote'] = ((group['heading'] + ': ') if group['heading'] else '') + '; '.join(f'{key}: {value.strip()}' for key, value in group['lines'])
             found['quote'] = found['quote'][:300]
@@ -520,10 +560,10 @@ def author_settings(*texts: str, arch: str | None = None) -> dict:
             lead = re.split(r'\(|\bfor upscal', sentence, maxsplit=1, flags=re.I)[0]
             if SECOND_PASS.search(lead):
                 continue
-            match = re.search(r'\b(\d{1,3})\s*(?:[-\u2013~]\s*\d{1,3}\s*)?steps?\b', sentence, re.I) or re.search(r'\bsteps?\s*[:=]?\s*(\d{1,3})\b', sentence, re.I)
-            if not match or not 1 <= int(match.group(1)) <= 150:
+            parsed = step_settings(sentence)
+            if not parsed:
                 continue
-            found = {'steps': int(match.group(1)), 'quote': sentence[:300]}
+            found = {**parsed, 'quote': sentence[:300]}
             cfg = re.search(r'\bcfg\s*(?:scale)?\s*[:=]?\s*(\d+(?:\.\d+)?)', sentence, re.I)
             if cfg and 0.5 <= float(cfg.group(1)) <= 15:
                 found['cfg'] = float(cfg.group(1))
@@ -582,20 +622,15 @@ def example_settings(version: dict) -> dict:
     return found
 
 
-def ltx_variant(model_name: str, version_name: str, settings: dict, text: str) -> str | None:
+def ltx_variant(model_name: str, version_name: str, settings: dict, text: str, file: dict | None = None) -> str | None:
     """'distilled' or 'dev' for an LTX 2.5 checkpoint, None when the page does not say. Create video runs the
     official distilled 8 + 3 step schedule, which breaks a dev checkpoint."""
-    for name in (version_name, model_name):
+    for name in ((file or {}).get('name','').replace('_',' ').replace('-',' '), version_name, model_name):
         # "dev ... bring your own distilled LoRA" is a dev model, so dev wins within one name.
-        if re.search(r'\bdev\b', name, re.I):
+        if re.search(r'\bdev\b|\bnon[ -]?distill', name, re.I):
             return 'dev'
         if re.search(r'distill', name, re.I):
             return 'distilled'
-    if settings.get('steps'):
-        if settings['steps'] <= 10:
-            return 'distilled'
-        if settings['steps'] >= 15:
-            return 'dev'
     distilled, dev = re.search(r'distill', text, re.I), re.search(r'\bdev\b', text, re.I)
     return 'distilled' if distilled and not dev else 'dev' if dev and not distilled else None
 
@@ -605,7 +640,11 @@ def ltx_problem(model: dict, version: dict, settings: dict, text: str) -> str | 
         return None
     variant = ltx_variant(model['name'], version['name'], settings, text)
     if variant is None:
-        return 'The page does not say that this LTX 2.5 checkpoint is distilled. The app runs distilled LTX 2.5 checkpoints only.'
+        if any(ltx_variant('', '', {}, '', file) for file in version.get('files', [])):
+            return None
+        return 'This version does not identify a distilled or dev LTX 2.5 checkpoint. Choose a version that identifies its model type.'
+    if variant == 'distilled' and settings.get('steps') not in (None, 8):
+        return 'This version recommends a different sampling schedule. The supported LTX 2.5 workflow uses the official 8-step distilled schedule.'
     return None
 
 
@@ -617,11 +656,11 @@ def recommended_vae(text: str) -> str | None:
 
 def image_defaults(turbo: bool, settings: dict, url: str, arch: str = 'qwen-image-2.1') -> dict:
     from . import models
-    if arch in ('krea-2', 'z-image'):
+    if arch in ('krea-2', 'z-image','flux3-klein'):
         # The official settings (Krea 2 Turbo: 8 steps, CFG 1, mu 1.15; Raw: 52 steps, CFG 4.5, size-based mu.
         # Z-Image Turbo: 8 steps, CFG 1; Base: 30 steps, CFG 4; res_multistep, shift 3). Neither has a fixed
         # sigma list, so the page's steps, CFG, sampler and scheduler all apply.
-        template = {'krea-2': ('krea2-turbo-fp8', 'krea2-raw-fp8'), 'z-image': ('zimage-turbo-bf16', 'zimage-base-bf16')}[arch]
+        template = {'krea-2': ('krea2-turbo-fp8', 'krea2-raw-fp8'), 'z-image': ('zimage-turbo-bf16', 'zimage-base-bf16'),'flux3-klein':('flux3-klein-int8','flux3-base-int8')}[arch]
         defaults = dict(models.entry(template[0] if turbo else template[1])['generation_defaults'], source=url)
         if settings:
             defaults.update({key: settings[key] for key in ('steps', 'cfg', 'sampler', 'scheduler') if key in settings})
@@ -640,34 +679,63 @@ def image_defaults(turbo: bool, settings: dict, url: str, arch: str = 'qwen-imag
 
 
 def details(model_id: int) -> dict:
+    from .civitai_settings import version_settings, h3_defaults, h3_capabilities, ltx_defaults
     model = _get(f'/api/v1/models/{int(model_id)}')
+    from .civitai_workflows import attach_workflows
+    attach_workflows(model.get('modelVersions', []))
     summary = _summary(model)
     description = _text(model.get('description'))
     versions = []
     for version in model.get('modelVersions', []):
         version_text = _text(version.get('description'))
+        from .lora_author import profile as lora_profile
+        lora_advice = lora_profile(version, model)
         info = BASE_MODELS.get(version.get('baseModel'))
-        settings = author_settings(version_text, description, arch=(info or {}).get('arch')) or example_settings(version)
+        settings = version_settings(model, version)
         turbo = version_turbo(model, version, settings)
         # Where the type comes from, so the app can say it: the Civitai tag, the version name, the page settings or the model name.
-        source = ('tag' if 'turbo' in (info or {}) else 'name' if detect_turbo(version['name'], {}) is not None
+        source = ('page' if (info or {}).get('arch')=='flux3-klein' and turbo!=(info or {}).get('turbo') else 'tag' if 'turbo' in (info or {}) else 'name' if detect_turbo(version['name'], {}) is not None
                   else 'page' if detect_turbo(version['name'], settings) is not None else 'model name' if turbo is not None else None)
         files = [{'id': f['id'], 'name': f['name'], 'type': f.get('type', 'Model'), 'bytes': int(f.get('sizeKB', 0) * 1024),
-                  'format': _file_format(f), 'precision': (f.get('metadata') or {}).get('fp', ''),
+                  'format': _file_format(f), 'precision': _file_precision(f),
                   'primary': bool(f.get('primary')), 'sha256': ((f.get('hashes') or {}).get('SHA256') or '').lower()}
                  for f in version.get('files', [])]
         usable = [f for f in files if _usable_file(model['type'], f)]
         rank = lambda f: _file_rank(f, _best_quality(model['type'], info))
         problem = ltx_problem(model, version, settings, version_text + '\n' + description)
+        if not info:
+            problem = f"This app does not support {version.get('baseModel') or 'this model architecture'}."
+        elif not usable:
+            problem = 'This version has no supported diffusion model or LoRA file.'
+        sampling = None
+        if (info or {}).get('arch') == 'minimax-h3' and model['type'] == 'Checkpoint':
+            from . import models
+            ref2va, modes = h3_capabilities(model,version)
+            sampling = h3_defaults(model, version, models.entry('h3-ref-base-int8' if ref2va else 'h3-int8'), f"{SITE}/models/{model['id']}?modelVersionId={version['id']}")
+        if (info or {}).get('arch')=='flux3-klein' and model['type']=='Checkpoint':
+            sampling=image_defaults(bool(turbo),settings,f"{SITE}/models/{model['id']}?modelVersionId={version['id']}",'flux3-klein')
+        if (info or {}).get('arch')=='ltx25' and model['type']=='Checkpoint':
+            sampling=ltx_defaults(model,version,f"{SITE}/models/{model['id']}?modelVersionId={version['id']}")
+        if sampling and (info or {}).get('arch')=='ltx25':
+            for f in usable:
+                f['generation_defaults']=ltx_defaults(model,version,sampling['source'],f)
+        if sampling and (info or {}).get('arch')=='minimax-h3':
+            for f in usable:
+                file_ref, file_modes = h3_capabilities(model,version,f)
+                f.update(family='minimax-h3-ref2va' if file_ref else 'minimax-h3', modes=file_modes)
+                f['generation_defaults']=h3_defaults(model,version,models.entry('h3-ref-base-int8' if file_ref else 'h3-int8'),sampling['source'],f)
+        if sampling and usable and (info or {}).get('arch')=='minimax-h3':
+            sampling=sorted(usable,key=rank)[0]['generation_defaults']
         versions.append({'id': version['id'], 'name': version['name'], 'base_model': version.get('baseModel', ''),
                          'area': info['area'] if info else None, 'problem': problem,
                          'ltx_variant': ltx_variant(model['name'], version['name'], settings, version_text + '\n' + description) if version.get('baseModel') == 'LTXV 2.5' and model['type'] == 'Checkpoint' else None,
                          'supported': bool(info) and bool(usable) and not problem,
-                         'trained_words': [w.strip() for w in version.get('trainedWords') or [] if w.strip()],
+                         'trained_words': trained_words(version, model),
                          'description': version_text, 'files': files, 'default_file': (sorted(usable, key=rank)[0]['id'] if usable else None),
-                         'suggested_strength': suggested_strength(version_text + '\n' + description),
+                         'suggested_strength': lora_advice['strength'],
                          'turbo_hint': bool(turbo), 'turbo_known': turbo is not None, 'turbo_source': source,
                          'author_settings': settings or None,
+                         'generation_defaults': sampling, 'modes': h3_capabilities(model,version)[1] if (info or {}).get('arch')=='minimax-h3' else [],
                          'vae_hint': _known_vae(next((f['name'] for f in files if f['type'] == 'VAE'), '')) or recommended_vae(version_text + '\n' + description)
                                      or ('file' if any(f['type'] == 'VAE' for f in files) else None),
                          'images': [_image(i, 700) for i in version.get('images', [])[:8]]})
@@ -682,10 +750,22 @@ def _file_format(file: dict) -> str:
     return found or ('SafeTensor' if name.endswith('.safetensors') else 'GGUF' if name.endswith('.gguf') else '')
 
 
+def _file_precision(file: dict) -> str:
+    value=(file.get('metadata') or {}).get('fp')
+    # Civitai has no six-bit metadata choice; W6A8 files often say INT8 there.
+    # An explicit precision suffix in the author's filename is more specific.
+    named=re.findall(r'(int[2-8]|w[2-8]a[24816]+)(?=[_. -]|$)',file.get('name',''),re.I)
+    if named and str(value).lower()=='int8':return named[-1].upper()
+    if value:
+        return value
+    match=re.search(r'(?:^|[_. -])(nvfp4|mxfp8|fp8_scaled|bf16|fp16|fp32|fp8|int8|int4|q[2-8](?:_[a-z0-9]+)*)(?:[_. -]|$)',file.get('name',''),re.I)
+    return match[1].upper() if match else ''
+
+
 def _usable_file(model_type: str, file: dict) -> bool:
     if model_type == 'LORA':
         return file['format'] == 'SafeTensor' and file['type'] == 'Model'
-    return file['type'] in ('Model', 'Diffusion Model') and file['format'] in ('SafeTensor', 'GGUF')
+    return file['type'] in ('Model', 'Diffusion Model', 'UNet') and file['format'] in ('SafeTensor', 'GGUF')
 
 
 CHECKPOINT_ORDER = {'fp8': 0, 'fp8_scaled': 0, 'mxfp8': 1, 'nvfp4': 2, 'bf16': 3, 'fp16': 4, 'fp32': 5, 'int8': 6, 'int4': 7}
@@ -705,7 +785,7 @@ def _file_rank(file: dict, best_quality: bool = False):
         return (gguf, CHECKPOINT_ORDER.get((file['precision'] or '').lower(), 8), not file['primary'], -file['bytes'])
     # Prefer the primary file, then full precision, then smaller quantized files.
     order = {'bf16': 0, 'fp16': 1, 'fp8': 2, 'int8': 3}
-    return (not file['primary'], order.get(file['precision'], 4), file['bytes'])
+    return (not file['primary'], order.get((file['precision'] or '').lower(), 4), file['bytes'])
 
 
 def resolve_link(link: str) -> dict:
@@ -724,6 +804,10 @@ def inspect(path: Path) -> dict:
     names = list(shapes)
     lora = any(re.search(r'lora_(?:A|B|up|down)\b|\.lora\.|\.alpha$', name) for name in names)
     arch = 'unknown'
+    flux3=any(re.search(r'content_mode_blocks[._]image[._]\d+[._]attn_out',name) for name in names)
+    if flux3:
+        return {'kind':'lora' if lora else 'model','arch':'flux3-klein','tensors':len(names),
+                'variant':None if lora else ('distilled' if any('ref_time_in' in name for name in names) else 'base')}
     for name, shape in shapes.items():
         if not shape:
             continue
@@ -814,6 +898,8 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     from . import models
     version = _get(f'/api/v1/model-versions/{int(version_id)}')
     model = _get(f"/api/v1/models/{version['modelId']}")
+    from .civitai_workflows import attach_workflows
+    attach_workflows([version])
     base = BASE_MODELS.get(version.get('baseModel'))
     if not base:
         raise ValueError(f"This version is for {version.get('baseModel')}, which this app cannot run yet. Supported: {', '.join(BASE_MODELS)}.")
@@ -825,11 +911,22 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     candidates = [f for f in files if _usable_file(model['type'], {'type': f.get('type', 'Model'), 'format': _file_format(f)})]
     if not candidates:
         raise ValueError('This version has no LoRA or diffusion model file that this app can load.')
-    file = sorted(candidates, key=lambda f: _file_rank({'primary': bool(f.get('primary')), 'precision': (f.get('metadata') or {}).get('fp', ''), 'bytes': f.get('sizeKB', 0),
+    file = sorted(candidates, key=lambda f: _file_rank({'primary': bool(f.get('primary')), 'precision': _file_precision(f), 'bytes': f.get('sizeKB', 0),
                                                         'format': _file_format(f), 'name': f['name']},
                                                        _best_quality(model['type'], base)))[0]
+    if base['arch']=='ltx25' and model['type']=='Checkpoint':
+        from .civitai_settings import version_settings
+        selected_settings=version_settings(model,version,file)
+        variant=ltx_variant(model['name'],version['name'],selected_settings,page_text,file)
+        if variant is None:
+            raise ValueError('The selected file does not identify a distilled or dev LTX 2.5 model.')
+        if variant=='distilled' and selected_settings.get('steps') not in (None,8):
+            raise ValueError('This file requires a different sampling schedule. Choose a model that supports the official 8-step distilled workflow.')
     lora = model['type'] == 'LORA'
     entry_id = f"civitai-{'lora' if lora else 'model'}-{version['id']}"
+    existing=next((item for item in user_catalog() if item['id']==entry_id),None)
+    if existing and existing.get('civitai',{}).get('file_id') not in (None,file['id']):
+        entry_id += f"-file-{file['id']}"
     directory = f"civitai/{'loras' if lora else 'models'}"
     name = re.sub(r'[^A-Za-z0-9._-]+', '_', file['name'])
     relative = f"{version['id']}_{name}"
@@ -845,7 +942,8 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
         raise ValueError(f'The downloaded file is {reason}, so this app cannot use it. It was removed.')
     description = _text(version.get('description')) + '\n' + _text(model.get('description'))
     # Civitai's "Krea 2" holds both Raw and Turbo merges; without page settings the example images tell which.
-    settings = author_settings(_text(version.get('description')), _text(model.get('description')), arch=base['arch']) or example_settings(version)
+    from .civitai_settings import version_settings, h3_defaults, h3_capabilities, ltx_defaults
+    settings = version_settings(model, version)
     detected = version_turbo(model, version, settings)
     turbo = turbo if detected is None else detected  # the type the user chose when the page does not say
     size = target.stat().st_size
@@ -854,46 +952,61 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
              'files': [{'path': relative, 'bytes': size, 'sha256': expected or None}], 'bytes': size, 'dependencies': [],
              'civitai': {'model_id': model['id'], 'version_id': version['id'], 'url': f"{SITE}/models/{model['id']}?modelVersionId={version['id']}",
                          'creator': (model.get('creator') or {}).get('username', ''), 'nsfw': bool(model.get('nsfw')),
-                         'download_url': file['downloadUrl']}}
+                         'download_url': file['downloadUrl'], 'file_id': file['id'], 'file_name': file['name']}}
     if lora and base['arch'] == 'minimax-h3':
-        ref2va = bool(re.search(r'ref2va|r2v', version['name'] + ' ' + file['name'], re.I))
-        entry.update(kind='video-lora', format='LoRA', families=['minimax-h3', 'fasth3', 'minimax-h3-ref2va'], made_for='Ref2VA' if ref2va else 'MiniMax H3',
-                     trained_words=[w.strip() for w in version.get('trainedWords') or [] if w.strip()],
+        ref2va, _ = h3_capabilities(model,version,file)
+        entry.update(kind='video-lora', format='LoRA', families=['minimax-h3-ref2va'] if ref2va else ['minimax-h3'], made_for='Ref2VA' if ref2va else 'FL2VA',
+                     trained_words=trained_words(version, model),
                      default_strength=suggested_strength(description) or 1.0, summary=description[:400])
     elif base['arch'] == 'minimax-h3':
-        ref2va = bool(re.search(r'ref2va|r2v', version['name'] + ' ' + file['name'] + ' ' + model['name'], re.I))
+        ref2va, modes = h3_capabilities(model,version,file)
         template = models.entry('h3-ref-base-int8' if ref2va else 'h3-int8')
         gguf = target.suffix.lower() == '.gguf'
-        entry.update(kind=template['kind'], family=template['family'], format='GGUF' if gguf else ((file.get('metadata') or {}).get('fp') or 'BF16').upper(),
-                     dependencies=list(template['dependencies']), generation_defaults=dict(template['generation_defaults'], source=entry['civitai']['url']))
-        if template.get('modes'):
-            entry['modes'] = list(template['modes'])
+        entry.update(kind=template['kind'], family=template['family'], format='GGUF' if gguf else (_file_precision(file) or 'SafeTensor').upper(),
+                     dependencies=list(template['dependencies']), generation_defaults=h3_defaults(model, version, template, entry['civitai']['url'],file), settings_version=SETTINGS_VERSION)
+        if modes:
+            entry['modes'] = modes
     elif lora and base['arch'] == 'ltx25':
         entry.update(kind='video-lora', format='LoRA', families=['ltx25', 'ltx25-msr'], made_for='LTX 2.5',
-                     trained_words=[w.strip() for w in version.get('trainedWords') or [] if w.strip()],
+                     trained_words=trained_words(version, model),
                      default_strength=suggested_strength(description) or 1.0, summary=description[:400])
     elif base['arch'] == 'ltx25':
-        # Only distilled LTX 2.5 checkpoints suit the fixed 8 + 3 step schedule that Create video runs.
+        # Select the exact file's variant. Dev files need the distillation adapter;
+        # already distilled files must not receive it a second time.
         gguf = target.suffix.lower() == '.gguf'
         page = _text(version.get('description')) + '\n' + _text(model.get('description'))
-        dev = ltx_variant(model['name'], version['name'], author_settings(_text(version.get('description')), _text(model.get('description'))), page) == 'dev'
+        variant = ltx_variant(model['name'], version['name'], author_settings(_text(version.get('description')), _text(model.get('description'))), page, file)
+        if variant is None:
+            raise ValueError('The selected file does not identify a distilled or dev LTX 2.5 model.')
+        dev = variant == 'dev'
         entry.update(kind='video', family='ltx25', modes=['text', 'image'],
-                     format='GGUF' if gguf else ((file.get('metadata') or {}).get('fp') or 'BF16').upper(),
+                     format='GGUF' if gguf else (_file_precision(file) or 'SafeTensor').upper(),
                      dependencies=['ltx25-gemma-int8', 'ltx25-video-vae', 'ltx25-audio-vae', *(['ltx25-distill-lora'] if dev else [])],
-                     generation_defaults={'steps': 8, 'source': entry['civitai']['url'],
-                                          'note': ('Dev checkpoint: the official distilled LoRA at 0.5, then the distilled schedule (as the Lightricks '
-                                                   'and model pages describe).' if dev else 'LTX 2.5 distilled schedule.')})
+                     generation_defaults=ltx_defaults(model,version,entry['civitai']['url'],file),settings_version=SETTINGS_VERSION)
         if dev:
-            entry['distill_lora_strength'] = 0.5
+            entry['distill_lora_strength'] = entry['generation_defaults']['distill_lora_strength']
+    elif base['arch']=='flux3-klein':
+        families=['flux3-klein','flux3-klein-base']
+        if lora:
+            entry.update(kind='image-lora',format='LoRA',families=families,
+                trained_words=trained_words(version, model),
+                default_strength=suggested_strength(description) or 1.0,summary=description[:400])
+        else:
+            distilled=info['variant']=='distilled'
+            entry.update(kind='image',family='flux3-klein' if distilled else 'flux3-klein-base',
+                format='GGUF' if target.suffix.lower()=='.gguf' else (_file_precision(file) or 'SafeTensor').upper(),
+                dependencies=['flux3-encoder-int8','flux3-vae','flux3-prompt'],text_encoder='flux3-encoder-int8',
+                recommended_vae='flux3-vae',layout='comfy',
+                generation_defaults=image_defaults(distilled,settings,entry['civitai']['url'],'flux3-klein'),settings_version=SETTINGS_VERSION)
     elif lora and base['arch'] == 'krea-2':
         entry.update(kind='image-lora', format='LoRA', families=list(KREA2_FAMILIES),
-                     trained_words=[w.strip() for w in version.get('trainedWords') or [] if w.strip()],
+                     trained_words=trained_words(version, model),
                      default_strength=suggested_strength(description) or 1.0, summary=description[:400])
     elif base['arch'] == 'krea-2':
         # Krea 2 uses its own Qwen3-VL 4B encoder and Qwen-Image VAE (an all-in-one file loads only its DiT).
         gguf = target.suffix.lower() == '.gguf'
         entry.update(kind='image', family='krea-2-turbo' if turbo else 'krea-2',
-                     format='GGUF' if gguf else ((file.get('metadata') or {}).get('fp') or 'BF16').upper(),
+                     format='GGUF' if gguf else (_file_precision(file) or 'SafeTensor').upper(),
                      dependencies=['krea2-encoder-bf16', 'krea2-vae'], text_encoder='krea2-encoder-bf16', recommended_vae='krea2-vae',
                      generation_defaults=image_defaults(turbo, settings, entry['civitai']['url'], 'krea-2'), settings_version=SETTINGS_VERSION)
         if not gguf:
@@ -901,25 +1014,25 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     elif lora and base['arch'] == 'z-image':
         # Z-Image Base and Turbo share one architecture; Civitai LoRAs are used with both.
         entry.update(kind='image-lora', format='LoRA', families=list(ZIMAGE_FAMILIES),
-                     trained_words=[w.strip() for w in version.get('trainedWords') or [] if w.strip()],
+                     trained_words=trained_words(version, model),
                      default_strength=suggested_strength(description) or 1.0, summary=description[:400])
     elif base['arch'] == 'z-image':
         # Z-Image uses its own Qwen3 4B encoder and Flux VAE (an all-in-one file loads only its DiT).
         gguf = target.suffix.lower() == '.gguf'
         entry.update(kind='image', family='z-image-turbo' if turbo else 'z-image',
-                     format='GGUF' if gguf else ((file.get('metadata') or {}).get('fp') or 'BF16').upper(),
+                     format='GGUF' if gguf else (_file_precision(file) or 'SafeTensor').upper(),
                      dependencies=['zimage-encoder-bf16', 'zimage-vae'], text_encoder='zimage-encoder-bf16', recommended_vae='zimage-vae',
                      generation_defaults=image_defaults(turbo, settings, entry['civitai']['url'], 'z-image'), settings_version=SETTINGS_VERSION)
         if not gguf:
             entry['layout'] = 'comfy'
     elif lora:
         entry.update(kind='image-lora', format='LoRA', families=['qwen-image-2.1', 'qwen-image-2.1-turbo'],
-                     trained_words=[w.strip() for w in version.get('trainedWords') or [] if w.strip()],
+                     trained_words=trained_words(version, model),
                      default_strength=suggested_strength(description) or 1.0, summary=description[:400])
     else:
         gguf = target.suffix.lower() == '.gguf'
         family = 'qwen-image-2.1-turbo' if turbo else 'qwen-image-2.1'
-        entry.update(kind='image', family=family, format='GGUF' if gguf else ((file.get('metadata') or {}).get('fp') or 'BF16').upper(),
+        entry.update(kind='image', family=family, format='GGUF' if gguf else (_file_precision(file) or 'SafeTensor').upper(),
                      dependencies=['encoder-int8' if gguf else 'encoder-bf16', 'vae'],
                      generation_defaults=image_defaults(turbo, settings, entry['civitai']['url']), settings_version=SETTINGS_VERSION)
         vae_id = _install_vae(version, model, progress) or recommended_vae(description)
@@ -927,6 +1040,16 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
             entry['recommended_vae'] = vae_id
         if not gguf:
             entry['layout'] = 'comfy'
+    if lora:
+        from .lora_author import profile
+        advice = profile(version, model)
+        entry.update(lora_author=advice, trained_words=advice['trained_words'],
+                     default_strength=advice['strength'] if advice['strength'] is not None else 1.0,
+                     summary=advice['description'][:400])
+    if not lora:
+        precision=_file_precision(file) or entry['format']
+        entry['quantization']=precision
+        entry['title'] += ' \u00b7 '+precision
     _save_preview(entry_id, version)
     entry['preview'] = f'/api/civitai/previews/{entry_id}' if (PREVIEWS / f'{entry_id}.jpg').exists() else None
     _register(entry)
@@ -937,7 +1060,7 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     return entry
 
 
-SETTINGS_VERSION = 5  # 3: settings lists, Euler A, en dash ranges and "Best:" lines; 4: the list for the model's own architecture; 5: plain-text settings for the model's own architecture, never an upscaling pass
+SETTINGS_VERSION = 8  # Partition-scoped H3 settings; reject non-inference step counts.
 
 
 def _known_vae(name: str) -> str | None:
@@ -971,7 +1094,7 @@ def _install_vae(version: dict, model: dict, progress) -> str | None:
         target.unlink(missing_ok=True)  # not the Qwen-Image-2.1 latent space
         return None
     size = target.stat().st_size
-    _register({'id': entry_id, 'title': f"{model['name']} VAE", 'kind': 'vae', 'format': ((file.get('metadata') or {}).get('fp') or 'BF16').upper(),
+    _register({'id': entry_id, 'title': f"{model['name']} VAE", 'kind': 'vae', 'format': (_file_precision(file) or 'SafeTensor').upper(),
                'repo': 'civitai', 'source': 'civitai', 'revision': str(file['id']), 'directory': 'civitai/vae',
                'files': [{'path': relative, 'bytes': size, 'sha256': None}], 'bytes': size, 'dependencies': [],
                'civitai': {'model_id': model['id'], 'version_id': version['id'], 'url': f"{SITE}/models/{model['id']}?modelVersionId={version['id']}",
@@ -989,7 +1112,8 @@ def repair_entries() -> list[str]:
     Uses the page again; changes only the settings."""
     fixed = []
     for item in user_catalog():
-        if item.get('kind') != 'image' or 'civitai' not in item or item.get('settings_version', 0) >= SETTINGS_VERSION:
+        required_version = SETTINGS_VERSION if item.get('family') in ('minimax-h3','minimax-h3-ref2va') else 7
+        if item.get('kind') not in ('image','video','reference-video') or 'civitai' not in item or item.get('settings_version', 0) >= required_version:
             continue
         try:
             version = _get(f"/api/v1/model-versions/{item['civitai']['version_id']}")
@@ -997,12 +1121,41 @@ def repair_entries() -> list[str]:
         except Exception:
             continue  # offline: try again on the next start
         version_text, model_text = _text(version.get('description')), _text(model.get('description'))
+        from .civitai_workflows import attach_workflows
+        attach_workflows([version])
         arch = (BASE_MODELS.get(version.get('baseModel')) or {}).get('arch')
-        settings = author_settings(version_text, model_text, arch=arch)
-        own = 'krea-2' if item.get('family', '').startswith('krea-2') else 'z-image' if item.get('family', '').startswith('z-image') else None
+        from .civitai_settings import version_settings, h3_defaults, h3_capabilities, ltx_defaults
+        settings = version_settings(model, version)
+        selected_file = next((file for file in version.get('files',[]) if any(
+            file.get('hashes',{}).get('SHA256','').lower() == saved.get('sha256') and saved.get('sha256')
+            or saved['path'].endswith(re.sub(r'[^A-Za-z0-9._-]+','_',file['name'])) for saved in item['files'])), None)
+        if selected_file:
+            item['civitai'].update(file_id=selected_file['id'],file_name=selected_file['name'])
+            item['quantization']=_file_precision(selected_file) or item['format']
+            if not item['title'].endswith(' \u00b7 '+item['quantization']):
+                item['title']+=' \u00b7 '+item['quantization']
+        if arch == 'minimax-h3':
+            from . import models
+            ref2va,modes=h3_capabilities(model,version,selected_file)
+            template = models.entry('h3-ref-base-int8' if ref2va else 'h3-int8')
+            item.update(kind=template['kind'],family=template['family'],modes=modes)
+            item.update(generation_defaults=h3_defaults(model,version,template,item['civitai']['url'],selected_file),settings_version=SETTINGS_VERSION)
+            _register(item)
+            fixed.append(item['id'])
+            continue
+        if arch == 'ltx25':
+            profile=ltx_defaults(model,version,item['civitai']['url'],selected_file)
+            item.update(generation_defaults=profile,settings_version=SETTINGS_VERSION)
+            if profile['variant'] in ('dev','distilled'):
+                item['dependencies']=['ltx25-gemma-int8','ltx25-video-vae','ltx25-audio-vae']+(['ltx25-distill-lora'] if profile['variant']=='dev' else [])
+                if profile['variant']=='dev':item['distill_lora_strength']=profile['distill_lora_strength']
+                else:item.pop('distill_lora_strength',None)
+            _register(item);fixed.append(item['id'])
+            continue
+        own = next((family for family in ('flux3-klein','krea-2','z-image') if item.get('family','').startswith(family)),None)
         if own:
             # A Krea 2 or Z-Image entry keeps the type it was installed as; only the page settings are read again.
-            turbo = item['family'].endswith('-turbo')
+            turbo = item['family']=='flux3-klein' if own=='flux3-klein' else item['family'].endswith('-turbo')
             item.update(generation_defaults=image_defaults(turbo, settings, item['civitai']['url'], own), settings_version=SETTINGS_VERSION)
         else:
             detected = detect_turbo(version['name'], settings)

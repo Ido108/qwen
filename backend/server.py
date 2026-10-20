@@ -22,6 +22,7 @@ from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 from pydantic import BaseModel, Field
 
 from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, GenerationRequest, VideoRequest, ReferenceVideoRequest, UpscaleRequest, model_status, resolve_image, resolve_video, read_json, write_json
@@ -33,6 +34,7 @@ from .common import AUDIO_UPLOADS_DIR, resolve_audio
 from .ltx_settings import MultiReferenceRequest, required_ltx, is_ref2va, media_inputs as ltx_media_inputs
 
 SESSION_TOKEN = secrets.token_urlsafe(32)
+register_heif_opener(thumbnails=False)
 active_lock = threading.Lock()
 active_job: str | None = None
 active_process: subprocess.Popen | None = None
@@ -42,8 +44,13 @@ pending_jobs: list[str] = []
 recent_jobs: deque[str] = deque(maxlen=20)
 queue_paused = False
 shutting_down = False
+image_warmup_suspended = False
 image_worker = ImageWorker()
 VIDEO_KINDS={'video','reference-video','multi-reference','upscale'}
+# Completed job IDs never change their output. Keep private images in this browser,
+# not in shared proxies. Mutable API responses and failed reads remain no-store.
+RESULT_CACHE = {'Cache-Control': 'private, max-age=604800, immutable'}
+display_locks = [threading.Lock() for _ in range(16)]
 
 
 def start_next_locked():
@@ -64,7 +71,7 @@ def start_next_locked():
 def warm_image_worker_locked():
     """Caller holds active_lock. When the queue is idle and no image model is loaded (after the app starts or
     after a video job), load the last used image model so the next image starts in about a second."""
-    if active_job or pending_jobs or queue_paused or shutting_down or cloud.settings()['mode'] != 'local':
+    if image_warmup_suspended or active_job or pending_jobs or queue_paused or shutting_down or cloud.settings()['mode'] != 'local':
         return
     if os.environ.get('QWEN_NO_WARMUP') or image_worker.status()['loaded']:
         return
@@ -85,6 +92,8 @@ def save_queue_locked():
 
 
 def enqueue_locked(job, data):
+    from .lora_preferences import snapshot
+    snapshot(data)
     directory = JOBS_DIR / job['id']
     directory.mkdir()
     write_json(directory / 'request.json', data)
@@ -123,7 +132,7 @@ def read_job(job_id):
 
 def public_job(job):
     public = {k: v for k, v in job.items() if k not in ('output_path',)}
-    if job.get('status') == 'succeeded' and job.get('kind') != 'training':
+    if job.get('status') == 'succeeded' and job.get('kind') not in ('training', 'captioning'):
         public['thumbnail_url'] = f'/api/jobs/{job["id"]}/thumbnail'
     return public
 
@@ -309,12 +318,12 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
     write_json(directory / 'status.json', current)
 
 def run_job(job_id):
-    global active_job, active_process, active_remote
+    global active_job, active_process, active_remote, image_warmup_suspended
     directory = JOBS_DIR / job_id
     try:
         request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
         is_video = request.get('kind') in VIDEO_KINDS
-        if request.get('kind') == 'training':
+        if request.get('kind') in ('training', 'captioning'):
             run_training(job_id, request, directory)
             return
         if request.get('execution') == 'runpod':
@@ -337,6 +346,8 @@ def run_job(job_id):
                     )
                 else:
                     active_process = image_worker.start(directory, request)
+                    # A new local image explicitly requests the model again.
+                    image_warmup_suspended = False
                 process = active_process
             return_code = process.wait() if is_video else image_worker.wait(directory, process)
         with active_lock:
@@ -372,7 +383,7 @@ def run_training(job_id, request, directory):
     with active_lock:
         if job_id in cancelled_jobs:
             job = read_job(job_id)
-            job.update(status='cancelled', message='Training cancelled.', finished_at=time.time())
+            job.update(status='cancelled', message='Captions cancelled.' if request.get('kind') == 'captioning' else 'Training cancelled.', finished_at=time.time())
             write_json(directory / 'status.json', job)
             return
         image_worker.close()
@@ -383,11 +394,28 @@ def run_training(job_id, request, directory):
             active_process = process
             if job_id in cancelled_jobs:
                 stop_worker(process)
-    training.run(job_id, request, directory, started, lambda: job_id in cancelled_jobs or shutting_down)
+    cancelled = lambda: job_id in cancelled_jobs or shutting_down
+    if request.get('kind') == 'captioning':
+        from . import training_captions
+        def update(**values):
+            job = read_job(job_id)
+            job.update(values)
+            write_json(directory / 'status.json', job)
+        began = time.time()
+        update(status='running', started_at=began, stage='captioning', message='Preparing captions...')
+        results = training_captions.run(request, directory, started, cancelled, update)
+        if not cancelled():
+            failed = sum(not results.get(i['id'], {}).get('caption') for i in request['images'])
+            update(status='failed' if failed else 'succeeded', stage='failed' if failed else 'complete',
+                   message=f'{failed} captions need a retry.' if failed else 'Captions ready.',
+                   finished_at=time.time(), elapsed_seconds=round(time.time()-began, 1),
+                   step=len(request['images'])-failed, total_steps=len(request['images']))
+    else:
+        training.run(job_id, request, directory, started, cancelled)
     with active_lock:
         if job_id in cancelled_jobs:
             job = read_job(job_id)
-            job.update(status='cancelled', stage='cancelled', message='Training stopped. Start it again with the same name to continue from the last saved step.',
+            job.update(status='cancelled', stage='cancelled', message='Captions stopped. Completed captions remain available.' if request.get('kind') == 'captioning' else 'Training stopped. Start it again with the same name to continue from the last saved step.',
                        finished_at=time.time())
             write_json(directory / 'status.json', job)
 
@@ -424,9 +452,10 @@ def prepare_job_models(job_id,request):
 
 @asynccontextmanager
 async def lifespan(app):
-    global queue_paused, shutting_down, active_job, active_process
+    global queue_paused, shutting_down, active_job, active_process, image_warmup_suspended
     with active_lock:
         shutting_down = False
+        image_warmup_suspended = False
         active_job = None
         active_process = None
         pending_jobs.clear()
@@ -452,6 +481,7 @@ async def lifespan(app):
         start_next_locked()
     # Fix the settings of Civitai models saved by older versions (for example a Base model saved as Turbo).
     threading.Thread(target=civitai.repair_entries, name='civitai-repair', daemon=True).start()
+    recover_civitai_downloads()
     threading.Thread(target=civitai.warm_indexes, name='civitai-index-warm', daemon=True).start()
     # Remote use from the Moise dashboard (also on the phone), when this PC has the Moise connection settings.
     remote = moise_remote.start(int(os.environ['QWEN_SERVER_PORT'])) if os.environ.get('QWEN_SERVER_PORT', '').isdigit() else None
@@ -483,7 +513,7 @@ async def local_only(request: Request, call_next):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'no-referrer'
     if request.url.path.startswith('/api'):
-        response.headers['Cache-Control'] = 'no-store'
+        response.headers.setdefault('Cache-Control', 'no-store')
     elif request.url.path in ('/', '/index.html'):
         # Always check for a newer build; the hashed assets can stay cached.
         response.headers['Cache-Control'] = 'no-cache'
@@ -496,11 +526,11 @@ def health():
 @app.get('/api/gpu-memory')
 def gpu_memory_status():
     from .gpu_memory import dedicated_memory_snapshot
-    return dedicated_memory_snapshot()
+    return {**dedicated_memory_snapshot(), 'resident_image': image_worker.status(), 'job_active': bool(active_job)}
 
 @app.get('/api/config')
 def config():
-    return {'token': SESSION_TOKEN, 'models': model_status(), 'catalog': catalog_state(), 'enhancement': antigravity.status(), 'cloud': cloud.status(), 'output_dir': str(OUTPUTS_DIR), 'video_output_dir':str(VIDEOS_DIR), 'active_job': active_job, 'model': 'Qwen-Image-2.1', 'device': 'RunPod GPU' if cloud.settings()['mode'] == 'runpod' else 'Local NVIDIA GPU', 'data_dir': str(DATA_DIR)}
+    return {'token': SESSION_TOKEN, 'models': model_status(), 'catalog': catalog_state(), 'enhancement': None, 'cloud': cloud.status(), 'output_dir': str(OUTPUTS_DIR), 'video_output_dir':str(VIDEOS_DIR), 'active_job': active_job, 'model': 'Qwen-Image-2.1', 'device': 'RunPod GPU' if cloud.settings()['mode'] == 'runpod' else 'Local NVIDIA GPU', 'data_dir': str(DATA_DIR)}
 
 
 @app.get('/api/session')
@@ -664,7 +694,7 @@ def civitai_disconnect():
 def civitai_search(query: str = '', kind: Literal['LORA', 'Checkpoint'] = 'LORA',
                    sort: Literal['Most Downloaded', 'Highest Rated', 'Newest'] = 'Most Downloaded', cursor: str | None = None,
                    area: Literal['image', 'video'] = 'image', variant: Literal['all', 'standard', 'turbo'] = 'all',
-                   arch: Literal['all', 'qwen-image-2.1', 'krea-2', 'z-image', 'minimax-h3', 'ltx25'] = 'all'):
+                   arch: Literal['all', 'qwen-image-2.1', 'krea-2', 'z-image', 'flux3-klein', 'minimax-h3', 'ltx25'] = 'all'):
     return civitai_call(civitai.search, query, kind, sort, cursor, True, area, variant, arch)
 
 
@@ -681,6 +711,23 @@ def civitai_resolve(body: CivitaiLink):
 # Civitai downloads run side by side (each file has its own target), one record and Cancel switch per version.
 civitai_downloads: dict[str, dict] = {}
 civitai_cancels: dict[str, threading.Event] = {}
+CIVITAI_PENDING_PATH = DATA_DIR / 'civitai-pending-downloads.json'
+
+
+def pending_civitai_downloads():
+    try:
+        saved=read_json(CIVITAI_PENDING_PATH)
+        return saved if isinstance(saved,dict) else {}
+    except (FileNotFoundError,ValueError):
+        return {}
+
+
+def recover_civitai_downloads():
+    for values in pending_civitai_downloads().values():
+        try:
+            civitai_install(CivitaiInstall(**values))
+        except Exception as exc:
+            print(f'[Civitai] Could not resume a saved download: {exc}',flush=True)
 
 
 def civitai_download_list() -> list[dict]:
@@ -701,6 +748,9 @@ def civitai_install(body: CivitaiInstall):
         record = civitai_downloads[key] = {'status': 'running', 'stage': 'preparing', 'requested_id': f'civitai:{body.version_id}', 'title': body.title,
                                            'completed_bytes': 0, 'total_bytes': 0}
         cancel = civitai_cancels[key] = threading.Event()
+        pending=pending_civitai_downloads()
+        pending[key]=body.model_dump()
+        write_json(CIVITAI_PENDING_PATH,pending)
 
     def run():
         started, printed = time.monotonic(), [0.0]
@@ -725,6 +775,11 @@ def civitai_install(body: CivitaiInstall):
         except Exception as exc:
             with models.lock:
                 record.update(status='failed', message=str(exc)[:400], ended_at=time.time())
+        finally:
+            with models.lock:
+                pending=pending_civitai_downloads()
+                pending.pop(key,None)
+                write_json(CIVITAI_PENDING_PATH,pending)
     threading.Thread(target=run, name=f'civitai-{key}', daemon=True).start()
     return {'ok': True}
 
@@ -743,7 +798,7 @@ def civitai_preview(entry_id: str):
     path = (civitai.PREVIEWS / f'{entry_id}.jpg').resolve()
     if not path.is_relative_to(civitai.PREVIEWS.resolve()) or not path.is_file():
         raise HTTPException(404, 'Preview not found.')
-    return FileResponse(path, headers={'Cache-Control': 'max-age=86400'})
+    return FileResponse(path, headers={'Cache-Control': 'private, max-age=86400'})
 
 
 class PersonBody(BaseModel):
@@ -796,7 +851,7 @@ def remove_person(person_id: str):
 @app.get('/api/people/{person_id}/avatar')
 def person_avatar(person_id: str):
     try:
-        return FileResponse(people.avatar(person_id), media_type='image/webp', headers={'Cache-Control': 'max-age=86400'})
+        return FileResponse(people.avatar(person_id), media_type='image/webp', headers={'Cache-Control': 'private, max-age=86400'})
     except (ValueError, OSError):
         raise HTTPException(404, 'No avatar.')
 
@@ -818,12 +873,39 @@ def import_status():
 def get_models():
     return catalog_state() | {'resident': image_worker.status() if cloud.settings()['mode'] == 'local' else None, 'downloads': civitai_download_list()}
 
+
+class LoraPromptSettings(BaseModel):
+    prompt_addition: str = Field(default='', max_length=4000)
+
+
+@app.get('/api/loras/{model_id}/settings')
+def get_lora_settings(model_id: str):
+    try:
+        item = models.entry(model_id)
+        if 'lora' not in item.get('kind', ''):
+            raise ValueError('Select a LoRA.')
+        return {'prompt_addition': item.get('prompt_addition', '')}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.put('/api/loras/{model_id}/settings')
+def save_lora_settings(model_id: str, body: LoraPromptSettings):
+    from .lora_preferences import save
+    try:
+        return save(model_id, body.prompt_addition)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
 @app.post('/api/models/release')
 def release_models():
+    global image_warmup_suspended
     with active_lock:
         if active_job or pending_jobs:
             raise HTTPException(409, 'Finish or cancel queued jobs before releasing models.')
         image_worker.close()
+        # Queue controls and later video jobs must not undo a manual unload.
+        image_warmup_suspended = True
         return image_worker.status()
 
 @app.post('/api/models/{model_id}/download')
@@ -870,8 +952,8 @@ async def upload(files: list[UploadFile] = File(...)):
                     raise HTTPException(413, 'Each image must be under 64 megapixels.')
                 picture = ImageOps.exif_transpose(source).convert('RGBA')
                 picture.load()
-        except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
-            raise HTTPException(400, 'This file is not a supported image.')
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+            raise HTTPException(400, 'Could not read this image. Choose a JPG, PNG, WebP or HEIC photo.')
         prepared.append((picture, file.filename or 'Image'))
     return [save_upload(picture, name) for picture, name in prepared]
 
@@ -963,7 +1045,7 @@ def uploaded_thumbnail(image_id: str):
             temporary.replace(cached)
         finally:
             temporary.unlink(missing_ok=True)
-    return FileResponse(cached, media_type='image/webp', headers={'Cache-Control': 'max-age=86400'})
+    return FileResponse(cached, media_type='image/webp', headers={'Cache-Control': 'private, max-age=86400'})
 
 
 @app.put('/api/video-uploads')
@@ -1080,6 +1162,15 @@ class PeopleAnalysisRequest(BaseModel):
     end_seconds: float = Field(gt=0)
 
 
+@app.get('/api/image-people')
+def image_people(image_id: str = Query(max_length=200)):
+    try:
+        from .image_people import analyze_image
+        return analyze_image(resolve_image(image_id))
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.post('/api/video-uploads/{video_id}/people')
 def video_upload_people(video_id: str, body: PeopleAnalysisRequest):
     try:
@@ -1104,6 +1195,47 @@ def uploaded_video(video_id: str):
 OUTPAINT_DIRECTIONS = {'all', 'horizontal', 'vertical', 'left', 'right', 'top', 'bottom'}
 
 
+class SwapPromptEdit(BaseModel):
+    text: str = Field(default='', max_length=6000)
+    expected: str = Field(max_length=80)
+    restore_id: str | None = Field(default=None, max_length=80)
+
+
+@app.get('/api/swap-prompts/{tool_id}')
+def get_swap_prompt(tool_id: str):
+    from . import swap_prompts
+    try:
+        tool = models.image_tool(tool_id)
+        if not tool.get('swap'):
+            raise ValueError('Choose a Swap tool.')
+        return swap_prompts.get(tool)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.put('/api/swap-prompts/{tool_id}')
+def edit_swap_prompt(tool_id: str, body: SwapPromptEdit):
+    from . import swap_prompts
+    try:
+        return swap_prompts.save(models.image_tool(tool_id), body.text, body.expected, body.restore_id)
+    except swap_prompts.PromptConflict as exc:
+        raise HTTPException(409, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post('/api/swap-prompts/{tool_id}/preview')
+def preview_swap_prompt(tool_id: str, body: GenerationRequest):
+    from .image_people import build_swap_prompt
+    try:
+        if not body.swap_selection:
+            raise ValueError('Select the faces to preview the complete prompt.')
+        return {'prompt': build_swap_prompt(models.image_tool(tool_id), body.swap_selection.model_dump(),
+            body.images, resolve_image, body.swap_extra, body.swap_pose_source, body.swap_style_source, body.swap_prompt_template, body.image_labels, body.swap_style_mode)}
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc))
+
+
 def validate_image_tool(body: GenerationRequest) -> dict:
     tool = models.image_tool(body.tool_id)
     limits = tool['inputs']
@@ -1118,14 +1250,39 @@ def validate_image_tool(body: GenerationRequest) -> dict:
 
 @app.post('/api/generate', status_code=202)
 def generate(body: GenerationRequest):
+    source_prompt, source_negative_prompt = body.prompt, body.negative_prompt
+    if not body.prompt.strip() and body.images:
+        body.enhance = False
     try:
+        from .image_sampling import validate as validate_sampling
+        validate_sampling(body.model_dump(), models.entry(body.model_id))
         needed = models.required(body.model_id, body.text_encoder, body.tool_id, body.vae_id, [lora.id for lora in body.loras], len(body.images))
         tool = validate_image_tool(body) if body.tool_id else None
+        if tool and tool.get('swap'):
+            if not body.swap_selection:
+                raise ValueError('Select the faces to replace before creating a swap.')
+            from .image_people import build_swap_prompt
+            from . import swap_prompts
+            if body.swap_prompt_template is None:
+                saved = swap_prompts.get(tool)
+                body.swap_prompt_template, body.swap_prompt_revision = saved['text'], saved['current']
+            body.prompt = build_swap_prompt(tool, body.swap_selection.model_dump(), body.images, resolve_image, body.swap_extra, body.swap_pose_source, body.swap_style_source, body.swap_prompt_template, body.image_labels, body.swap_style_mode)
+            from .prompt_mentions import image_mentions
+            body.negative_prompt = image_mentions(body.negative_prompt, len(body.images), labels=body.image_labels)
+        elif body.swap_selection:
+            raise ValueError('Face choices apply only to Swap.')
+        else:
+            from .prompt_mentions import image_mentions
+            notation = 'qwen' if models.entry(body.model_id).get('family', '').startswith('qwen-image') else 'plain'
+            body.prompt = image_mentions(body.prompt, len(body.images), notation, body.image_labels)
+            body.negative_prompt = image_mentions(body.negative_prompt, len(body.images), notation, body.image_labels)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     remote = cloud.settings()['mode'] == 'runpod'
     if remote and not cloud.ready('image'):
         raise HTTPException(503, 'Connect a RunPod image endpoint and network volume in Settings.')
+    if models.is_flux3(models.entry(body.model_id)):
+        body.enhance=False  # FLUX.3 runs its required local prompt model in its worker.
     if tool:
         # Tool prompts carry the LoRA trigger wording; enhancement would rewrite it.
         body.enhance = False
@@ -1151,6 +1308,7 @@ def generate(body: GenerationRequest):
             raise HTTPException(503, 'Connect a RunPod image endpoint and network volume in Settings.')
         job_id = uuid.uuid4().hex
         data = body.model_dump()
+        data.update(source_prompt=source_prompt, source_negative_prompt=source_negative_prompt)
         data['execution'] = 'runpod' if remote else 'local'
         defaults = models.entry(body.model_id)['generation_defaults']
         data['steps'] = body.steps if body.steps is not None else defaults['steps']
@@ -1172,9 +1330,24 @@ def generate(body: GenerationRequest):
 def get_job(job_id: str):
     return public_job(read_job(job_id))
 
+from .orbit import OrbitRequest
+
+
+@app.post('/api/orbit/generate', status_code=202)
+def generate_orbit(body: OrbitRequest):
+    from .orbit import video_request
+    try:
+        request=video_request(body)
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
+    return generate_video(request)
+
+
 @app.post('/api/video/generate', status_code=202)
 def generate_video(body: VideoRequest):
     try:
+        from .prompt_mentions import frame_mentions
+        body.prompt = frame_mentions(body.prompt, body.mode == 'image' and bool(body.first_frame), body.mode == 'image' and bool(body.last_frame))
         needed=models.required_video(body)
         for image_id in (body.first_frame,body.last_frame):
             if image_id:
@@ -1198,12 +1371,11 @@ def generate_video(body: VideoRequest):
         if body.randomize_seed:
             data['seed']=secrets.randbelow(2147483648)
         selected=models.entry(body.model_id)
-        fast=selected['family']=='fasth3'
-        steps=8 if fast or body.quality=='turbo' else body.steps
-        if models.is_ltx_video(selected):
-            # Official LTX 2.5 distilled schedule: 8 steps, plus 3 refinement steps after the 2x upscale.
-            from .ltx_settings import ltx_video_two_pass
-            steps=11 if ltx_video_two_pass(body) else 8
+        from .video_sampling import video_sampling
+        sampling=video_sampling(selected,body.quality,body.steps,bool(body.last_frame))
+        steps=sampling['total_steps']
+        data.update(steps=sampling['steps'],quality=sampling['quality'],sampling=sampling,
+                    steps_mode='custom' if body.steps is not None and not sampling.get('fixed_steps') else 'model')
         job_id=uuid.uuid4().hex
         job={'id':job_id,'kind':'video','status':'queued','message':'Waiting in queue','stage':'queued',
              'created_at':time.time(),'seed':data['seed'],'request':data,'rewritten_prompt':'','step':0,'total_steps':steps}
@@ -1301,7 +1473,12 @@ def generate_upscale(body: UpscaleRequest):
 
 @app.post('/api/multi-reference/generate', status_code=202)
 def generate_multi_reference(body: MultiReferenceRequest):
+    source_prompt = body.prompt
+    if not body.image_labels:
+        body.image_labels = ['person'] * len(body.reference_images) + (['background'] if body.background else [])
     try:
+        from .prompt_mentions import image_mentions
+        body.prompt = image_mentions(body.prompt, len(body.reference_images) + bool(body.background), 'plain', body.image_labels)
         required_ltx(body)
         for media, value in ltx_media_inputs(body.model_dump()):
             (resolve_audio if media == 'audio' else resolve_image)(value)
@@ -1318,7 +1495,7 @@ def generate_multi_reference(body: MultiReferenceRequest):
         if remote and not cloud.ready('video'):
             raise HTTPException(503, 'Connect a RunPod video endpoint and network volume in Settings.')
         data = body.model_dump()
-        data.update(kind='multi-reference', execution='runpod' if remote else 'local', output_dir=str(destination))
+        data.update(kind='multi-reference', execution='runpod' if remote else 'local', output_dir=str(destination), source_prompt=source_prompt)
         if body.randomize_seed:
             data['seed'] = secrets.randbelow(2147483648)
         selected = models.entry(body.model_id)
@@ -1327,7 +1504,7 @@ def generate_multi_reference(body: MultiReferenceRequest):
             from .reference_sampling import reference_sampling
             sampling = reference_sampling(selected, body.quality, body.steps)
             total_steps = sampling['steps']
-            data.update(quality=sampling['quality'], sampling_profile=sampling)
+            data.update(quality=sampling['quality'], steps=sampling['steps'], sampling_profile=sampling, steps_mode='custom' if body.steps is not None else 'model')
         job = {'id': uuid.uuid4().hex, 'kind': 'multi-reference', 'status': 'queued',
                'stage': 'queued', 'message': 'Waiting in queue', 'created_at': time.time(),
                'seed': data['seed'], 'request': data, 'step': 0, 'total_steps': total_steps}
@@ -1402,6 +1579,17 @@ def get_queue():
                 'recent': [public_job(read_job(job_id)) for job_id in recent_jobs]}
 
 
+@app.get('/api/activity')
+def get_activity():
+    """Small live snapshot for the activity terminal; no catalog or file scan."""
+    with active_lock:
+        current = read_job(active_job) if active_job else None
+        result = {'active': current, 'pending_count': len(pending_jobs), 'paused': queue_paused}
+    with models.lock:
+        result.update(transfer=dict(models.transfer), downloads=civitai_download_list())
+    return result
+
+
 class QueueControl(BaseModel):
     paused: bool
 
@@ -1445,6 +1633,8 @@ def retry_job(job_id: str):
         return generate_reference_video(ReferenceVideoRequest(**data))
     if kind=='upscale':
         return generate_upscale(UpscaleRequest(**data))
+    if kind=='captioning':
+        return training_captions(CaptionRequest(**{**data, 'images': [i['id'] for i in data['images']]}))
     if kind=='training':
         return start_training(TrainingRequest(**data))
     return generate(GenerationRequest(**data))
@@ -1453,7 +1643,7 @@ def retry_job(job_id: str):
 def library_jobs(kind: str, search: str) -> list[dict]:
     query = search.casefold().strip()
     titles = {item['id']: item['title'] for item in models.catalog()}
-    jobs = [j for j in all_jobs() if j.get('status') == 'succeeded' and j.get('kind') != 'training'
+    jobs = [j for j in all_jobs() if j.get('status') == 'succeeded' and j.get('kind') not in ('training', 'captioning')
             and (kind == 'all' or (kind=='video' and j.get('kind') in VIDEO_KINDS)
                  or j.get('kind', 'image') == kind)
             and (not query or query in (j.get('request', {}).get('prompt', '') + ' ' + j.get('request', {}).get('model_id', '')
@@ -1516,12 +1706,12 @@ def library_delete(body: LibraryDelete):
 
 class TrainingImage(BaseModel):
     id: str = Field(min_length=1, max_length=200)
-    caption: str = Field(default='', max_length=2000)
+    caption: str = Field(default='', max_length=8000)
 
 
 class TrainingRequest(BaseModel):
     name: str = Field(min_length=1, max_length=60)
-    arch: Literal['qwen-image-2.1', 'qwen-image-2.1-turbo', 'krea-2', 'krea-2-turbo', 'z-image-turbo', 'z-image'] = 'z-image-turbo'
+    arch: Literal['flux3-klein-base', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'krea-2', 'krea-2-turbo', 'z-image-turbo', 'z-image'] = 'z-image-turbo'
     subject: Literal['character', 'style'] = 'character'
     trigger_word: str = Field(default='', max_length=40)
     images: list[TrainingImage] = Field(min_length=1, max_length=300)
@@ -1531,10 +1721,14 @@ class TrainingRequest(BaseModel):
     resolutions: list[Literal[512, 768, 1024, 1280, 1536]] = Field(default_factory=lambda: [512, 768, 1024], min_length=1)
     save_every: int = Field(default=250, ge=25, le=5000)
     sample_prompts: list[str] = Field(default_factory=list, max_length=6)
+    auto_caption: bool = True
+    settings_mode: Literal['recommended', 'custom'] = 'custom'
+    profile_version: str = Field(default='', max_length=80)
 
 
 class CaptionRequest(BaseModel):
     images: list[str] = Field(min_length=1, max_length=300)
+    name: str = Field(default='', max_length=60)
     trigger_word: str = Field(default='', max_length=40)
     subject: Literal['character', 'style'] = 'character'
 
@@ -1555,20 +1749,89 @@ def training_setup():
     return training.start_setup()
 
 
-@app.post('/api/training/captions')
+@app.post('/api/training/captions', status_code=202)
 def training_captions(body: CaptionRequest):
-    if not antigravity.status()['connected']:
-        raise HTTPException(409, 'Connect Google Account in Settings → Prompt enhancement to write captions, or write them yourself.')
-    from concurrent.futures import ThreadPoolExecutor
-    model_id = antigravity.selected_model()
-    def one(image_id):
+    try:
+        for image_id in body.images: resolve_image(image_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    with active_lock:
+        job_id = uuid.uuid4().hex
+        data = body.model_dump() | {'kind': 'captioning', 'execution': 'local', 'prompt': body.name or 'Training captions',
+                                    'images': [{'id': i, 'caption': ''} for i in dict.fromkeys(body.images)]}
+        job = {'id': job_id, 'kind': 'captioning', 'status': 'queued', 'message': 'Waiting in queue', 'stage': 'queued',
+               'created_at': time.time(), 'seed': 0, 'request': data, 'step': 0, 'total_steps': len(data['images'])}
+        enqueue_locked(job, data)
+    return public_job(job)
+
+
+@app.get('/api/training/captions/{job_id}')
+def caption_results(job_id: str):
+    job = read_job(job_id)
+    if job.get('kind') not in ('training', 'captioning'): raise HTTPException(404, 'Captions not found.')
+    path = JOBS_DIR / job_id / 'captions.json'
+    return {'job': public_job(job), 'captions': read_json(path) if path.exists() else {}}
+
+
+class DatasetFiles(BaseModel):
+    class Item(BaseModel):
+        name: str = Field(min_length=1, max_length=600)
+        size: int = Field(ge=0, le=1024**3)
+    files: list[Item] = Field(min_length=1, max_length=1500)
+
+
+@app.post('/api/training/imports')
+def create_training_import(body: DatasetFiles):
+    from . import training_data
+    try: return training_data.create([f.model_dump() for f in body.files])
+    except ValueError as exc: raise HTTPException(400, str(exc))
+
+
+@app.put('/api/training/imports/{import_id}/files/{index}')
+async def upload_training_part(import_id: str, index: int, request: Request, offset: int = Query(ge=0)):
+    from . import training_data
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > training_data.MAX_CHUNK: raise HTTPException(413, 'Upload part is too large.')
+    try: return training_data.append(import_id, index, offset, raw)
+    except (ValueError, FileNotFoundError) as exc: raise HTTPException(400, str(exc))
+
+
+@app.post('/api/training/imports/{import_id}/finish')
+def finish_training_import(import_id: str):
+    from . import training_data
+    import zipfile
+    try: return training_data.finish(import_id, save_upload)
+    except (ValueError, OSError, zipfile.BadZipFile, Image.DecompressionBombError) as exc:
+        raise HTTPException(400, str(exc) if isinstance(exc, ValueError) else 'Cannot read the dataset. Check the ZIP and image files.')
+
+
+@app.delete('/api/training/imports/{import_id}')
+def delete_training_import(import_id: str):
+    from . import training_data
+    try: training_data.discard(import_id)
+    except ValueError as exc: raise HTTPException(400, str(exc))
+    return {'ok': True}
+
+
+class TrainingAdvice(BaseModel):
+    arch: str
+    subject: Literal['character', 'style'] = 'character'
+    images: list[dict] = Field(default_factory=list, max_length=300)
+
+
+@app.post('/api/training/recommendations')
+def training_recommendations(body: TrainingAdvice):
+    from .training_profiles import recommend
+    if body.arch not in training.ARCHS: raise HTTPException(400, 'Choose a supported base model.')
+    images = []
+    for image in body.images:
         try:
-            with Image.open(resolve_image(image_id)) as opened:
-                return {'id': image_id, 'caption': training.caption(opened, body.trigger_word.strip(), body.subject, model_id)}
-        except Exception as exc:
-            return {'id': image_id, 'caption': '', 'error': str(exc)[:300]}
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        return {'captions': list(pool.map(one, body.images))}
+            with Image.open(resolve_image(str(image.get('id', '')))) as photo:
+                images.append({'width': photo.width, 'height': photo.height})
+        except (ValueError, OSError): raise HTTPException(400, 'A training image is missing. Add it again.')
+    return recommend(body.arch, body.subject, images)
 
 
 @app.post('/api/training/start', status_code=202)
@@ -1585,8 +1848,12 @@ def start_training(body: TrainingRequest):
     with active_lock:
         job_id = uuid.uuid4().hex
         data = body.model_dump() | {'kind': 'training', 'execution': 'local', 'prompt': body.name, 'model_id': f'training:{body.arch}'}
+        if body.settings_mode == 'recommended':
+            profile = training_recommendations(TrainingAdvice(arch=body.arch, subject=body.subject, images=[{'id': i.id} for i in body.images]))
+            data.update({k: profile[k] for k in ('steps', 'rank', 'learning_rate', 'resolutions', 'save_every')})
+            data['profile_version'] = profile['version']
         job = {'id': job_id, 'kind': 'training', 'status': 'queued', 'message': 'Waiting in queue', 'stage': 'queued', 'created_at': time.time(),
-               'seed': 0, 'request': data, 'step': 0, 'total_steps': body.steps, 'title': body.name}
+               'seed': 0, 'request': data, 'step': 0, 'total_steps': data['steps'], 'title': body.name}
         enqueue_locked(job, data)
     return public_job(job)
 
@@ -1623,7 +1890,34 @@ def result(job_id: str, download: bool = False):
     if job.get('kind','image') != 'image' or job['status'] != 'succeeded' or not Path(job.get('output_path', '')).is_file():
         raise HTTPException(404, 'Saved image not found.')
     path = Path(job['output_path'])
-    return FileResponse(path, media_type='image/png', filename=path.name if download else None)
+    return FileResponse(path, media_type='image/png', filename=path.name if download else None, headers=RESULT_CACHE)
+
+
+@app.get('/api/jobs/{job_id}/display')
+def display_image(job_id: str):
+    """A bounded, alpha-preserving viewing copy. /image remains the original PNG."""
+    job = read_job(job_id)
+    source = Path(job.get('output_path', ''))
+    if job.get('kind', 'image') != 'image' or job['status'] != 'succeeded' or not source.is_file():
+        raise HTTPException(404, 'Saved image not found.')
+    directory = JOBS_DIR / job_id
+    cached = directory / 'display-v1.webp'
+    # Multiple browser panels can request the same uncached result together.
+    with display_locks[int(job_id[:2], 16) % len(display_locks)]:
+        if not cached.is_file():
+            temporary = directory / f'display-{uuid.uuid4().hex}.tmp'
+            try:
+                with Image.open(source) as picture:
+                    picture = ImageOps.exif_transpose(picture)
+                    picture.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+                    if picture.mode not in ('RGB', 'RGBA'):
+                        picture = picture.convert('RGBA' if 'A' in picture.getbands() or 'transparency' in picture.info else 'RGB')
+                    picture.save(temporary, format='WEBP', quality=90, method=4,
+                                 **({'icc_profile': picture.info['icc_profile']} if picture.info.get('icc_profile') else {}))
+                temporary.replace(cached)
+            finally:
+                temporary.unlink(missing_ok=True)
+    return FileResponse(cached, media_type='image/webp', headers=RESULT_CACHE)
 
 @app.get('/api/jobs/{job_id}/video')
 def video_result(job_id: str, download: bool = False):
@@ -1679,7 +1973,7 @@ def thumbnail(job_id: str):
             temporary.replace(cached)
         finally:
             temporary.unlink(missing_ok=True)
-    return FileResponse(cached, media_type='image/webp')
+    return FileResponse(cached, media_type='image/webp', headers=RESULT_CACHE)
 
 @app.get('/api/jobs/{job_id}/metadata')
 def metadata(job_id: str):

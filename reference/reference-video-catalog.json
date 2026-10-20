@@ -35,17 +35,33 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         },
         "turbo": {
           "steps": 8,
           "sampler": "euler",
           "scheduler": "simple",
           "guidance": 1.0,
-          "video_shift": 6,
+          "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/ModelTC/Minimax-H3-Turbo/blob/main/COMFYUI_SETUP_AND_INFERENCE.md",
-          "lora_id": "h3-ref-turbo-lora"
+          "source": "https://huggingface.co/lightx2v/Minimax-h3-Turbo/discussions/51",
+          "lora_id": "h3-ref-turbo-lora",
+          "field_sources": {
+            "steps": "model",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     },
@@ -87,7 +103,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot"
+          "source": "https://huggingface.co/PulpCut/MiniMax-H3-Ref2VA-Turbo-INT8-ConvRot",
+          "field_sources": {
+            "steps": "model",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     },
@@ -129,7 +153,19 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF"
+          "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF",
+          "field_sources": {
+            "steps": "model",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          },
+          "steps_range": [
+            20,
+            30
+          ]
         }
       },
       "recommended_steps": [
@@ -175,7 +211,19 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF"
+          "source": "https://huggingface.co/Abiray/10Eros-Max-ref2va-Beta2-GGUF",
+          "field_sources": {
+            "steps": "model",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          },
+          "steps_range": [
+            20,
+            30
+          ]
         }
       },
       "recommended_steps": [
@@ -540,7 +588,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -583,7 +639,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -626,7 +690,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -669,7 +741,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -712,7 +792,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -755,7 +843,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -798,7 +894,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json"
+          "source": "https://github.com/Comfy-Org/workflow_templates/blob/main/templates/video_minimax_h3_r2v.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -841,7 +945,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -884,7 +996,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -927,7 +1047,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -970,7 +1098,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -1013,7 +1149,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -1056,7 +1200,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -1099,7 +1251,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -1142,7 +1302,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -1185,7 +1353,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }
@@ -1228,7 +1404,15 @@
           "guidance": 1.0,
           "video_shift": 12,
           "audio_shift": 3.0,
-          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json"
+          "source": "https://huggingface.co/Abiray/MiniMax-H3-GGUF/blob/main/minimax_ref2va_gguf_workflow.json",
+          "field_sources": {
+            "steps": "workflow",
+            "cfg": "workflow",
+            "sampler": "workflow",
+            "scheduler": "workflow",
+            "video_shift": "workflow",
+            "audio_shift": "workflow"
+          }
         }
       }
     }

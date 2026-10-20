@@ -359,7 +359,7 @@
     "id": "head-swap",
     "title": "Head swap",
     "swap": true,
-    "summary": "Put the head from picture 2 (face, hair, eyes) on the person in picture 1. Body, pose, expression, light and background of picture 1 stay.",
+      "summary": "Replace a head in picture 1 with a head from picture 2. Choose the face, pose and style sources below. Check the result for changes to the scene.",
     "lora": "lora-bfs-head",
     "strength": 1.0,
     "families": [
@@ -390,7 +390,7 @@
     "id": "head-swap-expression",
     "title": "Head swap, stronger expression",
     "swap": true,
-    "summary": "Like Head swap, but copies the expression of picture 1 more fully (open mouth, eyes) and keeps more skin detail. The head angle can be about 1 degree less exact.",
+    "summary": "Uses the alternate head-swap model. Its author reports stronger expression transfer from picture 1. It can change the head angle. Choose the pose and style sources below.",
     "lora": "lora-bfs-head-expression",
     "strength": 1.0,
     "families": [
@@ -421,7 +421,7 @@
     "id": "body-swap",
     "title": "Body swap",
     "swap": true,
-    "summary": "Replace the whole person in picture 1 with the person from picture 2 (face, clothing, body shape). Pose, framing, light and background of picture 1 stay. Best with picture 2 full body, facing the camera, on a plain light background.",
+      "summary": "Replace a person in picture 1 with the person from picture 2, including clothing and body shape. Choose the face, pose and style sources below. Use a full-body reference with a plain background.",
     "lora": "lora-bfs-body",
     "strength": 1.0,
     "families": [

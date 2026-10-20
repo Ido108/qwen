@@ -61,11 +61,14 @@ $setupStamp = Join-Path $runtimeRoot 'setup-complete.json'
 
 function Get-QwenSetupFingerprint {
     $files = @('requirements\lock.txt','package-lock.json','scripts\setup.ps1','scripts\paths.ps1','scripts\download_examples.py','scripts\check_runtime.py','reference\example-assets.json','index.html') | ForEach-Object { Join-Path $appRoot $_ }
+    $files += @('reference\res4lyf-source.json','backend\res4lyf_runtime.py','scripts\check_res4lyf.py') | ForEach-Object { Join-Path $appRoot $_ }
     $files += Get-ChildItem -LiteralPath (Join-Path $appRoot 'src') -File -Recurse | Sort-Object FullName | ForEach-Object FullName
     $hashes = $files | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
     return $hashes -join ':'
 }
 function Test-QwenSetup {
+    $samplerSource = Get-Content -Raw -LiteralPath (Join-Path $appRoot 'reference\res4lyf-source.json') | ConvertFrom-Json
+    if (-not (Test-Path -LiteralPath (Join-Path $runtimeRoot ('samplers\RES4LYF-' + $samplerSource.commit + '\beta\rk_sampler_beta.py')))) { return $false }
     if (-not (Test-Path -LiteralPath $pythonPath) -or -not (Test-Path -LiteralPath $setupStamp) -or -not (Test-Path -LiteralPath (Join-Path $appRoot 'dist\index.html'))) { return $false }
     try { $stamp = Get-Content -Raw -LiteralPath $setupStamp | ConvertFrom-Json; return $stamp.fingerprint -eq (Get-QwenSetupFingerprint) } catch { return $false }
 }

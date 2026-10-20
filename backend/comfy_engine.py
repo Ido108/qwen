@@ -79,6 +79,8 @@ def generate(request, prompt, images, width, height, progress):
         return weights,metadata
 
     selected=entry(request.get('model_id','official-bf16'))
+    from .res4lyf_runtime import ensure_sampler
+    ensure_sampler(request.get('sampler') or selected['generation_defaults'].get('sampler', 'euler'))
     model_id,encoder_id,vae_id=required_image(request)[:3]
     encoder=entry(encoder_id)
     vae_entry=entry(vae_id)
@@ -192,6 +194,7 @@ def generate(request, prompt, images, width, height, progress):
         stack.append((image_tool(request['tool_id'])['lora'],float(request.get('lora_strength',1.0))))
     stack+=[(lora['id'],float(lora.get('strength',1.0))) for lora in request.get('loras') or []]
     tool_lora=None
+    lora_checks=[]
     if stack:
         started=time.perf_counter()
         loras=_components.setdefault('loras',{})
@@ -202,11 +205,14 @@ def generate(request, prompt, images, width, height, progress):
             lora=entry(lora_id)
             if lora_id not in loras:
                 loras[lora_id]=split_fused_mlp(comfy.utils.load_torch_file(str(local_path(lora,lora['files'][0])),safe_load=True))
-            model,_=comfy.sd.load_lora_for_models(model,None,loras[lora_id],strength,0)
+            from .lora_loading import load_model_lora
+            model,check=load_model_lora(model,loras[lora_id],strength,lora['title'],runtime=True)
+            lora_checks.append({'id':lora_id,'title':lora['title'],**check})
             applied.append(f"{lora['title']} ({strength:g})")
         retain_lora_clone(model,_components['model'])
         tool_lora=', '.join(applied)
         progress(lora=tool_lora,lora_strength=stack[0][1],lora_load_seconds=round(time.perf_counter()-started,3))
+    progress(lora_checks=lora_checks)
     # The upstream automatic cache can copy large multi-image prefixes to host
     # RAM. That path caused a native Windows access violation. The supported
     # GPU policy keeps the lossless cache in VRAM when its memory checks allow,
@@ -216,7 +222,7 @@ def generate(request, prompt, images, width, height, progress):
     # Official Qwen 2.1 workflow: 64-channel, 16x spatial latent, Euler + simple.
     latent=torch.zeros((1,64,height//16,width//16),device=memory.intermediate_device())
     noise=comfy.sample.prepare_noise(latent,request['seed'])
-    sampler,scheduler=defaults.get('sampler','euler'),defaults.get('scheduler','simple')
+    sampler,scheduler=request.get('sampler') or defaults.get('sampler','euler'),request.get('scheduler') or defaults.get('scheduler','simple')
     def callback(step,x0,x,total):
         progress(stage='generating',message='Generating image…',step=step+1,total_steps=total)
     progress(stage='generating',message='Generating image…',step=0,sampling='turbo-sigmas' if turbo else f'{sampler}-{scheduler}',cfg=cfg)
@@ -234,6 +240,8 @@ def generate(request, prompt, images, width, height, progress):
             samples=comfy.sample.sample(model,noise,request['steps'],cfg,sampler,scheduler,positive,negative_conditioning,
                                         latent,callback=callback,seed=request['seed'])
         del noise,latent
+        from .lora_runtime import execution_report
+        progress(lora_execution=execution_report(model))
         progress(stage='decoding',message='Decoding image…')
         pixels=vae.decode(samples)
     array=(pixels[0].float().cpu().numpy().clip(0,1)*255).round().astype(np.uint8)

@@ -28,3 +28,5 @@ reference/space/examples/
 public/examples/
 qa/screenshots/
 vendor/*.zip
+vendor/ComfyUI-Flux3/
+.a5c/

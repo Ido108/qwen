@@ -31,6 +31,33 @@ class App(BaseHTTPRequestHandler):
 
 
 class MoiseRemoteTests(unittest.TestCase):
+    def test_short_failures_are_grouped_and_status_is_reported_without_secrets(self):
+        response=httpx.Response(502, request=httpx.Request('POST','https://secret.example/?key=private'))
+        error=httpx.HTTPStatusError('private body',request=response.request,response=response)
+        report=moise_remote.ConnectionReport('https://moise.example')
+        with mock.patch('builtins.print') as printed:
+            report.succeeded(0)
+            self.assertEqual(report.failed(error,1),1)
+            report.succeeded(2)
+            report.failed(error,4)
+            report.succeeded(5)
+            self.assertEqual(printed.call_count,2)
+            report.succeeded(36)
+            self.assertEqual(printed.call_count,3)
+            messages=' '.join(str(call.args) for call in printed.call_args_list)
+            self.assertIn('HTTP 502',messages)
+            self.assertNotIn('private',messages)
+            self.assertNotIn('secret.example',messages)
+
+    def test_retry_backoff_respects_server_limits(self):
+        report=moise_remote.ConnectionReport('https://moise.example')
+        response=httpx.Response(429,headers={'Retry-After':'45'},request=httpx.Request('POST','https://moise.example'))
+        error=httpx.HTTPStatusError('',request=response.request,response=response)
+        with mock.patch('builtins.print'):
+            self.assertEqual(report.failed(error,0),45)
+            timeout=httpx.ReadTimeout('secret')
+            self.assertEqual([report.failed(timeout,i) for i in range(5)],[2,4,8,16,30])
+
     @classmethod
     def setUpClass(cls):
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), App)

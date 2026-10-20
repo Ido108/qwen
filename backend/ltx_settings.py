@@ -4,6 +4,7 @@ import re
 from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 from .common import VIDEOS_DIR, LoraChoice
+from .prompt_mentions import ImageLabels
 
 # Official LTX-2.5 distilled schedule (ComfyUI blueprints "Text to Video (LTX-2.5)",
 # "Image to Video (LTX-2.5)" and "First & Last Frame to Video (LTX-2.5)").
@@ -19,7 +20,7 @@ LTX_REFINE_SEED = 42  # The official refinement pass uses a fixed noise seed.
 LTX_FPS = 24
 
 
-class MultiReferenceRequest(BaseModel):
+class MultiReferenceRequest(ImageLabels):
     model_id: str = 'ltx25-msr-q4_k_m'
     prompt: str = Field(min_length=1, max_length=16000)
     reference_images: list[str] = Field(min_length=1, max_length=4)
@@ -99,13 +100,13 @@ def required_ltx(request):
         if profile.get('lora_id'):
             ids.append(profile['lora_id'])
         return list(dict.fromkeys(ids + video_loras(item, request)))
-    if item['kind'] != 'multi-reference' or item['family'] != 'ltx25-msr':
+    if item['kind'] not in ('video', 'multi-reference') or item['family'] not in ('ltx25', 'ltx25-msr'):
         raise ValueError('Choose an LTX 2.5 or MiniMax H3 Ref2VA model for reference images.')
     if request.frames % 8 != 1:
         raise ValueError('LTX video length must use 8n+1 frames.')
     if request.width * request.height > 1024 * 1024:
         raise ValueError('The first pass must not exceed one megapixel.')
-    ids = [item['id'], *item['dependencies']]
+    ids = [item['id'], *item['dependencies'], 'ltx25-msr-v2']
     if request.refine:
         ids.append('ltx25-spatial-upscaler')
     return list(dict.fromkeys(ids + video_loras(item, request)))

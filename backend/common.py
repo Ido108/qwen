@@ -6,6 +6,7 @@ import time
 import uuid
 from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
+from .prompt_mentions import ImageLabels
 
 APP_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get('QWEN_DATA_DIR', str(Path(os.environ.get('SystemDrive', 'C:') + '/AI/qwen-image-studio')) if os.name == 'nt' else str(Path.home() / 'Library/Application Support/Qwen'))).resolve()
@@ -49,14 +50,23 @@ def write_json(path: Path, data: dict) -> None:
         temp.unlink(missing_ok=True)
 
 class LoraChoice(BaseModel):
+    prompt_addition: str | None = Field(default=None, max_length=4000)
     id: str = Field(min_length=1, max_length=80)
     strength: float = Field(default=1.0, ge=0, le=2)
 
 
-class GenerationRequest(BaseModel):
+class SwapSelection(BaseModel):
+    scene_image: str = Field(max_length=200)
+    reference_image: str = Field(max_length=200)
+    scene_revision: str = Field(pattern=r'^[a-f0-9]{24}$')
+    reference_revision: str = Field(pattern=r'^[a-f0-9]{24}$')
+    assignments: dict[str, str | None] = Field(max_length=100)
+
+
+class GenerationRequest(ImageLabels):
     model_id: str = 'gguf-q8_0'
     text_encoder: str = 'auto'
-    prompt: str = Field(min_length=1, max_length=16000)
+    prompt: str = Field(default='', max_length=16000)
     images: list[str] = Field(default_factory=list, max_length=10)
     enhance: bool = True
     custom_size: bool = False
@@ -70,11 +80,21 @@ class GenerationRequest(BaseModel):
     # None follows the selected model's documented default; integers override it.
     steps: int | None = Field(default=None, ge=1, le=80)
     cfg: float | None = Field(default=None, ge=1, le=15)
+    sampler: str | None = Field(default=None, max_length=40)
+    scheduler: str | None = Field(default=None, max_length=40)
     vae_id: str = Field(default='auto', max_length=120)
     # Optional LoRA tool (see reference/image-tools.json) and its options.
     tool_id: str | None = Field(default=None, max_length=40)
     lora_strength: float | None = Field(default=None, ge=0, le=1.5)
+    tool_prompt_addition: str | None = Field(default=None, max_length=4000)
     tool_options: dict[str, str] = Field(default_factory=dict)
+    swap_selection: SwapSelection | None = None
+    swap_extra: str = Field(default='', max_length=4000)
+    swap_pose_source: Literal[1, 2] = 1
+    swap_style_source: Literal[1, 2] = 1
+    swap_style_mode: Literal['realistic', 'non-realistic'] = 'realistic'
+    swap_prompt_template: str | None = Field(default=None, max_length=6000)
+    swap_prompt_revision: str | None = Field(default=None, max_length=80)
     # Extra LoRAs, for example ones added from Civitai: [{"id": ..., "strength": ...}].
     loras: list['LoraChoice'] = Field(default_factory=list, max_length=4)
     # Z-Image image to image: how much of the input image is redrawn (None is the default 0.7).
@@ -83,9 +103,13 @@ class GenerationRequest(BaseModel):
     @field_validator('prompt')
     @classmethod
     def not_blank(cls, value):
-        if not value.strip():
-            raise ValueError('Enter a prompt first.')
         return value.strip()
+
+    @model_validator(mode='after')
+    def prompt_or_image(self):
+        if not self.prompt and not self.images:
+            raise ValueError('Enter a prompt or add an input image.')
+        return self
 
     @field_validator('width', 'height')
     @classmethod
@@ -95,6 +119,7 @@ class GenerationRequest(BaseModel):
         return value
 
 class VideoRequest(BaseModel):
+    workflow: Literal['create', 'orbit'] = 'create'
     model_id: str = 'fasth3-q4_k_m'
     prompt: str = Field(min_length=1, max_length=16000)
     mode: Literal['text', 'image'] = 'text'
@@ -107,9 +132,9 @@ class VideoRequest(BaseModel):
     frames: int = Field(default=124, ge=22, le=362)
     seed: int = Field(default=0, ge=0, le=2147483647)
     randomize_seed: bool = True
-    quality: Literal['standard', 'turbo'] = 'standard'
+    quality: Literal['standard', 'turbo'] | None = None
     # LTX 2.5 is distilled and always runs its fixed schedule; this applies to MiniMax H3.
-    steps: int = Field(default=20, ge=10, le=60)
+    steps: int | None = Field(default=None, ge=1, le=60)
     audio: bool = True
     enhance: bool = False
     output_dir: str = str(VIDEOS_DIR)

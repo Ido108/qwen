@@ -1,12 +1,17 @@
-﻿param([switch]$NoBrowser, [switch]$NoConsole, [switch]$Restart, [switch]$Stop)
+﻿param([switch]$NoBrowser, [switch]$NoConsole, [switch]$Restart, [switch]$Stop, [switch]$DesktopWindow)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'paths.ps1')
 if (-not $Stop -and -not (Test-QwenSetup)) {
     Write-Host 'Installing the local app environment...'
     & (Join-Path $PSScriptRoot 'setup.ps1')
 }
+if ($DesktopWindow -and -not (Test-Path -LiteralPath (Join-Path $appRoot 'node_modules\electron\dist\electron.exe'))) {
+    & node (Join-Path $appRoot 'node_modules\electron\install.js')
+    if ($LASTEXITCODE -ne 0) { throw 'Could not install the optional desktop window. Use Start Qwen.bat to open Chrome.' }
+}
 $Host.UI.RawUI.WindowTitle = 'Qwen - Activity'
 $launchArgs = @('-u', (Join-Path $PSScriptRoot 'desktop.py'), '--data-dir', $dataRoot)
+if ($DesktopWindow) { $launchArgs += '--desktop-window' }
 if ($NoBrowser) { $launchArgs += '--no-browser' }
 if ($NoConsole) { $launchArgs += '--no-console' }
 if ($Restart) { $launchArgs += '--restart' }

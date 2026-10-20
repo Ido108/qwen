@@ -164,7 +164,7 @@ def _decode(vae, audio_vae, latent, audio_latent, frames, want_audio, progress):
     _release()
     audio = None
     if want_audio:
-        progress(stage='decoding', message='Decoding audio...')
+        progress(stage='decoding_audio', message='Decoding audio...')
         audio = LTXVAudioVAEDecode.execute(audio_latent, audio_vae)[0]
         audio['waveform'] = audio['waveform'].float().cpu()
     return pixels, audio

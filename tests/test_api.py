@@ -75,6 +75,64 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/config', headers={'host':'evil.example'}).status_code, 403)
         self.assertEqual(self.client.post('/api/uploads', headers={**self.headers, 'Origin':'https://evil.example'}).status_code, 403)
 
+    def test_lora_prompt_settings_persist_and_validate_the_target(self):
+        from backend import lora_preferences, models
+        with tempfile.TemporaryDirectory() as folder, patch.object(lora_preferences, 'PATH', Path(folder) / 'settings.json'), patch('backend.civitai.user_catalog', return_value=[{'id':'qa-ink','kind':'image-lora','title':'Ink'}]):
+            path = '/api/loras/qa-ink/settings'
+            self.assertEqual(self.client.put(path, json={'prompt_addition':'Paper.'}).status_code, 403)
+            response = self.client.put(path, json={'prompt_addition':'  Paper texture.  '}, headers=self.headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(self.client.get(path).json()['prompt_addition'], 'Paper texture.')
+            self.assertEqual(models.entry('qa-ink')['prompt_addition'], 'Paper texture.')
+            self.assertEqual(self.client.put(path, json={'prompt_addition':'x'*4001}, headers=self.headers).status_code, 422)
+            self.assertEqual(self.client.put('/api/loras/gguf-q8_0/settings', json={'prompt_addition':'x'}, headers=self.headers).status_code, 400)
+            self.assertEqual(self.client.get('/api/loras/missing/settings').status_code, 400)
+            self.client.put(path, json={'prompt_addition':''}, headers=self.headers)
+            self.assertEqual(self.client.get(path).json()['prompt_addition'], '')
+
+    def test_phone_heic_photo_becomes_a_readable_upload_and_person(self):
+        from pillow_heif import register_heif_opener
+        register_heif_opener(thumbnails=False)
+        stream = io.BytesIO()
+        Image.new('RGB', (48, 64), (41, 133, 207)).save(stream, format='HEIF')
+        raw = stream.getvalue()
+        result = self.client.post('/api/uploads', headers=self.headers,
+                                  files=[('files', ('IMG_1001.HEIC', raw, 'image/heic'))])
+        self.assertEqual(result.status_code, 200, result.text)
+        photo = result.json()[0]
+        self.assertEqual((photo['width'], photo['height']), (48, 64))
+        self.assertEqual(photo['name'], 'IMG_1001.HEIC')
+        with Image.open(UPLOADS_DIR / photo['id']) as stored:
+            self.assertEqual(stored.format, 'PNG')
+            self.assertEqual(stored.size, (48, 64))
+        self.assertEqual(self.client.get(photo['thumb_url']).status_code, 200)
+        person = self.client.post('/api/people', headers=self.headers,
+                                 json={'name': 'Phone upload test', 'image_ids': [photo['id']]})
+        self.assertEqual(person.status_code, 200, person.text)
+        self.assertEqual(person.json()['image_ids'], [photo['id']])
+        # Re-selecting the same phone file must not make another stored image.
+        repeated = self.client.post('/api/uploads', headers=self.headers,
+                                    files=[('files', ('IMG_1001.HEIF', raw, 'application/octet-stream'))])
+        self.assertEqual(repeated.json()[0]['id'], photo['id'])
+
+    def test_phone_jpeg_orientation_and_invalid_batch(self):
+        source = Image.new('RGB', (40, 24), (40, 180, 80))
+        exif = source.getexif()
+        exif[274] = 6
+        stream = io.BytesIO()
+        source.save(stream, format='JPEG', exif=exif)
+        result = self.client.post('/api/uploads', headers=self.headers,
+                                  files=[('files', ('portrait.jpg', stream.getvalue(), 'image/jpeg'))])
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual((result.json()[0]['width'], result.json()[0]['height']), (24, 40))
+        before = set(UPLOADS_DIR.iterdir())
+        invalid = self.client.post('/api/uploads', headers=self.headers, files=[
+            ('files', ('new.png', png(), 'image/png')),
+            ('files', ('broken.heic', b'not an image', 'image/heic'))])
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn('Could not read this image', invalid.json()['detail'])
+        self.assertEqual(set(UPLOADS_DIR.iterdir()), before, 'A bad batch must not save partial uploads')
+
     def test_expired_session_has_retry_code_without_running_handler(self):
         with patch('backend.server.resolve_video') as resolve:
             response=self.client.post('/api/video-uploads/'+'a'*32+'.mp4/people',json={},headers={'X-Studio-Token':'old'})
@@ -169,6 +227,16 @@ class AppTests(unittest.TestCase):
                 GenerationRequest(**kwargs)
         self.assertEqual(GenerationRequest(prompt=' x ',width=1000).prompt,'x')
 
+    def test_empty_image_prompt_stays_empty_when_queued(self):
+        from backend import server
+        image=self.client.post('/api/uploads',files={'files':('a.png',png(),'image/png')},headers=self.headers).json()[0]['id']
+        with tempfile.TemporaryDirectory() as folder,patch.object(server,'JOBS_DIR',Path(folder)),patch.object(server,'pending_jobs',[]),patch.object(server,'start_next_locked'),patch.object(server,'save_queue_locked'):
+            response=self.client.post('/api/generate',json={'prompt':' ','images':[image],'enhance':True,'auto_resolution':1024,'output_dir':folder},headers=self.headers)
+            self.assertEqual(response.status_code,202,response.text)
+            r=response.json()['request']
+            self.assertEqual(r['prompt'],'')
+            self.assertFalse(r['enhance'])
+
     def test_path_traversal_cannot_read_files(self):
         for image_id in ('../secret.png', 'example:../../package.json', str(Path(temporary.name)/'secret.png')):
             with self.assertRaises(ValueError):
@@ -198,6 +266,30 @@ class AppTests(unittest.TestCase):
         from backend.models import required_image
         self.assertEqual(required_image({'model_id':'turbo-bf16','tool_id':'restore'}),['turbo-bf16','encoder-bf16','vae-texture-fix','lora-restore'])
         self.assertEqual(post_status:=self.client.post('/api/generate',json={'prompt':'x','lora_strength':3},headers=self.headers).status_code,422)
+
+    def test_swap_queue_stores_server_prompt_and_face_choices(self):
+        from backend import server, image_people
+        upload = self.client.post('/api/uploads', files=[('files', ('a.png', png(), 'image/png'))], headers=self.headers).json()[0]['id']
+        scan = {'revision': 'a'*24, 'faces': [{'id': 'face-1', 'box': [.1,.2,.2,.3]}, {'id': 'face-2', 'box': [.6,.2,.2,.3]}]}
+        selection = {'scene_image': upload, 'reference_image': upload, 'scene_revision': 'a'*24,
+                     'reference_revision': 'a'*24, 'assignments': {'face-1': None, 'face-2': 'face-1'}}
+        with tempfile.TemporaryDirectory() as folder, patch.object(image_people, 'analyze_image', return_value=scan), \
+             patch.object(server, 'enqueue_locked') as enqueue:
+            body = {'prompt': 'Replace everyone with a random person', 'model_id': 'turbo-gguf-q8_0',
+                    'tool_id': 'head-swap', 'images': [upload,upload], 'enhance': True, 'output_dir': folder}
+            self.assertEqual(self.client.post('/api/generate', json=body, headers=self.headers).status_code, 400)
+            self.assertFalse(enqueue.called)
+            response = self.client.post('/api/generate', json={**body, 'swap_selection': selection, 'swap_extra': 'Keep the earrings.'}, headers=self.headers)
+            self.assertEqual(response.status_code, 202, response.text)
+            saved = enqueue.call_args.args[1]
+            self.assertEqual(saved['swap_selection'], selection)
+            self.assertIn('Keep person 1 in <image1>', saved['prompt'])
+            self.assertIn('person 2 in <image1> on the right', saved['prompt'])
+            self.assertNotIn('random person', saved['prompt'])
+            self.assertFalse(saved['enhance'])
+            self.assertEqual(saved['steps'], 8)
+            self.assertEqual(self.client.get('/api/image-people', params={'image_id': upload}).json(), scan)
+        self.assertEqual(self.client.get('/api/image-people', params={'image_id': '../secret.png'}).status_code, 400)
 
     def test_tool_preparation_sizes(self):
         from backend.image_tools import prepare, outpaint_canvas, paste_back

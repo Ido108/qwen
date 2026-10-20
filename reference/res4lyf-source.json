@@ -1,0 +1,415 @@
+{
+  "commit": "56e44755d866c87ff9cb4b6608c8e42155db6ecc",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "cca98a381fc49bd55fefa56fe8410ce8702f6e777884bf1f86142e7108e239f0",
+      "bytes": 34971
+    },
+    {
+      "path": "__init__.py",
+      "sha256": "335bacb97e57d89867c77a6eb08e3d05d911d9259752439b8010f37e80b2e87a",
+      "bytes": 23131
+    },
+    {
+      "path": "attention_masks.py",
+      "sha256": "7feb6aca62f03fb3a50069a97a45ceb79101537d93846fc489ca8752627d5c4a",
+      "bytes": 38974
+    },
+    {
+      "path": "aura/mmdit.py",
+      "sha256": "ffbde3fd0bbb164f8c40526db5e43649c088600719d257f1b7aadc32fecc942f",
+      "bytes": 42631
+    },
+    {
+      "path": "beta/__init__.py",
+      "sha256": "963b4d17d6b5c46edb5ab3e12beb6776ca2506058d134dcc241236acde8da699",
+      "bytes": 13433
+    },
+    {
+      "path": "beta/constants.py",
+      "sha256": "d67d68fc91db1456e75867d9395157f2adb0f1bff3495e1218d6c06795c298f1",
+      "bytes": 1048
+    },
+    {
+      "path": "beta/deis_coefficients.py",
+      "sha256": "b1d2987bd46c05015414e6d4d91e07f5c16eeeea13b90107dcc451aa1f39a174",
+      "bytes": 6013
+    },
+    {
+      "path": "beta/noise_classes.py",
+      "sha256": "be8f262b9a1b438c3ba522b6f394d4430628e06ee71747421889928ff3530fe5",
+      "bytes": 32342
+    },
+    {
+      "path": "beta/phi_functions.py",
+      "sha256": "1bcb658ddc093f8de1a76c903cb684bd2a0cc8d663def871fbf5fe2f5445aa1a",
+      "bytes": 4225
+    },
+    {
+      "path": "beta/rk_coefficients_beta.py",
+      "sha256": "0ac9be987b9c0f0c9e655e6271b6389a0e52288fe6d279db86dda754eeb4a2b3",
+      "bytes": 128972
+    },
+    {
+      "path": "beta/rk_guide_func_beta.py",
+      "sha256": "9f75c7283f44c8c5fd183249838b54c0d3e0edc4875055ed54f2ab191b4b77c2",
+      "bytes": 149550
+    },
+    {
+      "path": "beta/rk_method_beta.py",
+      "sha256": "01ac58dd76616c519f832b876e3bf8bc8cbe9357a7d8a7363cecae3fdffd6e16",
+      "bytes": 53727
+    },
+    {
+      "path": "beta/rk_noise_sampler_beta.py",
+      "sha256": "4a01757bd8bff8c964a917abf4cfc9d8e547419779c049088e9ea5b4d85696de",
+      "bytes": 48457
+    },
+    {
+      "path": "beta/rk_sampler_beta.py",
+      "sha256": "10b1f93146de9b003625589bc7a91c23f1f3e13ff96e4649a31f8056ed224117",
+      "bytes": 157359
+    },
+    {
+      "path": "beta/samplers.py",
+      "sha256": "a9778523ce0ab333ef3d048203880a3e0a3ce21e215510afdafce38e301e2791",
+      "bytes": 140367
+    },
+    {
+      "path": "beta/samplers_extensions.py",
+      "sha256": "c549775e841a4d3e8da68fe298e04a72d05970b777572afb27a306d1d22b46ef",
+      "bytes": 236637
+    },
+    {
+      "path": "chroma/layers.py",
+      "sha256": "a3e306f1c420446510a1f57fa1d4c4c8e1a14ff6c6860d38cf23c5c086e76fcd",
+      "bytes": 7991
+    },
+    {
+      "path": "chroma/math.py",
+      "sha256": "e44f5f0b004ee6c3e3a1c54bb8e13147376361ec84e919dd9e043efa2b541331",
+      "bytes": 1802
+    },
+    {
+      "path": "chroma/model.py",
+      "sha256": "0e3f1da2e162c0d796eb0d7a83706218780c8c3e93b5bd35d7490260ab8c9569",
+      "bytes": 75232
+    },
+    {
+      "path": "conditioning.py",
+      "sha256": "9cb48b4f0b19ec627b4f0666b21b483549eee8196679e8faf21e9265142e979d",
+      "bytes": 92427
+    },
+    {
+      "path": "flux/controlnet.py",
+      "sha256": "6e994c44949d3c8bf146a93bb9fcf3fca7bc46507f069739a0df1bd796ad0fc0",
+      "bytes": 9172
+    },
+    {
+      "path": "flux/layers.py",
+      "sha256": "a9003a66680dad8d7aa9b10271fabb17ce2ca1081ea5e41be139c6fbe8454db6",
+      "bytes": 19134
+    },
+    {
+      "path": "flux/math.py",
+      "sha256": "e4e2e8d5eecd389da9b136d0885eed2dcbadf440de4b400df42c75ed1af93cfd",
+      "bytes": 1561
+    },
+    {
+      "path": "flux/model.py",
+      "sha256": "99588aec041fba4f162be2abec39a7c8a3a477487cd87e8c341f3f95430fff0c",
+      "bytes": 52701
+    },
+    {
+      "path": "flux/redux.py",
+      "sha256": "dafd97d599caa420ad9fd8ccf8b85a9be36dbddc105e9759d34dbc1e2e567142",
+      "bytes": 5424
+    },
+    {
+      "path": "helper.py",
+      "sha256": "bae41623180a224b29bd18ef46400eb9191717f1313f25d2ad56d5734ee4735e",
+      "bytes": 35258
+    },
+    {
+      "path": "helper_sigma_preview_image_preproc.py",
+      "sha256": "571d570d3924cdcf102a8893d172b66e66dc5643a75a83ef4a76bb0ec109a49b",
+      "bytes": 33471
+    },
+    {
+      "path": "hidream/model.py",
+      "sha256": "4725e22b4205843556d7f0682a0a471920b151eb837a088cef48bb19907716d6",
+      "bytes": 73196
+    },
+    {
+      "path": "images.py",
+      "sha256": "2d14a60c88178f7821fbe24903fa262b9c320d4ee9b92602213c8908ebc6ae23",
+      "bytes": 52070
+    },
+    {
+      "path": "latent_images.py",
+      "sha256": "4974fa4ec6c9a338151a91518e1cb7543e94c50725baba2dddec81b998a55566",
+      "bytes": 5778
+    },
+    {
+      "path": "latents.py",
+      "sha256": "bbb6419b9388873d6e51378d7449ea03817087a4402ef15f9ec2202c5309cb3e",
+      "bytes": 39471
+    },
+    {
+      "path": "legacy/__init__.py",
+      "sha256": "3db596b3975131789a14603afab89179c871265093dbb807cafd669ff43ae1e8",
+      "bytes": 5153
+    },
+    {
+      "path": "legacy/conditioning.py",
+      "sha256": "bb9348917bf06510ee4b8fa04e5dda5fad5490d61deaf08ca0615f1f8d04520c",
+      "bytes": 32431
+    },
+    {
+      "path": "legacy/constants.py",
+      "sha256": "de2141df8eb51ecc11b37742cc86068bd05cd48616c56998101863b4ceb67142",
+      "bytes": 123
+    },
+    {
+      "path": "legacy/deis_coefficients.py",
+      "sha256": "b1d2987bd46c05015414e6d4d91e07f5c16eeeea13b90107dcc451aa1f39a174",
+      "bytes": 6013
+    },
+    {
+      "path": "legacy/flux/controlnet.py",
+      "sha256": "6e994c44949d3c8bf146a93bb9fcf3fca7bc46507f069739a0df1bd796ad0fc0",
+      "bytes": 9172
+    },
+    {
+      "path": "legacy/flux/layers.py",
+      "sha256": "180e0921e411483fe80cb6d05da3a2eb2bebeb071af98a494a04868e08970b78",
+      "bytes": 13499
+    },
+    {
+      "path": "legacy/flux/math.py",
+      "sha256": "395682cb2d76c92bb4c420fb3fa0bf052687be06e55c6ff2208ef6bf2595abfb",
+      "bytes": 1495
+    },
+    {
+      "path": "legacy/flux/model.py",
+      "sha256": "8026ba2f601ff3d6aa9ed3ecfb13814872458ecfee96b3c24c0b1102d9ff5770",
+      "bytes": 10913
+    },
+    {
+      "path": "legacy/flux/redux.py",
+      "sha256": "3b7abf43e15fc7b9613a64e701635f943351fa47f5036d87427ea672f93c7952",
+      "bytes": 724
+    },
+    {
+      "path": "legacy/helper.py",
+      "sha256": "ed06332159870b8ebe2873518228c4a182dc01327d3f3a9ad221f670b6235668",
+      "bytes": 11285
+    },
+    {
+      "path": "legacy/latents.py",
+      "sha256": "0126861cfb35b50b24d8d4a0c3d14f1516adee3e4ae27c5ce2c268786a27ede2",
+      "bytes": 80976
+    },
+    {
+      "path": "legacy/legacy_sampler_rk.py",
+      "sha256": "33694849c7e740a27bfec0dedb7995688d5b75370fabc315a4dd4ee47262135e",
+      "bytes": 39391
+    },
+    {
+      "path": "legacy/legacy_samplers.py",
+      "sha256": "91bd276195033005d25f833adb1a133d08299d4c824418c3e0cfee2abb2aa786",
+      "bytes": 37342
+    },
+    {
+      "path": "legacy/models.py",
+      "sha256": "7d47462d7f4f2a5401238db900da67d0ddfd7a54dbf7151b3cb448f03d7f3379",
+      "bytes": 21311
+    },
+    {
+      "path": "legacy/noise_classes.py",
+      "sha256": "54f4d85a4d9701d61b7c7d39a0036b631d22d55047e9feacd167d2a060b4c6dc",
+      "bytes": 29922
+    },
+    {
+      "path": "legacy/noise_sigmas_timesteps_scaling.py",
+      "sha256": "9675c036f7b8e787dbc2ab65190068c1236dff77f85b03c08275ed95e1b5785d",
+      "bytes": 10957
+    },
+    {
+      "path": "legacy/phi_functions.py",
+      "sha256": "9cd9c3d5f0dfc0e581ae56b3145c9a4945038d0c5405008ca2a7bc8fb7a85e43",
+      "bytes": 3133
+    },
+    {
+      "path": "legacy/rk_coefficients.py",
+      "sha256": "98e699734af408401edc9313b961c6ff3e9edb20ca4958670cbaddc48d87debf",
+      "bytes": 62220
+    },
+    {
+      "path": "legacy/rk_guide_func.py",
+      "sha256": "1a1223bbcb76d7113b6c3e92a07b176d83ecc80fb149c9491418ed4dafbb969e",
+      "bytes": 61506
+    },
+    {
+      "path": "legacy/rk_method.py",
+      "sha256": "39191002086c537a471d0dca7754036c8980e332bee4987c20d7bfe8b2ab6205",
+      "bytes": 12561
+    },
+    {
+      "path": "legacy/rk_sampler.py",
+      "sha256": "f4ac976ef0f3851e06aad93ee175bca33f3522ff16984a45ae77a4caafa8af77",
+      "bytes": 45437
+    },
+    {
+      "path": "legacy/samplers.py",
+      "sha256": "2c1160668529cf0afd708d2866ff6548b87e26f1aef536f6054578772086ea3c",
+      "bytes": 45853
+    },
+    {
+      "path": "legacy/samplers_extensions.py",
+      "sha256": "e93d6400f8b4a0c57719cc5af716bdf35e71c4033c29720fb277f829e5001a64",
+      "bytes": 29886
+    },
+    {
+      "path": "legacy/samplers_tiled.py",
+      "sha256": "064cd05c58442efbac88686c3d324ddfac1dde55bd0e14c7873abf0672a3dce9",
+      "bytes": 27405
+    },
+    {
+      "path": "legacy/sigmas.py",
+      "sha256": "5172c6c4b81d6bb59dd6e0164b00e285e3af6db087082d7ce0aaae5397213f7f",
+      "bytes": 44146
+    },
+    {
+      "path": "legacy/tiling.py",
+      "sha256": "9f6216d7256e36676470f65ca13c9b4f837ac95093869c91d82138fb599bb864",
+      "bytes": 7580
+    },
+    {
+      "path": "lightricks/model.py",
+      "sha256": "81bd3fe45e003be496821533f571fb934bc81978f937268fb5491cf7d13aada5",
+      "bytes": 31067
+    },
+    {
+      "path": "lightricks/symmetric_patchifier.py",
+      "sha256": "7a05d26329959e50ea1f5c110a4d1e7772cad9f994ee85bb19ed7919ae95068d",
+      "bytes": 3950
+    },
+    {
+      "path": "lightricks/vae/causal_conv3d.py",
+      "sha256": "b526c831f2d40cac42d3729d197879c7b78f81c81cf737a29c0f96cd3f749d7a",
+      "bytes": 1813
+    },
+    {
+      "path": "lightricks/vae/causal_video_autoencoder.py",
+      "sha256": "79380203002c34741b86e0d8db40f4c91e2c5a3e082c39fb4856de3a68571502",
+      "bytes": 41446
+    },
+    {
+      "path": "lightricks/vae/conv_nd_factory.py",
+      "sha256": "8433bd731dd379223d58a4fd84518ae9a618e1b067771878c8f2d51339c9a99a",
+      "bytes": 2570
+    },
+    {
+      "path": "lightricks/vae/dual_conv3d.py",
+      "sha256": "2683701b800960aac74766f03cb4bc7a3cb10b80e881422e63cf5d6f5896b2c9",
+      "bytes": 6885
+    },
+    {
+      "path": "lightricks/vae/pixel_norm.py",
+      "sha256": "37163441070d3ea85bcccf9a603bc1f19a4ee8e9da2afadfa8bba7a1db6e96da",
+      "bytes": 307
+    },
+    {
+      "path": "loaders.py",
+      "sha256": "e982920ccd97962e43a30e639d800b3e88caa41f190e785270d9538a1bd10153",
+      "bytes": 19840
+    },
+    {
+      "path": "misc_scripts/replace_metadata.py",
+      "sha256": "75ec8aa1742c5d9e7afa96d34fdd222e60f05b11c34f085e7a6a24db602d25b0",
+      "bytes": 1209
+    },
+    {
+      "path": "models.py",
+      "sha256": "7f3f43da08bc6083bc5be92ea328f79778e2285fb2eedc88c42805ccb8d5963d",
+      "bytes": 73661
+    },
+    {
+      "path": "nodes_latents.py",
+      "sha256": "10b73d03a5edf2798f9b302dbf1a7bd33446409508eac725b95b2731d0c3471a",
+      "bytes": 109889
+    },
+    {
+      "path": "nodes_misc.py",
+      "sha256": "0423e6bd19f73b70872a9d3df9f9cdc68fe2003e4b26edd0d8eb206327c50fea",
+      "bytes": 12593
+    },
+    {
+      "path": "nodes_precision.py",
+      "sha256": "3e3c7c9b25450410b9ce7b59fb6214e1bbaa6597dec8395ec327108a201251f6",
+      "bytes": 5816
+    },
+    {
+      "path": "requirements.txt",
+      "sha256": "d70b9e84e1dfc0b4d78c10aec73970f0780adac360e63089f77a0e01fd8e60c4",
+      "bytes": 54
+    },
+    {
+      "path": "res4lyf.py",
+      "sha256": "2a2501b2475c4d42c649d952f758a5b882f4100a48a6bf386a364ef6f5bbca40",
+      "bytes": 14463
+    },
+    {
+      "path": "rk_method_beta.py",
+      "sha256": "2dafad8bcc2c589818e9ddb8a13dca44b867666987fe63cb32645dd73e465205",
+      "bytes": 43191
+    },
+    {
+      "path": "samplers_extensions.py",
+      "sha256": "3d34a202547e69312d70b89383fe1f8f733fef700136bdaf841cab339f21d30a",
+      "bytes": 85580
+    },
+    {
+      "path": "sd/attention.py",
+      "sha256": "5276cc5506a879383aa04f1693d8c2994509afc7faa6206c92e1e374c416b250",
+      "bytes": 40933
+    },
+    {
+      "path": "sd/openaimodel.py",
+      "sha256": "4a2b93b9338b3a5211f885789530b09768f189a976735a27fa697284b6461a1d",
+      "bytes": 76466
+    },
+    {
+      "path": "sd35/mmdit.py",
+      "sha256": "ae04f13ceba3433a907d2e4742b72f2086a21235d0eb2449f533eb188e8a4913",
+      "bytes": 77122
+    },
+    {
+      "path": "sigmas.py",
+      "sha256": "0e7ad6842ed30e9005ed714f2e628d0babee060d4aa26216e49c61b5a485d666",
+      "bytes": 157488
+    },
+    {
+      "path": "style_transfer.py",
+      "sha256": "80179b9ec7525786abdef72d4ed057b0febc711458a5275fe945cce4b96b4c39",
+      "bytes": 78521
+    },
+    {
+      "path": "wan/model.py",
+      "sha256": "ca5dd31dce3b5cbf92144cb13f46fb1297f1fe35e4bb6aba9c3b0368de93aa14",
+      "bytes": 58943
+    },
+    {
+      "path": "wan/vae.py",
+      "sha256": "7b9c2ed2d733c3b54c48dc5665706e26e57a903ffd3e023fd3c9b680973b9954",
+      "bytes": 20285
+    },
+    {
+      "path": "web/js/res4lyf.default.json",
+      "sha256": "a69026397b90b5008597f9f365d4e6a0efdfa881ab5123b079aa3e6af73fec9e",
+      "bytes": 135
+    }
+  ]
+}

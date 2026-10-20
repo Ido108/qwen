@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 
+globalThis.window={location:{pathname:'/'}};
+
 let sequence=0;
 async function client(){
   const source=readFileSync(new URL('../src/session.ts',import.meta.url),'utf8');
@@ -10,6 +12,29 @@ async function client(){
   return import('data:text/javascript;base64,'+Buffer.from(code+`\n// instance ${sequence++}`).toString('base64'));
 }
 const response=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
+
+test('all screens share outage backoff and one recovery probe',async()=>{
+  const api=await client();let calls=0;
+  globalThis.fetch=async()=>{calls++;return response({detail:'Qwen is reconnecting'},503);};
+  await assert.rejects(api.apiRequest('/api/models'));
+  await assert.rejects(api.apiRequest('/api/queue'));
+  await assert.rejects(api.apiRequest('/api/gpu-memory'));
+  assert.equal(calls,1);
+  assert.equal(api.connectionState().status,'offline');
+  api.retryConnection();
+  globalThis.fetch=async()=>{calls++;await new Promise(r=>setTimeout(r,20));return response({ok:true});};
+  const [a,b]=await Promise.all([api.apiRequest('/api/models'),api.apiRequest('/api/models')]);
+  assert.deepEqual(a,b);assert.equal(calls,2);assert.equal(api.connectionState().status,'ready');
+});
+
+test('uncertain generation failure is never replayed after recovery',async()=>{
+  const api=await client();api.rememberSession('ready');let generations=0;
+  globalThis.fetch=async()=>{generations++;return response({detail:'Bad gateway'},502);};
+  await assert.rejects(api.apiRequest('/api/generate',{method:'POST',body:'{}'}));
+  api.retryConnection();globalThis.fetch=async()=>response({active:null});
+  await api.apiRequest('/api/queue');
+  assert.equal(generations,1);
+});
 
 test('first mutation waits for a session, including restored automatic person scans',async()=>{
   const api=await client();const calls=[];
@@ -40,6 +65,23 @@ test('persistent expiry cannot cause a retry loop',async()=>{
   const api=await client();api.rememberSession('old');let posts=0;
   globalThis.fetch=async(path)=>{if(path==='/api/session')return response({token:'new'});posts++;return response({code:'session_expired',detail:'Refresh the app and try again.'},403);};
   await assert.rejects(()=>api.apiRequest('/api/scan',{method:'POST'}),/Refresh/);assert.equal(posts,2);
+});
+
+test('remote sign-in retry retains the selected photos',async()=>{
+  globalThis.window.location.pathname='/qwen-studio/';
+  globalThis.localStorage={getItem:()=> 'test-dashboard-key'};
+  try{
+    const api=await client();api.rememberSession('ready');
+    const body=new FormData();body.append('files',new File(['image'],'phone.heic',{type:'image/heic'}));
+    let posts=0,signIns=0;
+    globalThis.fetch=async(path,init)=>{
+      if(path==='/api/auth/verify'){signIns++;return response({ok:true});}
+      assert.equal(path,'/api/uploads');assert.equal(init.body,body);
+      return ++posts===1?response({code:'moise_sign_in'},401):response([{id:'photo.png'}]);
+    };
+    assert.deepEqual(await api.apiRequest('/api/uploads',{method:'POST',body}),[{id:'photo.png'}]);
+    assert.equal(signIns,1);assert.equal(posts,2);
+  }finally{globalThis.window.location.pathname='/';delete globalThis.localStorage;}
 });
 
 test('XHR video uploads also renew the session and retain the same file',async()=>{

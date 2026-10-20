@@ -4,6 +4,7 @@ import gc
 import importlib.util
 import logging
 import sys
+import time
 from .common import APP_DIR
 from .models import entry, local_path
 
@@ -29,6 +30,7 @@ def generate(request, prompt, images, progress, preview_directory=None):
     import comfy.sample
     import comfy.utils
     import comfy.model_management as memory
+    from .video_timing import gpu_load_stage
     from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageToVideo, MiniMaxH3ReferenceToVideo, MiniMaxH3AddGuide, MiniMaxH3SigmaShift
     from comfy_extras.nodes_sparse_attention import BlockSparseAttention
     from comfy_extras.nodes_model_advanced import ModelAttentionBackend
@@ -55,10 +57,11 @@ def generate(request, prompt, images, progress, preview_directory=None):
         images['warp_video']=build_camera_guide(images['source_video'],request,progress)
         release()
     fast = selected['family'] == 'fasth3'
-    turbo = not fast and request['quality'] == 'turbo'
-    steps = request['steps'] if reference else (8 if fast or turbo else request['steps'])
-    from .reference_sampling import reference_sampling
-    sampling = reference_sampling(selected, request['quality'], request.get('steps')) if reference else None
+    from .video_sampling import video_sampling
+    sampling = request.get('sampling') or request.get('sampling_profile') or video_sampling(selected, request.get('quality'), request.get('steps'))
+    from .res4lyf_runtime import ensure_sampler
+    ensure_sampler(sampling['sampler'])
+    steps = sampling['steps']
     # Official H3 and FastH3 workflows use BasicGuider (CFG 1). Applying the
     # conventional video CFG 6 burns image-conditioned detail on this model.
     cfg = 1.0
@@ -69,6 +72,8 @@ def generate(request, prompt, images, progress, preview_directory=None):
     weights, _ = comfy.utils.convert_old_quants(weights, model_prefix='', metadata=metadata)
     clip = comfy.sd.load_text_encoder_state_dicts([weights], clip_type=comfy.sd.CLIPType.MINIMAX,
         model_options={'initial_device': torch.device('cpu')}, disable_dynamic=True)
+    clip.qwen_timing=lambda:gpu_load_stage(memory,progress,torch.cuda.synchronize,
+        'loading_encoder_gpu','Moving text encoder to GPU…','encoding_prompt','Encoding prompt and visual references on GPU…')
     del weights, metadata
     # The 32B conditioning encoder has no activation estimate upstream. Reserve
     # its working space so ComfyUI streams some weights from RAM when needed.
@@ -82,6 +87,8 @@ def generate(request, prompt, images, progress, preview_directory=None):
         progress(stage='loading_video_vae', message='Loading the video encoder…')
         weights, _ = read_weights('h3-video-vae')
         vae = ProgressVAE(comfy.sd.VAE(sd=weights), progress)
+        vae.vae.qwen_timing=lambda stage,message:gpu_load_stage(memory,progress,torch.cuda.synchronize,
+            'loading_vae_gpu','Moving video encoder to GPU…',stage,message)
         del weights
     tensors = {name: torch.from_numpy(np.asarray(image.convert('RGB'), dtype=np.float32) / 255).unsqueeze(0)
                for name, image in images.items() if hasattr(image,'convert')}
@@ -94,6 +101,8 @@ def generate(request, prompt, images, progress, preview_directory=None):
         progress(stage='loading_audio_vae', message='Loading the audio encoder…')
         weights, _ = read_weights('h3-audio-vae')
         audio_vae = ProgressVAE(comfy.sd.VAE(sd=weights), progress, audio=True)
+        audio_vae.vae.qwen_timing=lambda stage,message:gpu_load_stage(memory,progress,torch.cuda.synchronize,
+            'loading_audio_encoder_gpu','Moving audio encoder to GPU…',stage,message)
         del weights
     with torch.inference_mode():
         if reference:
@@ -152,7 +161,7 @@ def generate(request, prompt, images, progress, preview_directory=None):
     if model is None:
         raise RuntimeError('This file is not a compatible MiniMax H3 video model.')
     del weights
-    turbo_lora = sampling.get('lora_id') if reference else ('h3-turbo' if turbo else None)
+    turbo_lora = sampling.get('lora_id')
     if turbo_lora:
         lora, _ = read_weights(turbo_lora)
         model, _ = comfy.sd.load_lora_for_models(model, None, lora, 1.0, 0)
@@ -169,8 +178,8 @@ def generate(request, prompt, images, progress, preview_directory=None):
         model, _ = comfy.sd.load_lora_for_models(model, None, lora, float(choice.get('strength', 1.0)), 0)
         del lora
         progress(user_lora=choice['id'], user_lora_strength=float(choice.get('strength', 1.0)))
-    video_shift = sampling['video_shift'] if sampling else (10.0 if fast else 12.0)
-    audio_shift = sampling['audio_shift'] if sampling else 3.0
+    video_shift = sampling['video_shift']
+    audio_shift = sampling['audio_shift']
     model = MiniMaxH3SigmaShift.execute(model, video_shift, audio_shift)[0]
     model = ModelAttentionBackend.execute(model, 'comfy kitchen attention')[0]
     if fast:
@@ -195,26 +204,43 @@ def generate(request, prompt, images, progress, preview_directory=None):
     from .video_preview import LiveVideoPreview
     preview = LiveVideoPreview(preview_directory, model.model.latent_format, progress, request['frames']/24)
     progress(preview_url=None,preview_step=0,preview_unavailable=not preview.enabled)
+    preview_total=0.0
     def callback(step, x0, x, total):
-        progress(stage='generating', message='Generating video and audio…', step=step + 1, total_steps=total)
+        nonlocal preview_total
+        # A callback may run before queued CUDA work finishes. Wait here so its
+        # timestamp means a completed step, not merely submitted GPU work.
+        torch.cuda.synchronize()
+        progress(stage='generating', message='Generating video and audio…' if request.get('audio',True) else 'Generating video…', step=step + 1, total_steps=total)
         if step==0:
             progress(model_gpu_weight_gb=round(model.loaded_size()/GIB,2),
                      model_offloaded_weight_gb=round((model.model_size()-model.loaded_size())/GIB,2))
+        preview_started=time.monotonic()
         preview.publish(x0,step+1)
-    sampler=sampling['sampler'] if sampling else 'res_multistep'
-    scheduler=sampling['scheduler'] if sampling else 'simple'
-    progress(stage='generating', message='Generating video and audio…', step=0, guidance=cfg, sampler=sampler, scheduler=scheduler)
+        preview_total+=time.monotonic()-preview_started
+        progress(preview_seconds_total=round(preview_total,3))
+    sampler=sampling['sampler']
+    scheduler=sampling['scheduler']
+    from .video_sampling import scheduler_sigmas
+    sigmas = scheduler_sigmas(sampling, model, MiniMaxH3SigmaShift.execute, comfy.samplers.calculate_sigmas)
+    progress(stage='generating', message='Generating video and audio…' if request.get('audio',True) else 'Generating video…', step=0, guidance=cfg, sampler=sampler, scheduler=scheduler)
     with torch.inference_mode():
-        samples = comfy.sample.sample(model, noise, steps, cfg, sampler, scheduler,
-            positive, negative, samples, callback=callback, seed=request['seed'])
+        with gpu_load_stage(memory,progress,torch.cuda.synchronize,'loading_model_gpu',
+                'Moving video model to GPU and applying LoRAs…','generating',
+                'Generating video and audio…' if request.get('audio',True) else 'Generating video…'):
+            samples = comfy.sample.sample(model, noise, steps, cfg, sampler, scheduler,
+                positive, negative, samples, sigmas=sigmas, callback=callback, seed=request['seed'])
+        progress(stage='releasing_model',message='Releasing video model for decoding…')
         del model, positive, negative, noise, latent
         release()
-        progress(stage='decoding', message='Decoding video frames…')
+        progress(stage='loading_video_decoder',message='Preparing video decoder…')
         weights, _ = read_weights('h3-video-vae')
         vae = comfy.sd.VAE(sd=weights)
         del weights
         video_latent = samples.unbind()[0]
-        pixels = vae.decode(video_latent)
+        progress(stage='decoding',message='Decoding video frames…')
+        with gpu_load_stage(memory,progress,torch.cuda.synchronize,'loading_decoder_gpu',
+                'Moving video decoder to GPU…','decoding','Decoding video frames…'):
+            pixels = vae.decode(video_latent)
         if pixels.ndim == 5:
             pixels = pixels.reshape(-1, *pixels.shape[-3:])
         pixels = pixels[:request['frames']].float().cpu()
@@ -222,11 +248,14 @@ def generate(request, prompt, images, progress, preview_directory=None):
         release()
         audio = None
         if request.get('audio', request.get('output_audio')=='generated'):
-            progress(stage='decoding', message='Decoding audio…')
+            progress(stage='loading_audio_decoder', message='Preparing audio decoder…')
             weights, _ = read_weights('h3-audio-vae')
             vae = comfy.sd.VAE(sd=weights)
             del weights
-            audio = vae_decode_audio(vae, {'samples': samples})
+            progress(stage='decoding_audio', message='Decoding audio…')
+            with gpu_load_stage(memory,progress,torch.cuda.synchronize,'loading_audio_decoder_gpu',
+                    'Moving audio decoder to GPU…','decoding_audio','Decoding audio…'):
+                audio = vae_decode_audio(vae, {'samples': samples})
             audio['waveform'] = audio['waveform'].float().cpu()
             del vae
     progress(peak_vram_gb=round(torch.cuda.max_memory_allocated() / 1024**3, 2), engine='ComfyUI', actual_steps=steps)

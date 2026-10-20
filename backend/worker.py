@@ -9,6 +9,7 @@ import time
 import traceback
 
 from .common import APP_DIR, DATA_DIR, MODELS_DIR, resolve_image, write_json
+from .image_inputs import ImageInputs
 
 os.environ['HF_HOME'] = str(DATA_DIR / 'hf-cache')
 os.environ['HF_HUB_OFFLINE'] = '1'
@@ -18,14 +19,32 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 directory = None
 job = {}
 request = {}
+image_inputs = ImageInputs()
 
 def update(**values):
     now = time.time()
-    if values.get('stage') and values['stage'] != job.get('stage'):
+    stage=values.get('stage',job.get('stage'))
+    if stage=='generating' and 'step' in values:
+        step=values['step']
+        previous=job.get('step',0)
+        if job.get('stage')!='generating' or step<=previous:
+            values.update(sampling_step_seconds=None,sampling_step_at=None)
+        elif job.get('sampling_step_at') and step==previous+1:
+            elapsed=now-job['sampling_step_at']
+            average=job.get('sampling_step_seconds')
+            values['sampling_step_seconds']=round(elapsed if not average else .6*elapsed+.4*average,3)
+        if step>previous or values.get('sampling_step_at') is None and step>0:
+            values['sampling_step_at']=now
+    changed_stage=values.get('stage') and values['stage'] != job.get('stage')
+    changed_phase=values.get('phase') is not None and values['phase'] != job.get('phase')
+    if changed_stage or changed_phase:
         if job.get('stage_started_at'):
             timings = job.setdefault('stage_seconds', {})
             stage = job['stage']
-            timings[stage] = round(timings.get(stage, 0) + now - job['stage_started_at'], 3)
+            elapsed=round(now-job['stage_started_at'],3)
+            timings[stage] = round(timings.get(stage, 0) + elapsed, 3)
+            job.setdefault('stage_history',[]).append({'stage':stage,'phase':job.get('phase',''),
+                'started_at':job['stage_started_at'],'seconds':elapsed})
         values['stage_started_at'] = now
     if values.get('stage') == 'generating' and values.get('step') == 1:
         values['time_to_first_step_seconds'] = round(now - job['started_at'], 3)
@@ -42,9 +61,11 @@ def rewrite_prompt(images):
 
 def image_engine(saved):
     """Krea 2 models run in krea_engine, Z-Image models in zimage_engine; Qwen-Image-2.1 models in comfy_engine."""
-    from .models import entry, is_krea, is_zimage
+    from .models import entry, is_krea, is_zimage, is_flux3
     item = entry(saved.get('model_id', 'official-bf16'))
-    if is_krea(item):
+    if is_flux3(item):
+        from .flux3_engine import generate
+    elif is_krea(item):
         from .krea_engine import generate
     elif is_zimage(item):
         from .zimage_engine import generate
@@ -73,24 +94,28 @@ def run():
         raise RuntimeError('NVIDIA CUDA is unavailable. Restart after checking the graphics driver.')
     torch.set_float32_matmul_precision('high')
     torch.set_num_threads(8)
-    images = []
-    for i, image_id in enumerate(request['images']):
-        with Image.open(resolve_image(image_id)) as img:
-            image = img.convert('RGBA')
-            image.save(directory / f'input-{i+1}.png')
-            images.append(image)
+    prepared_at = time.perf_counter()
+    images, reused_inputs = [], 0
+    for image_id in request['images']:
+        image, reused = image_inputs.load(resolve_image(image_id))
+        images.append(image)
+        reused_inputs += int(reused)
+    update(input_count=len(images), input_cache_hits=reused_inputs,
+           input_read_seconds=round(time.perf_counter()-prepared_at, 3))
     tool = None
     paste_box = None
     if request.get('tool_id'):
         from .models import image_tool
-        from .image_tools import prepare
         tool = image_tool(request['tool_id'])
-        images, tool_size, paste_box = prepare(tool, request, images)
-        for i, image in enumerate(images):
-            image.save(directory / f'prepared-{i+1}.png')
-        update(tool=tool['title'], prepared_inputs=[list(image.size) for image in images])
+        (images, tool_size, paste_box), reused = image_inputs.prepare(tool, request, images)
+        update(tool=tool['title'], prepared_inputs=[list(image.size) for image in images],
+               input_preparation_reused=reused)
+    update(input_preparation_seconds=round(time.perf_counter()-prepared_at, 3))
     rewrite = request.get('enhancement_result') or (rewrite_prompt(images) if request['enhance'] else {})
     prompt = rewrite.get('positive_prompt') or request['prompt']
+    from .lora_prompts import internal_prompt
+    prompt, lora_words = internal_prompt(prompt, request)
+    update(lora_prompt_words=lora_words)
     if tool and tool_size:
         width, height = tool_size
     else:
@@ -100,7 +125,7 @@ def run():
             # Krea 2 Raw is trained up to 1K (krea-ai/krea-2 README); Turbo makes 1K to 2K.
             sizing = {**request, 'auto_resolution': min(request.get('auto_resolution', 2048), 1024)}
         # Z-Image redraws image 1, so the output keeps its shape.
-        follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith('z-image'))
+        follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith(('z-image','flux3-klein')))
         width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if follow_first else rewrite)
     render_width = math.ceil(width / 32) * 32
     render_height = math.ceil(height / 32) * 32
@@ -117,6 +142,8 @@ def run():
     selected = entry(request.get('model_id','official-bf16'))
     metadata.add_text('Model', selected['title'])
     metadata.add_text('Prompt', request['prompt'])
+    metadata.add_text('Actual prompt', job.get('expanded_prompt') or prompt)
+    metadata.add_text('LoRA prompt words', json.dumps(lora_words, ensure_ascii=False))
     metadata.add_text('Rewritten prompt', job.get('rewritten_prompt', ''))
     metadata.add_text('Seed', str(request['seed']))
     if tool:
@@ -131,7 +158,7 @@ def run():
         elapsed_seconds=round(time.time() - job['started_at'], 1), width=image.width, height=image.height,
         has_transparency=visible_alpha_fraction>.001,transparent_pixel_fraction=round(transparent_fraction,5),render_size=[render_width, render_height],
         resized_to_requested=(render_width, render_height) != (width, height),
-        actual_prompt=prompt,model_revision=selected['revision'])
+        actual_prompt=job.get('expanded_prompt') or prompt,model_revision=selected['revision'])
     write_json(destination.with_suffix('.json'), job)
 
 def execute(folder):

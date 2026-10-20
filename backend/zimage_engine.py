@@ -74,6 +74,8 @@ def generate(request, prompt, images, width, height, progress):
         return weights, metadata
 
     selected = entry(request['model_id'])
+    from .res4lyf_runtime import ensure_sampler
+    ensure_sampler(selected['generation_defaults'].get('sampler', 'res_multistep'))
     model_id, encoder_id, vae_id = required_image(request)[:3]
     encoder, vae_entry = entry(encoder_id), entry(vae_id)
     cache_key = (selected['id'], encoder_id, vae_id)

@@ -17,7 +17,7 @@ import threading
 import time
 from pathlib import Path
 
-from .common import DATA_DIR, MODELS_DIR, write_json
+from .common import APP_DIR, DATA_DIR, MODELS_DIR, write_json
 
 AITK_REPO = 'https://github.com/ostris/ai-toolkit.git'
 AITK_COMMIT = 'dcebc7442df70e5239c68167919fd2909c615769'  # 2026-10-16
@@ -135,6 +135,11 @@ def _run_setup() -> None:
 # trained on Z-Image Turbo (with the Turbo training adapter) did nothing on Z-Image Base. The values are the "selected" defaults of the
 # ai-toolkit UI for that model (extensions_built_in/diffusion_models/ui.tsx at AITK_COMMIT).
 ARCHS = {
+    'flux3-klein-base': {'label':'FLUX.3 Image Klein Base','arch':'flux3',
+        'name_or_path':'black-forest-labs/flux-3-image-klein-base','qtype':'convrot8','qtype_te':'convrot8',
+        'timestep_type':'shift','guidance':3.5,'sample_steps':28,'model_kwargs':{'match_target_res':True},
+        'gate':'https://huggingface.co/black-forest-labs/flux-3-image-klein-base',
+        'families':['flux3-klein','flux3-klein-base']},
     'qwen-image-2.1': {'label': 'Qwen-Image-2.1', 'arch': 'qwen_image_2', 'name_or_path': 'Comfy-Org/Qwen-Image-2.1',
                        'qtype': 'convrot8', 'qtype_te': 'convrot8', 'timestep_type': 'shift', 'guidance': 3.0, 'sample_steps': 25,
                        'model_kwargs': {'rgba': False}, 'families': ['qwen-image-2.1']},
@@ -157,7 +162,7 @@ ARCHS = {
                 'guidance': 4.0, 'sample_steps': 30, 'families': ['z-image']},
 }
 # civitai.inspect() names for the trained file, to check it before it is added.
-INSPECT_ARCH = {'qwen_image_2': 'qwen-image-2.1', 'krea2': 'krea-2', 'zimage': 'z-image'}
+INSPECT_ARCH = {'flux3':'flux3-klein','qwen_image_2': 'qwen-image-2.1', 'krea2': 'krea-2', 'zimage': 'z-image'}
 
 
 def slug(name: str) -> str:
@@ -178,6 +183,19 @@ def build_config(request: dict, dataset_dir: Path, output_dir: Path) -> dict:
     model = {'name_or_path': info['name_or_path'], 'arch': info['arch'], 'quantize': True, 'quantize_te': True,
              'qtype': info.get('qtype', 'qfloat8'), 'qtype_te': info.get('qtype_te', 'qfloat8'), 'low_vram': True,
              'model_kwargs': dict(info.get('model_kwargs', {}))}
+    if info['arch']=='flux3':
+        from .models import entry, local_path
+        def path(model_id):
+            item=entry(model_id)
+            return str(local_path(item,item['files'][0]))
+        # Explicit Base weights avoid both stale upstream repack filenames and
+        # accidental use of the distilled flow-map inference checkpoint.
+        model['model_kwargs'].update(model_path=path('flux3-base-int8'),ae_path=path('flux3-vae'),
+                                     text_encoder_path=path('flux3-encoder-int8'),
+                                     config_path=str(APP_DIR/'reference/flux3-base-config.json'))
+        # A local package bypasses the toolkit's search for older repack names.
+        # Its explicit model_path must always select the downloaded Base file.
+        model['name_or_path']=str(Path(path('flux3-base-int8')).parent)
     if info.get('assistant_lora_path'):
         model['assistant_lora_path'] = info['assistant_lora_path']
     process = {
@@ -196,7 +214,7 @@ def build_config(request: dict, dataset_dir: Path, output_dir: Path) -> dict:
         'logging': {'log_every': 1, 'use_ui_logger': False},
         'model': model,
         'sample': {'sampler': 'flowmatch', 'sample_every': int(request['save_every']), 'width': 1024, 'height': 1024,
-                   'samples': [{'prompt': prompt} for prompt in prompts], 'neg': '', 'seed': 42, 'walk_seed': True,
+                   'samples': [{'prompt': prompt} for prompt in prompts], 'neg': '', 'seed': 42, 'walk_seed': False,
                    'guidance_scale': info['guidance'], 'sample_steps': info['sample_steps']},
     }
     return {'job': 'extension', 'config': {'name': slug(request['name']), 'process': [process]}, 'meta': {'name': request['name'], 'version': '1.0'}}
@@ -228,13 +246,28 @@ def read_progress(log_path: Path, total_steps: int) -> dict:
         return {}
     lines = [line.strip() for line in re.split(r'[\r\n]+', text) if line.strip()]
     found = {}
-    for line in reversed(lines):
+    progress_index=-1
+    for index in range(len(lines)-1,-1,-1):
+        line=lines[index]
         match = PROGRESS.search(line)
         if match and int(match.group(2)) == total_steps:
+            progress_index=index
             found = {'step': int(match.group(1)), 'total_steps': total_steps, 'eta_seconds': _seconds(match.group(4))}
             if match.group(5):
                 found['loss'] = float(match.group(5))
             break
+    found.update(stage='training' if 'step' in found else 'loading',
+                 message=f"Training: step {found['step']} of {total_steps}" if 'step' in found else 'Loading the training tools...')
+    stages=[('loading transformer','loading_model','Loading the base model...'),
+            ('loading qwen','loading_encoder','Loading the text encoder...'),
+            ('loading image vae','loading_vae','Loading the image encoder...'),
+            ('caching latents','encoding','Preparing the training images...'),
+            ('generating samples','sampling','Creating sample images...'),
+            ('saving model','saving','Saving the LoRA...')]
+    for index in range(len(lines)-1,progress_index,-1):
+        match=next(((stage,message) for text,stage,message in stages if text in lines[index].lower()),None)
+        if match:
+            found.update(stage=match[0],message=match[1]);break
     # The last line that is not a progress bar says what the trainer does now (loading, caching, sampling).
     status = next((line for line in reversed(lines) if not PROGRESS.search(line) and not NOISE.search(line)), '')
     found['trainer_message'] = re.sub(r'\x1b\[[0-9;]*m', '', status)[:200]
@@ -252,48 +285,20 @@ def final_lora(output_dir: Path, name: str) -> Path | None:
     return path if path.is_file() else None
 
 
-# ---- captions -----------------------------------------------------------------
-
-CAPTION_SYSTEM = ('You write captions for LoRA training images. Return only the caption, one paragraph, at most 60 words, '
-                  'no quotes and no Markdown. {start}Then describe what can change from image to image: clothing, pose, '
-                  'expression, action, setting, background, lighting and camera framing. {identity}')
-
-
-def caption(image, trigger: str, subject: str, model_id: str) -> str:
-    """One training caption from Antigravity. For a character the caption leaves out the permanent look of the
-    subject, so the trigger word learns it; for a style it describes the content and leaves out the style."""
-    import base64
-    import io
-    from . import antigravity
-    copy = image.convert('RGB')
-    copy.thumbnail((1024, 1024))
-    stream = io.BytesIO()
-    copy.save(stream, 'JPEG', quality=90)
-    start = f'Start with the trigger word "{trigger}" as the name of the subject. ' if trigger else ''
-    identity = ('Do not describe the face, eye color, skin tone, hair color or hair style, body type or age of the subject: '
-                'the trigger word learns them.' if subject == 'character' else
-                'Do not name or describe the art style, colors or rendering technique: the trigger word learns them.')
-    parts = [{'inlineData': {'mimeType': 'image/jpeg', 'data': base64.b64encode(stream.getvalue()).decode()}}, {'text': 'Caption this image.'}]
-    text = antigravity.generate_text(model_id, CAPTION_SYSTEM.format(start=start, identity=identity), parts)
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.S).strip().strip('"').strip()
-    if trigger and trigger.casefold() not in text.casefold():
-        text = f'{trigger}, {text}'
-    return text[:2000]
-
-
 # ---- running a training ---------------------------------------------------------
 
 def prepare_dataset(request: dict, directory: Path) -> Path:
     """The images as numbered PNG files with a .txt caption each, as ai-toolkit reads a dataset folder."""
-    from PIL import Image
+    from PIL import Image, ImageOps
     from .common import resolve_image
     dataset = directory / 'dataset'
-    shutil.rmtree(dataset, ignore_errors=True)
-    dataset.mkdir(parents=True)
+    dataset.mkdir(parents=True, exist_ok=True)
     for index, item in enumerate(request['images'], 1):
         with Image.open(resolve_image(item['id'])) as opened:
-            opened.convert('RGB').save(dataset / f'{index:03d}.png')
-        (dataset / f'{index:03d}.txt').write_text(item.get('caption', '').strip(), encoding='utf-8')
+            target = dataset / f'{index:03d}.png'
+            if not target.exists():
+                ImageOps.exif_transpose(opened).convert('RGB').save(target)
+        (dataset / f'{index:03d}.txt').write_text(item.get('caption', ''), encoding='utf-8')
     return dataset
 
 
@@ -341,6 +346,14 @@ def run(job_id: str, request: dict, directory: Path, on_process, cancelled) -> N
 
     def update(**values):
         job = read_json(status_path)
+        now=time.time()
+        if values.get('stage',job.get('stage'))!=job.get('stage'):
+            previous=job.get('stage')
+            if previous and previous!='queued' and job.get('stage_started_at'):
+                elapsed=round(now-job['stage_started_at'],3)
+                job.setdefault('stage_seconds',{})[previous]=round(job.get('stage_seconds',{}).get(previous,0)+elapsed,3)
+                job.setdefault('stage_history',[]).append({'stage':previous,'started_at':job['stage_started_at'],'seconds':elapsed})
+            values['stage_started_at']=now
         job.update(values)
         write_json(status_path, job)
 
@@ -348,6 +361,20 @@ def run(job_id: str, request: dict, directory: Path, on_process, cancelled) -> N
         raise RuntimeError('Install the trainer on the Train page first.')
     started = time.time()
     update(status='running', stage='preparing', message='Preparing the images…', started_at=started)
+    if request.get('auto_caption', False) and any(not i.get('caption', '').strip() for i in request['images']):
+        from . import training_captions
+        captions = training_captions.run(request, directory, on_process, cancelled, update)
+        if cancelled(): return
+        request = {**request, 'images': [dict(item, caption=item['caption'] if item.get('caption', '').strip() else captions.get(item['id'], {}).get('caption', '')) for item in request['images']]}
+        missing = sum(not i['caption'].strip() for i in request['images'])
+        if missing:
+            raise RuntimeError(f'{missing} images need captions. Completed captions are saved. Retry or edit them before training.')
+        write_json(directory / 'prepared-dataset.json', {'images': request['images']})
+    if cancelled(): return
+    if request['arch']=='flux3-klein-base':
+        from . import models
+        models.ensure_installed(['flux3-base-int8','flux3-encoder-int8','flux3-vae'],owner=job_id,cancelled=cancelled,
+            progress=lambda transfer:update(stage='downloading_models',message='Downloading the training model files...',transfer=transfer))
     dataset = prepare_dataset(request, directory)
     output = output_dir(request)
     output.mkdir(parents=True, exist_ok=True)
@@ -356,7 +383,8 @@ def run(job_id: str, request: dict, directory: Path, on_process, cancelled) -> N
     config.write_text(yaml.safe_dump(build_config(request, dataset, output), sort_keys=False, allow_unicode=True), encoding='utf-8')
     log_path = directory / 'worker.log'
     with log_path.open('ab') as log:
-        process = subprocess.Popen([str(TRAINER_PYTHON), '-u', 'run.py', str(config)], cwd=TOOLKIT_DIR, stdout=log, stderr=subprocess.STDOUT,
+        runner=str(APP_DIR/'scripts/train_flux3.py') if request['arch']=='flux3-klein-base' else 'run.py'
+        process = subprocess.Popen([str(TRAINER_PYTHON), '-u', runner, str(config)], cwd=TOOLKIT_DIR, stdout=log, stderr=subprocess.STDOUT,
                                    env=trainer_env(), creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
     on_process(process)
     update(stage='loading', message='Loading the base model (the first training downloads it)…', step=0, total_steps=int(request['steps']))
@@ -365,11 +393,10 @@ def run(job_id: str, request: dict, directory: Path, on_process, cancelled) -> N
         if cancelled():
             continue  # the server stops the process
         progress = read_progress(log_path, int(request['steps']))
-        stage = 'training' if progress.get('step') else 'loading'
-        message = (f"Training: step {progress['step']} of {progress['total_steps']}" if progress.get('step')
-                   else progress.get('trainer_message') or 'Loading the base model…')
+        stage=progress.get('stage','loading')
+        message=progress.get('message','Loading the base model...')
         update(stage=stage, message=message, samples=sample_files(output, request['name']),
-               **{key: value for key, value in progress.items() if key != 'trainer_message'}, trainer_message=progress.get('trainer_message', ''))
+               **{key: value for key, value in progress.items() if key not in ('trainer_message','stage','message')}, trainer_message=progress.get('trainer_message', ''))
     if cancelled():
         return
     result = final_lora(output, request['name'])

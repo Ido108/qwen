@@ -43,7 +43,7 @@ class ReferenceSamplingTests(unittest.TestCase):
                 request=ReferenceVideoRequest(model_id=model_id,source_video='source.mp4',reference_images=['ref.png'])
                 self.assertIn(model_id,required_reference(request))
         turbo=reference_sampling(entry('h3-ref-base-int8'),'turbo')
-        self.assertEqual((turbo['steps'],turbo['sampler'],turbo['video_shift']),(8,'euler',6))
+        self.assertEqual((turbo['steps'],turbo['sampler'],turbo['video_shift']),(8,'euler',12))
         self.assertEqual(turbo['lora_id'],'h3-ref-turbo-lora')
         self.assertNotIn('lora_id',reference_sampling(entry('h3-ref-turbo-int8')))
 

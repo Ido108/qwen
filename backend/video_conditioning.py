@@ -14,6 +14,10 @@ class SingleUseEncoder:
     def encode_from_tokens_scheduled(self, *args, **kwargs):
         self.progress(stage='encoding_prompt', message='Encoding prompt and visual references on GPU…')
         try:
+            # Imports stay lazy so small CPU contract tests need no Comfy runtime.
+            if getattr(self.encoder,'qwen_timing',None):
+                with self.encoder.qwen_timing():
+                    return self.encoder.encode_from_tokens_scheduled(*args, **kwargs)
             return self.encoder.encode_from_tokens_scheduled(*args, **kwargs)
         finally:
             # Dropping the weights avoids ComfyUI copying partially loaded
@@ -38,4 +42,7 @@ class ProgressVAE:
         else:
             stage, message = 'encoding_reference_image', 'Encoding reference image on GPU…'
         self.progress(stage=stage, message=message)
+        if getattr(self.vae,'qwen_timing',None):
+            with self.vae.qwen_timing(stage,message):
+                return self.vae.encode(pixels,*args,**kwargs)
         return self.vae.encode(pixels, *args, **kwargs)

@@ -181,3 +181,9 @@ main.video-studio .prompt-label,main.video-studio .msr-prompt-label{font-size:14
 /* Model capability hint under each video model list. */
 main.video-studio .vs-model-supports{display:block;margin-top:4px;font-size:12px;font-weight:400;color:var(--muted)}
 main.video-studio .video-size-error{color:#9b3850}
+
+.video-model-settings{padding:10px 12px;border:1px solid var(--border,#dedbee);border-radius:9px;font-size:12px;line-height:1.55}.video-model-settings p{margin:0 0 4px}.video-model-settings small{display:block}.video-model-settings summary{cursor:pointer;margin-top:5px}
+
+.vs-memory-note{font-size:12px;line-height:1.6;color:var(--muted);padding:10px 0 0}
+
+.video-size-presets{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:12px;margin:12px 0}.video-size-presets select{width:100%;min-width:0}@media(max-width:420px){.video-size-presets{grid-template-columns:1fr}}

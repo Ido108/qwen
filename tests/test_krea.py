@@ -110,7 +110,7 @@ class KreaSamplingTests(unittest.TestCase):
 class KreaCivitaiTests(unittest.TestCase):
     def test_base_models_and_variants(self):
         self.assertEqual(civitai.BASE_MODELS['Krea 2']['arch'], 'krea-2')
-        self.assertEqual({name for name, info in civitai.BASE_MODELS.items() if info['area'] == 'image'}, {'Qwen 2.1', 'Krea 2', 'Krea 2 Turbo', 'ZImageTurbo', 'ZImageBase'})
+        self.assertEqual({name for name, info in civitai.BASE_MODELS.items() if info['area'] == 'image'}, {'Qwen 2.1', 'Krea 2', 'Krea 2 Turbo', 'ZImageTurbo', 'ZImageBase', 'Flux.3 Klein', 'Flux.3 Klein-base'})
         self.assertEqual(civitai._variant({'name': 'Muse'}, {'name': 'v3.0', 'baseModel': 'Krea 2 Turbo'}), 'turbo')
         self.assertEqual(civitai._variant({'name': 'Mix'}, {'name': 'v8', 'baseModel': 'Krea 2'}), 'unknown')  # nothing tells: the app does not guess
         self.assertEqual(civitai._variant({'name': 'Mix'}, {'name': 'v8', 'baseModel': 'Krea 2', 'description': 'Use 8 steps, CFG 1.'}), 'turbo')

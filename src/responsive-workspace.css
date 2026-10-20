@@ -1,0 +1,68 @@
+/* Keep editing controls compact and let the document scroll on every device. */
+.studio-controls .prompt-input{height:144px;min-height:120px;max-height:360px;resize:vertical;line-height:1.6;flex:none}
+.studio-controls .controls-scroll>.panel{flex-shrink:0}
+.studio-controls .generate-dock{position:static;background:#fff;box-shadow:0 5px 24px #25203b12}
+.studio-result .result-empty{min-height:0}
+.model-status{white-space:normal;overflow:visible;line-height:1.5}
+.studio-main .input-panel .section-heading{flex-wrap:wrap}
+.library-popover .library-tabs{flex-wrap:wrap}
+.file-picker.text-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px}
+
+/* Tablet and short windows use document scrolling, including all video tools. */
+@media(max-width:999px),(max-height:700px){
+  body:has(main.video-studio:not([hidden])){overflow:auto}
+  body:has(main.video-studio:not([hidden])) #root{height:auto;min-height:100dvh;overflow:visible}
+  #root>main.video-studio{height:auto;min-height:0;overflow:visible;flex:none}
+  main.video-studio .vs-grid{display:grid;grid-template-columns:minmax(0,1fr);align-items:start}
+  main.video-studio .vs-controls,main.video-studio .vs-scroll{height:auto;max-height:none;overflow:visible;flex:none}
+  main.video-studio .vs-result{height:auto;min-height:340px}
+  main.video-studio .vs-action{position:static;background:#fff}
+}
+
+@media(max-width:999px){
+  .studio-main{height:auto;min-height:0;padding:12px 16px;overflow:visible}
+  .studio-main .studio-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
+  .studio-main .studio-controls,.studio-main .controls-scroll{height:auto;overflow:visible;min-height:0;display:flex;flex-direction:column;gap:12px}
+  .studio-main .controls-scroll{flex:none}
+  .studio-main .studio-result{position:static;height:min(72dvh,640px);min-height:320px}
+  .studio-main .studio-result{display:flex;flex-direction:column}
+  .studio-main .studio-result .result-canvas{flex:1;min-height:0;height:auto;max-height:none}
+  .studio-main .results-rail{position:static;width:auto;height:auto;max-height:none;box-shadow:none}
+  .studio-main .rail-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));max-height:320px}
+  .studio-main .rail-open{position:static;margin:0 0 12px;justify-self:end;order:3}
+  body:has(.studio-main:not([hidden])) .download-pills{left:12px;bottom:12px}
+}
+
+@media(max-width:600px){
+  .header .app-tabs{min-width:0;max-width:100%;overflow-x:auto;gap:2px}
+  .header .app-tabs button{padding:14px 8px;font-size:12px;flex-shrink:0}
+  .studio-main{padding:12px}
+  .studio-controls .panel{padding:14px}
+  .studio-controls .prompt-input{height:144px;min-height:120px;max-height:280px;font-size:16px}
+  .studio-controls .field input:not([type=range]):not([type=checkbox]),.studio-controls .field select,.studio-controls .field textarea,
+  main.video-studio input:not([type=range]):not([type=checkbox]),main.video-studio select,main.video-studio textarea{font-size:16px}
+  .library-toggle,.upload-library,.file-picker.text-button,.library-close{min-height:40px}
+  .upload-empty-row{flex-wrap:wrap}
+  .studio-controls .upload-empty.compact,.upload-library{flex:1;min-height:60px;justify-content:center}
+  .studio-controls .input-grid{grid-template-columns:repeat(4,minmax(0,1fr));max-height:220px}
+  .studio-controls .thumb-preview,.studio-controls .add-image{height:70px;min-height:70px}
+  .studio-controls .generate-dock{bottom:8px;padding-bottom:max(10px,env(safe-area-inset-bottom))!important}
+  .studio-controls .advanced-settings .summary-hint{white-space:normal;font-size:11px}
+  .studio-main .studio-result{height:min(68dvh,480px);min-height:280px;padding:14px}
+  .video-workflow-nav{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
+  .video-workflow-nav button{min-height:44px;flex-shrink:0}
+  .reference-person{width:88px}
+  .reference-person-cover>img{width:86px;height:72px}
+  .reference-person-new{width:88px;min-height:104px;font-size:12px}
+  .reference-person-add{width:32px;height:32px;top:51px;right:-4px}
+  .reference-person-remove{width:28px;height:28px}
+  .reference-person-images .reference-person-new{width:72px;min-height:72px}
+  .train-page,.civitai-page{padding:16px 12px 30px}
+  .train-form,.train-jobs{padding:14px}
+  .train-images-heading{flex-wrap:wrap;gap:8px}
+  .train-item{grid-template-columns:60px minmax(0,1fr) auto}
+  .train-item img{width:60px;height:72px}
+  .train-fields input,.train-fields select,.train-item textarea{font-size:16px}
+}
+
+.download-pills>summary{list-style:none;display:flex;gap:8px;align-items:center;cursor:pointer;background:var(--panel,#fff);border:1px solid var(--border,#dedbee);border-radius:12px;padding:10px 14px;box-shadow:0 3px 14px #0002}.download-pills[open]{max-height:45dvh;overflow:auto}.download-pills>summary::-webkit-details-marker{display:none}

@@ -16,13 +16,14 @@ One double-click to install. No API keys, no subscription, no cloud required.
 
 ## What it does
 
-- **Create images** from a prompt with Qwen-Image-2.1, Krea 2 or Z-Image. Qwen-Image-2.1 writes clear text inside images, too.
+- **Create images** from a prompt with Qwen-Image-2.1, FLUX.3 Image Klein, Krea 2 or Z-Image. Qwen-Image-2.1 writes clear text inside images, too.
 - **Edit images**: add up to 10 images, then describe the change.
 - **Turbo models**: the official 8-step Qwen-Image-2.1 Turbo, about 3 times faster.
 - **Tools**: outfit swap, photo restore, expand image, new camera angle, remove object and character swap.
 - **Civitai**: browse civitai.red inside the app and add LoRAs and models in one click. The app reads each model's own steps, CFG, sampler and VAE from its page.
 - **LoRAs**: stack up to 4 LoRAs on an image or a video, each with its own strength.
 - **Train LoRAs**: teach a model a person, a character or a style from your images, on your GPU.
+- **FLUX.3**: create and edit with the 16-step distilled model. Train LoRAs on its separate Base model. Required model files download together. Its prompt model runs locally.
 - **People**: named avatars with photos, for quick selection as input images. Import your contacts from Moise in one click.
 - **Create videos** from a prompt or from a first and last frame.
 - **Change videos**: replace people, change the camera angle, or build a new scene from reference images.
@@ -49,7 +50,7 @@ Everything runs on your NVIDIA graphics card. Your images and videos stay on you
 
 The first start installs everything automatically and takes about **20 minutes**. Most of this time is the download of the graphics libraries (several GB). You do not need to install Python or anything else, and you do not need administrator rights.
 
-When the installation is done, Qwen opens in its own window. To open it later, double-click **`Start Qwen.bat`** again, or the **Qwen** shortcut next to the app folder. Later starts take a few seconds.
+When the installation is done, Qwen opens in a normal Chrome tab. To open it later, double-click **`Start Qwen.bat`** again, or the **Qwen** shortcut next to the app folder. Later starts take a few seconds.
 
 ## Create your first image
 
@@ -62,7 +63,7 @@ When the queue is idle, Qwen loads the last image model you used in the backgrou
 
 To **edit** an image, add it to **Input images** and describe the change, for example `Make it a rainy night with neon reflections`. Ways to add an image:
 
-- Drag it in, or click **Select files**.
+- Drag it in, or click **Upload images**. On a phone, select photos from the device picker. JPG, PNG, WebP, and HEIC/HEIF photos are supported.
 - Press **Ctrl + V** anywhere on the page to paste a copied image.
 - Open the library and check images in **Uploads**, **Results** or **People**. The number on a checkmark is the input position.
 - Click **Use as input** on a result in the **Recent** panel, or **Use for editing** under the result.
@@ -202,7 +203,7 @@ Video models are large (4 to 20 GB each). Each one downloads the first time you 
 
 - Click **Generate** as many times as you want. Each click adds a job to the **Queue**, and you can keep working.
 - On the Images page, the last finished image stays in **Result**. Running and waiting jobs show beside it with their progress, also when Recent is hidden. Each image that finishes appears in Result by itself.
-- In **Queue**, **Stop** ends the job that runs now, **Remove** takes one waiting job out, and **Remove all waiting** clears the line. You can also move jobs up or pause the queue. Waiting jobs stay saved when you close the app. The button next to **Generate** says what it does: **Stop this job** while your job runs, **Remove from queue** while it waits.
+- In **Queue**, **Stop** ends the job that runs now, **Remove** takes one waiting job out, and **Remove all waiting** clears the line. You can also move jobs up or pause the queue. Waiting jobs stay saved when you close the app. The status beside **Generate** shows the latest submitted job and its queue position. **Stop** cancels that running job. **Remove** cancels that waiting job. A status bar stays visible for the active job, its current step, and the number of waiting jobs.
 - **Recent** (the panel on the right of the Images page) shows your latest results and the running jobs. Hover a result to use it as input or to load its settings. Click **>>** to hide the panel.
 - **Delete results** in the **Gallery**: hover a result and click its circle to check it, or click **Select all**. **Delete** removes the checked results and their files from your computer. Running and waiting jobs are never deleted.
 - **Gallery** shows all your images and videos. Open one, then press **←** and **→** to browse. Turn on **Compare with input** to slide between the input and the result. **Use settings** loads the prompt and settings of a result. **Run again** makes a new version.
@@ -217,17 +218,21 @@ These are in the `scripts` folder:
 | `Show Qwen Logs.bat` | Shows what Qwen is doing. Use it when something goes wrong. |
 | `Download Models.bat` | Downloads the recommended image models without opening the app. |
 
-To close Qwen, close its window.
+Close the browser tab or the optional desktop window at any time. The server and queued jobs continue. Use **`Stop Qwen.bat`** to stop the server after all jobs finish.
 
 ## Swap (head or body)
 
 **Images > Swap** puts the head or the whole person from one picture into another, with the BFS LoRAs for Qwen-Image-2.1 (Alissonerdx/BFS-Best-Face-Swap, MIT). The LoRA downloads on first use.
 
-1. Choose **Head swap**, **Head swap, stronger expression** (copies an open mouth or strong expression more fully) or **Body swap** (face, clothing and body shape).
-2. Picture 1 is the scene: its body or pose, expression, light and background stay. Picture 2 gives the head or the person. Upload, or pick from the library or People.
-3. Click **Generate image**. The result has the shape of picture 1, at about 2 MP.
+1. Choose **Head swap**, **Head swap, stronger expression**, or **Body swap**.
+2. Put the scene in picture 1. Put the replacement person in picture 2. Upload a photo or select one from the library or People.
+3. Select a replacement for each detected face. Select **Keep person** for faces that must stay. The app selects the replacement automatically when each picture has one face.
+4. Select picture 1 or 2 for **Head pose and expression** and **Color and style**. Choose **Auto aspect ratio** at 1 MP or 2 MP, or enter a custom size. Steps and CFG are under **Advanced image settings**.
+5. Click **Generate image**. Check the result for changes to the pose, color, writing, and other people.
 
-The app feeds the pictures as the author does: both at about 2 MP for a head swap; for a body swap the person at about 0.59 MP. Body swap works best when picture 2 shows the person full body, facing the camera, on a plain light background. Effect strength 1.0 is the author's setting. Use it only with pictures of people who agreed.
+The stronger-expression model is intended to copy the expression from picture 1 more fully. It can change the head angle. The author's workflow uses Qwen-Image-2.1 Standard. Turbo can give different results. Source choices guide generation; they do not lock pixels in place.
+
+Head swaps use the selected pixel budget for both inputs. Body swaps use that budget for the scene and about 0.59 MP for the replacement. Auto size follows the shape of picture 1. Body swap works best with a full-body reference and a plain background. Effect strength 1.0 is the author's setting.
 
 ## Remote use (phone)
 
@@ -237,7 +242,9 @@ While Qwen runs on the PC, it also connects to the Moise server, and the whole a
 - One Qwen at a time can be connected. `QWEN_REMOTE=0` turns the connection off for a copy.
 - An upload through the remote page can be at most 200 MB.
 
-If the Qwen window closes because the computer ran out of memory, Qwen and its jobs keep running and the window opens again. Closing the window yourself still stops Qwen.
+The server runs in a separate background process. Browser closure or a browser crash does not stop generation. Open **`Start Qwen.bat`** to return to Chrome. Open **`Start Qwen Desktop.bat`** for the optional Electron window. Both clients use the same server and queue.
+
+Normal launch also opens Windows Terminal with two tabs. **Qwen - Activity** shows each running job or download on its own progress row. **Qwen - Server** shows recent server messages and errors. Successful HTTP requests stay hidden. Reopening Qwen reuses these tabs. Closing either tab leaves the server running. **`scripts/Show Qwen Logs.bat`** opens the tabs without restarting the server.
 
 ## Troubleshooting
 

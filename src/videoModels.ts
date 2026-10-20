@@ -9,9 +9,9 @@ export const isRef2va=(m?:ModelEntry)=>m?.kind==='reference-video'&&m?.family===
 /** Which pages can run a model. LTX 2.5 transformers run Create video without the MSR LoRA and
  * Reference images with it; MiniMax H3 Ref2VA runs Video to video and reference images only. */
 export function videoTasks(m:ModelEntry):VideoTask[]{
-  if(m.kind==='multi-reference'&&m.family==='ltx25-msr')return ['create','references'];
+  if(['video','multi-reference'].includes(m.kind)&&isLtx(m))return ['create','references'];
   if(m.kind==='video')return ['create'];
-  if(isRef2va(m))return ['video-to-video','references'];
+  if(isRef2va(m))return m.modes?.includes('text')?['create','video-to-video','references']:['video-to-video','references'];
   return [];
 }
 
@@ -20,7 +20,7 @@ export const familyLabel=(m:ModelEntry)=>isLtx(m)?'LTX 2.5':m.family==='fasth3'?
 /** Short capability list for the "Supports:" hint. */
 export function supports(m:ModelEntry):string[]{
   if(isLtx(m))return ['text','first frame','last frame','reference images','voices'];
-  if(isRef2va(m))return ['source video','reference images','voices'];
+  if(isRef2va(m))return [...(m.modes?.includes('text')?['text']:[]),...(m.modes?.includes('image')?['first frame','last frame']:[]),'source video','reference images','voices'];
   if(m.family==='fasth3')return ['text'];
   if(m.family==='minimax-h3')return ['text','first frame','last frame'];
   return [];

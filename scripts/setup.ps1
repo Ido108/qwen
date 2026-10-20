@@ -40,6 +40,10 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Dependency installation did not finish. Run Start Qwen.bat again to resume.' }
         & $uvPath pip check --python $pythonPath
         if ($LASTEXITCODE -ne 0) { throw 'Some installed dependencies are incompatible. See the package names above.' }
+        & $pythonPath -m backend.res4lyf_runtime
+        if ($LASTEXITCODE -ne 0) { throw 'Sampler setup did not finish. Run Start Qwen.bat again to resume.' }
+        & $pythonPath -u (Join-Path $PSScriptRoot 'check_res4lyf.py')
+        if ($LASTEXITCODE -ne 0) { throw 'The sampler check failed. See the error above.' }
         Write-Host '[4/5] Building the interface...'
         $nodeReady = $false
         if ((Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {

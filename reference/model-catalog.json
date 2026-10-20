@@ -1761,5 +1761,184 @@
       "z-image",
       "z-image-turbo"
     ]
+  },
+  {
+    "id": "h3-360-orbit",
+    "title": "360 Orbit",
+    "repo": "pablodawson/MiniMax-H3-360-Orbit-LoRA",
+    "revision": "5ddbc2dbbe95edbbdaf5017c3e934b1d01791697",
+    "directory": "video/pablodawson-MiniMax-H3-360-Orbit-LoRA",
+    "files": [
+      {
+        "path": "minimax_h3_flf2v_lora_v1.safetensors",
+        "bytes": 155111424,
+        "sha256": "14f13e3effaf3e729fdc0c97680344aa63f473be0c55963f963d718b3db2a4d4"
+      }
+    ],
+    "bytes": 155111424,
+    "kind": "video-lora",
+    "format": "LoRA",
+    "family": "minimax-h3",
+    "families": [
+      "minimax-h3"
+    ],
+    "made_for": "FL2VA",
+    "default_strength": 1.0,
+    "dependencies": [],
+    "source_url": "https://huggingface.co/pablodawson/MiniMax-H3-360-Orbit-LoRA",
+    "generation_defaults": {
+      "steps": 28,
+      "frames": 73,
+      "width": 768,
+      "height": 768,
+      "cfg": 1,
+      "source": "https://huggingface.co/pablodawson/MiniMax-H3-360-Orbit-LoRA"
+    }
+  },
+  {
+    "id": "flux3-base-int8",
+    "title": "FLUX.3 Image Klein Base - LoRA training",
+    "kind": "training-base",
+    "format": "INT8",
+    "repo": "black-forest-labs/flux-3-image-klein-comfy",
+    "revision": "feef60b0aaf63a4773ace96636ebbcf43b881312",
+    "directory": "flux3",
+    "files": [
+      {
+        "path": "diffusion_models/flux3-image-klein-base-int8-convrot.safetensors",
+        "bytes": 5807427339,
+        "sha256": "8949ecfc1bf3871b08be02cf43ec7276a4914e1a86eade6b5eb8f4204426bc92"
+      }
+    ],
+    "bytes": 5807427339,
+    "dependencies": [
+      "flux3-encoder-int8",
+      "flux3-vae"
+    ],
+    "family": "flux3-klein-base",
+    "families": [
+      "flux3-klein",
+      "flux3-klein-base"
+    ],
+    "text_encoder": "flux3-encoder-int8",
+    "recommended_vae": "flux3-vae",
+    "layout": "comfy",
+    "generation_defaults": {
+      "steps": 50,
+      "cfg": 3.5,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "alpha": 16.0,
+      "source": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy",
+      "note": "Base model for LoRA training."
+    }
+  },
+  {
+    "id": "flux3-klein-int8",
+    "title": "FLUX.3 Image Klein - INT8",
+    "kind": "image",
+    "format": "INT8",
+    "repo": "black-forest-labs/flux-3-image-klein-comfy",
+    "revision": "feef60b0aaf63a4773ace96636ebbcf43b881312",
+    "directory": "flux3",
+    "files": [
+      {
+        "path": "diffusion_models/flux3-image-klein-int8-convrot.safetensors",
+        "bytes": 5827874779,
+        "sha256": "847d8933548afd93df4af2cac2498e70891bf28d9dae06d695f536992e168fe2"
+      }
+    ],
+    "bytes": 5827874779,
+    "dependencies": [
+      "flux3-encoder-int8",
+      "flux3-vae",
+      "flux3-prompt"
+    ],
+    "family": "flux3-klein",
+    "families": [
+      "flux3-klein",
+      "flux3-klein-base"
+    ],
+    "text_encoder": "flux3-encoder-int8",
+    "recommended_vae": "flux3-vae",
+    "layout": "comfy",
+    "generation_defaults": {
+      "steps": 16,
+      "cfg": 1.0,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "alpha": 16.0,
+      "source": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy",
+      "note": "16 steps, CFG 1. The local prompt model prepares the image description."
+    }
+  },
+  {
+    "id": "flux3-prompt",
+    "title": "FLUX.3 prompt model - W4A8",
+    "kind": "image-support",
+    "format": "W4A8",
+    "repo": "black-forest-labs/flux-3-image-klein-comfy",
+    "revision": "feef60b0aaf63a4773ace96636ebbcf43b881312",
+    "directory": "flux3",
+    "files": [
+      {
+        "path": "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors",
+        "bytes": 6724090780,
+        "sha256": "e5d85a7421d197bf5a12474511936ecabce19a833252f16e9310a983194a4458"
+      }
+    ],
+    "bytes": 6724090780,
+    "dependencies": [],
+    "family": "flux3-klein",
+    "families": [
+      "flux3-klein",
+      "flux3-klein-base"
+    ]
+  },
+  {
+    "id": "flux3-encoder-int8",
+    "title": "FLUX.3 Qwen3-VL 4B - INT8",
+    "kind": "encoder",
+    "format": "INT8",
+    "repo": "black-forest-labs/flux-3-image-klein-comfy",
+    "revision": "feef60b0aaf63a4773ace96636ebbcf43b881312",
+    "directory": "flux3",
+    "files": [
+      {
+        "path": "text_encoders/qwen3vl_4b_int8_convrot.safetensors",
+        "bytes": 4858559240,
+        "sha256": "32de113cbf8282b02cbff0794b637b9d6676da09314a1db5a30bcea9bf4ee01c"
+      }
+    ],
+    "bytes": 4858559240,
+    "dependencies": [],
+    "family": "flux3-klein",
+    "families": [
+      "flux3-klein",
+      "flux3-klein-base"
+    ]
+  },
+  {
+    "id": "flux3-vae",
+    "title": "FLUX.3 image decoder",
+    "kind": "vae",
+    "format": "BF16",
+    "repo": "black-forest-labs/flux-3-image-klein-comfy",
+    "revision": "feef60b0aaf63a4773ace96636ebbcf43b881312",
+    "directory": "flux3",
+    "files": [
+      {
+        "path": "vae/flux2-vae.safetensors",
+        "bytes": 336211292,
+        "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3"
+      }
+    ],
+    "bytes": 336211292,
+    "dependencies": [],
+    "family": "flux3-klein",
+    "families": [
+      "flux3-klein",
+      "flux3-klein-base"
+    ]
   }
 ]

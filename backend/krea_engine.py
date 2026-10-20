@@ -87,6 +87,8 @@ def generate(request, prompt, images, width, height, progress):
         return weights, metadata
 
     selected = entry(request['model_id'])
+    from .res4lyf_runtime import ensure_sampler
+    ensure_sampler(request.get('sampler') or selected['generation_defaults'].get('sampler', 'euler'))
     model_id, encoder_id, vae_id = required_image(request)[:3]
     encoder, vae_entry = entry(encoder_id), entry(vae_id)
     cache_key = (selected['id'], encoder_id, vae_id)
@@ -193,6 +195,7 @@ def generate(request, prompt, images, width, height, progress):
     stack = [(KREA_STYLE_LORA, 1.0)] if images else []
     stack += [(lora['id'], float(lora.get('strength', 1.0))) for lora in request.get('loras') or []]
     applied_loras = None
+    lora_checks = []
     if stack:
         started = time.perf_counter()
         loras = _components.setdefault('loras', {})
@@ -203,15 +206,18 @@ def generate(request, prompt, images, width, height, progress):
             lora = entry(lora_id)
             if lora_id not in loras:
                 loras[lora_id] = comfy.utils.load_torch_file(str(local_path(lora, lora['files'][0])), safe_load=True)
-            model, _ = comfy.sd.load_lora_for_models(model, None, loras[lora_id], strength, 0)
+            from .lora_loading import load_model_lora
+            model, check = load_model_lora(model, loras[lora_id], strength, lora['title'], runtime=True)
+            lora_checks.append({'id': lora_id, 'title': lora['title'], **check})
             applied.append(f"{lora['title']} ({strength:g})")
         retain_lora_clone(model, _components['model'])
         applied_loras = ', '.join(applied)
         progress(lora=applied_loras, lora_strength=stack[0][1], lora_load_seconds=round(time.perf_counter() - started, 3))
 
+    progress(lora_checks=lora_checks)
     mu = krea_mu(defaults, width, height)
-    sampler = defaults.get('sampler', 'euler')
-    scheduler = defaults.get('scheduler', 'simple')
+    sampler = request.get('sampler') or defaults.get('sampler', 'euler')
+    scheduler = request.get('scheduler') or defaults.get('scheduler', 'simple')
 
     steps = int(request['steps'])
     if scheduler == 'simple':
@@ -236,6 +242,8 @@ def generate(request, prompt, images, width, height, progress):
                                              positive, negative, latent, callback=callback, seed=request['seed'])
         sampling_seconds = time.perf_counter() - started
         del noise, latent
+        from .lora_runtime import execution_report
+        progress(lora_execution=execution_report(model))
         progress(stage='decoding', message='Decoding image…', sampling_seconds=round(sampling_seconds, 3),
                  seconds_per_step=round(sampling_seconds / steps, 3))
         pixels = vae.decode(samples)

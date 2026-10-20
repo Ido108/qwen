@@ -9,6 +9,20 @@ from backend.ltx_settings import MultiReferenceRequest, required_ltx, media_inpu
 
 
 class LtxTests(unittest.TestCase):
+    def test_imported_ltx_files_use_reference_adapter_without_changing_keyframe_dependencies(self):
+        from backend.common import VideoRequest
+        original=models.entry
+        for variant in ('distilled','dev'):
+            imported={**original('ltx25-msr-q4_k_m'),'id':'future-ltx-'+variant,'kind':'video','family':'ltx25',
+                      'dependencies':['ltx25-gemma-int8','ltx25-video-vae','ltx25-audio-vae']+(['ltx25-distill-lora'] if variant=='dev' else [])}
+            with patch.object(models,'entry',side_effect=lambda id:imported if id==imported['id'] else original(id)):
+                refs=required_ltx(MultiReferenceRequest(model_id=imported['id'],prompt='@Image1 walks.',reference_images=['a.png']))
+                frames=models.required_video(VideoRequest(model_id=imported['id'],prompt='A scene.',mode='image',first_frame='a.png',frames=121,width=768,height=448))
+            self.assertEqual(refs.count('ltx25-msr-v2'),1)
+            self.assertNotIn('ltx25-msr-v2',frames)
+            self.assertEqual('ltx25-distill-lora' in refs,variant=='dev')
+            self.assertEqual('ltx25-distill-lora' in frames,variant=='dev')
+
     def test_all_ltx_variants_are_pinned_with_exact_eight_step_schedule(self):
         entries = [item for item in models.catalog() if item['kind'] == 'multi-reference']
         self.assertEqual(len(entries), 8)

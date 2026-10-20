@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 
-from .common import APP_DIR
+from .common import APP_DIR, read_json
 from .models import required_image
 
 
@@ -104,7 +104,7 @@ class ImageWorker:
         complete = directory / 'worker.done.json'
         while True:
             if complete.exists():
-                code = json.loads(complete.read_text(encoding='utf-8'))['returncode']
+                code = read_json(complete)['returncode']
                 if code:
                     # A failed worker exits; a CUDA error can leave it hanging on exit.
                     stop_process(process)

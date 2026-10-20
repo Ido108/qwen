@@ -31,6 +31,14 @@ class SwapToolTests(unittest.TestCase):
         self.assertAlmostEqual(images[0].width * images[0].height / 2_000_000, 1, delta=0.05)
         self.assertEqual(size, images[0].size)
 
+    def test_custom_size_changes_output_without_distorting_reference_inputs(self):
+        tool=models.image_tool('head-swap')
+        inputs,size,_=image_tools.prepare(tool,dict(custom_size=True,width=1280,height=768),
+                                         [Image.new('RGB',(1000,1000)),Image.new('RGB',(1200,800))])
+        self.assertEqual(size,(1280,768))
+        self.assertEqual(inputs[0].width,inputs[0].height)
+        self.assertAlmostEqual(inputs[1].width/inputs[1].height,1.5,delta=.04)
+
 
 if __name__ == '__main__':
     unittest.main()

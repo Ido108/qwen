@@ -6,4 +6,4 @@ if (Test-Path -LiteralPath $runtimePath) {
     try { $studioUrl = (Get-Content -Raw -LiteralPath $runtimePath | ConvertFrom-Json).url } catch { }
 }
 $Host.UI.RawUI.WindowTitle = 'Qwen - Activity'
-& $pythonPath -u (Join-Path $PSScriptRoot 'watch_logs.py') --url $studioUrl --data-dir $dataRoot
+& $pythonPath -u (Join-Path $PSScriptRoot 'desktop.py') --logs-only --data-dir $dataRoot

@@ -1,0 +1,4 @@
+.image-label{display:grid;gap:4px;min-width:0;width:100%}.image-label select,.image-label input{box-sizing:border-box;width:100%;min-width:0;height:32px;padding:4px 6px;border:1px solid #ded8ef;border-radius:7px;background:#fff;color:#514467;font:inherit;font-size:11px}.input-grid .input-thumb:has(.image-label){width:112px;flex-shrink:0}.image-label select:focus-visible,.image-label input:focus-visible{outline:2px solid #785de5;outline-offset:1px}@media(max-width:600px){.image-label select,.image-label input{min-height:44px;font-size:16px}.input-grid .input-thumb:has(.image-label){width:118px}}
+
+@media(min-width:601px){#root .studio-controls .input-grid:has(.image-label){grid-template-columns:repeat(auto-fill,minmax(100px,1fr));max-height:240px}#root .studio-controls .input-grid .input-thumb:has(.image-label){width:auto}}
+.preview-cfg{align-self:center;white-space:nowrap;padding:5px 8px;border-radius:6px;color:#fff;background:#20192bc9;font-size:12px}

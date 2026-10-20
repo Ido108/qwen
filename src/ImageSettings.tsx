@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import type {ModelEntry,ModelState} from './ModelSettings';
 
-export type ImageOptions={custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null};
+export type ImageOptions={custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
 export type ToolField={key:string;label:string;placeholder?:string;default:string;options?:{value:string;label:string;prompt?:string;strength?:number}[]};
 export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;families:string[];tested_on:string[];swap?:boolean;inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
@@ -25,8 +25,8 @@ export function toolStrength(tool:ImageTool,options:Record<string,string>){
 }
 export function toolDefaults(tool:ImageTool){return Object.fromEntries(tool.fields.map(f=>[f.key,f.default]));}
 
-export function ImageSettings({part='main',value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled}:{value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
-  models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'advanced'}){
+export function ImageSettings({part='main',idPrefix='image',value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled}:{value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
+  models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'advanced';idPrefix?:string}){
   const defaults=model?.generation_defaults;const defaultSteps=defaults?.steps;const turbo=!!defaults?.sigmas;
   const page=typeof defaults?.note==='string'&&defaults.note.startsWith('From the Civitai page')?defaults:null;
   const pageText=page?`Author settings: ${page.steps} steps${page.cfg?`, CFG ${page.cfg}`:''}${page.sampler?`, ${page.sampler}`:''}${page.scheduler?` / ${page.scheduler}`:''}.`:'';
@@ -34,7 +34,7 @@ export function ImageSettings({part='main',value,onChange,model,models,modelId,o
   const defaultCfg=defaults?.cfg??1;const validCfg=value.cfg==null||(value.cfg>=1&&value.cfg<=15);
   const family=model?.family||'qwen-image-2.1';
   const imageModels=(models?.models||[]).filter(m=>m.kind==='image');
-  const groups=[['qwen-image-2.1','Qwen 2.1 Standard · 25 steps'],['qwen-image-2.1-turbo','Qwen 2.1 Turbo · 8 steps, fast'],['krea-2-turbo','Krea 2 Turbo · 8 steps, fast'],['krea-2','Krea 2 Raw · 52 steps'],['z-image-turbo','Z-Image Turbo · 8 steps, fast'],['z-image','Z-Image Base · 30 steps']] as const;
+  const groups=[['flux3-klein','FLUX.3 Image Klein'],['flux3-klein-base','FLUX.3 Image Klein Base'],['qwen-image-2.1','Qwen 2.1 Standard · 25 steps'],['qwen-image-2.1-turbo','Qwen 2.1 Turbo · 8 steps, fast'],['krea-2-turbo','Krea 2 Turbo · 8 steps, fast'],['krea-2','Krea 2 Raw · 52 steps'],['z-image-turbo','Z-Image Turbo · 8 steps, fast'],['z-image','Z-Image Base · 30 steps']] as const;
   const order=['Q8_0','Q6_K','Q5_K_M','Q4_K_M','Q4_0','FP8','NVFP4','INT8','BF16'];
   const quant=(m:ModelEntry)=>m.title.split(' · ').at(-1)||m.title;
   const isPreset=presets.some(([w,h])=>w===value.width&&h===value.height);
@@ -56,7 +56,7 @@ export function ImageSettings({part='main',value,onChange,model,models,modelId,o
   const hintSteps=defaults?.steps??(family.endsWith('turbo')?8:family==='krea-2'?52:family==='z-image'?30:25);const hintCfg:number|null=defaults?.cfg??(family==='krea-2'?4.5:family==='z-image'?4:family.endsWith('turbo')?1:null);
   const hintSampler=defaults?.sampler&&defaults.sampler!=='euler'?defaults.sampler.replace(/_/g,' '):'';const hintScheduler=defaults?.scheduler&&defaults.scheduler!=='simple'?defaults.scheduler.replace(/_/g,' '):'';
   // CFG 1 runs one pass without the negative branch, so a negative prompt changes nothing.
-  const settingsHint=`${family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':family==='z-image-turbo'?'Z-Image Turbo':family==='z-image'?'Z-Image Base':'Standard'}, ${hintSteps} steps, ${hintCfg===null?'CFG 2 with a negative prompt, else 1':`CFG ${hintCfg}`}${hintSampler?`, ${hintSampler}`:''}${hintScheduler?` / ${hintScheduler}`:''}${hintCfg!==null&&hintCfg<=1?' (negative prompt has no effect at CFG 1)':''}`;
+  const settingsHint=`${family.startsWith('flux3-klein')?(family.endsWith('base')?'FLUX.3 Klein Base':'FLUX.3 Klein'):family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':family==='z-image-turbo'?'Z-Image Turbo':family==='z-image'?'Z-Image Base':'Standard'}, ${hintSteps} steps, ${hintCfg===null?'CFG 2 with a negative prompt, else 1':`CFG ${hintCfg}`}${hintSampler?`, ${hintSampler}`:''}${hintScheduler?` / ${hintScheduler}`:''}${hintCfg!==null&&hintCfg<=1?' (negative prompt has no effect at CFG 1)':''}`;
   const status=[model?.id==='gguf-q8_0'||model?.id==='turbo-gguf-q8_0'?'★ Recommended':'',model?.ready?'✓ Installed':model?'Downloads when you generate':'',
     settingsHint,pageText?'Author settings':''].filter(Boolean).join(' · ');
   const cls=`image-generation-settings studio-settings settings-${part}`;
@@ -70,16 +70,20 @@ export function ImageSettings({part='main',value,onChange,model,models,modelId,o
     </div>
   </fieldset>;
   if(part==='advanced')return <fieldset className={cls} disabled={disabled} aria-label="Steps and CFG">
-    <div className="field"><div className="steps-heading"><label htmlFor="image-steps">Steps</label>
+    <div className="field"><div className="steps-heading"><label htmlFor={`${idPrefix}-steps`}>Steps</label>
       {value.steps===null?(defaults?.source?<a href={defaults.source} target="_blank" rel="noreferrer" title={`Default: ${defaultSteps} steps`}>Model default</a>:<span>Model default</span>):<button type="button" className="text-button" disabled={!defaultSteps} onClick={()=>onChange({steps:null})}>Reset ({defaultSteps??'…'})</button>}
-    </div><input id="image-steps" type="number" min="1" max="80" step="1" disabled={!defaultSteps} value={value.steps??defaultSteps??''} aria-invalid={!validSteps} title={turbo?`Turbo is trained for ${defaultSteps} steps; other counts stretch its schedule.`:`Default: ${defaultSteps??'…'} steps`} onChange={e=>onChange({steps:Number(e.target.value)})}/>
+    </div><input id={`${idPrefix}-steps`} type="number" min="1" max="80" step="1" disabled={!defaultSteps} value={value.steps??defaultSteps??''} aria-invalid={!validSteps} title={turbo?`Turbo is trained for ${defaultSteps} steps; other counts stretch its schedule.`:`Default: ${defaultSteps??'…'} steps`} onChange={e=>onChange({steps:Number(e.target.value)})}/>
       {!validSteps?<small>Enter a whole number from 1 to 80.</small>:turbo&&value.steps!==null&&value.steps!==defaultSteps?<small>Turbo is trained for {defaultSteps}.</small>:null}
     </div>
-    <div className="field"><div className="steps-heading"><label htmlFor="image-cfg">CFG</label>
+    <div className="field"><div className="steps-heading"><label htmlFor={`${idPrefix}-cfg`}>CFG</label>
       {value.cfg==null?<span>Model default</span>:<button type="button" className="text-button" onClick={()=>onChange({cfg:null})}>Reset ({defaultCfg})</button>}
-    </div><input id="image-cfg" type="number" min="1" max="15" step="0.5" disabled={!defaults} value={value.cfg??defaultCfg} aria-invalid={!validCfg} title={`${defaults?.cfg?'Default from the model page. ':turbo?'Turbo is trained for CFG 1. ':'1, or 2 with a negative prompt. '}Above 1 runs a second guidance pass, so each step takes about twice as long.`} onChange={e=>onChange({cfg:e.target.value===''?null:Number(e.target.value)})}/>
+    </div><input id={`${idPrefix}-cfg`} type="number" min="1" max="15" step="0.5" disabled={!defaults} value={value.cfg??defaultCfg} aria-invalid={!validCfg} title={`${defaults?.cfg?'Default from the model page. ':turbo?'Turbo is trained for CFG 1. ':'1, or 2 with a negative prompt. '}Above 1 runs a second guidance pass, so each step takes about twice as long.`} onChange={e=>onChange({cfg:e.target.value===''?null:Number(e.target.value)})}/>
       {!validCfg?<small>Enter a number from 1 to 15.</small>:value.cfg!=null&&value.cfg>1?<small>About 2x slower per step.</small>:null}
     </div>
+    {['qwen-image-2.1','krea-2'].includes(family)&&!turbo?<>
+      <div className="field"><label htmlFor={`${idPrefix}-sampler`}>Sampler</label><select id={`${idPrefix}-sampler`} value={value.sampler||''} onChange={e=>onChange({sampler:e.target.value||null})}><option value="">Model default ({defaults?.sampler||'euler'})</option>{['euler','res_multistep','dpmpp_2m','heun','res_2m','res_2s','res_2m_ode','res_2s_ode'].map(name=><option key={name} value={name}>{name}</option>)}</select></div>
+      <div className="field"><label htmlFor={`${idPrefix}-scheduler`}>Schedule</label><select id={`${idPrefix}-scheduler`} value={value.scheduler||''} onChange={e=>onChange({scheduler:e.target.value||null})}><option value="">Model default ({defaults?.scheduler||'simple'})</option>{['simple','normal','beta','karras','sgm_uniform'].map(name=><option key={name} value={name}>{name}</option>)}</select></div>
+    </>:null}
   </fieldset>;
   return <fieldset className={cls} disabled={disabled} aria-label="Tool and output size">
     <div className="field"><label htmlFor="image-tool">Tool</label>

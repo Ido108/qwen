@@ -1,0 +1,46 @@
+.mobile-workspace-bar,.mobile-tool-picker{display:none}
+.connection-notice{display:flex;align-items:center;gap:12px;margin:8px 16px;padding:10px 14px;border:1px solid #e3cc98;background:#fff8e8;color:#65501f;font-size:13px;line-height:1.45;border-radius:8px}
+.connection-notice span{flex:1;min-width:0}.connection-notice button,.connection-notice a{flex:none;color:inherit;text-decoration:underline;min-height:36px}
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){
+ html,body{width:100%;max-width:100%;overflow-x:clip;overscroll-behavior-x:none}
+ body{margin:0;touch-action:pan-y pinch-zoom}
+ #root{width:100%;min-width:0;max-width:100%;padding-bottom:calc(120px + env(safe-area-inset-bottom));box-sizing:border-box}
+ #root>*,main,.studio-grid,.vs-grid,.studio-controls,.controls-scroll,.vs-controls,.vs-scroll,.panel,.field{min-width:0;max-width:100%;box-sizing:border-box}
+ #root .header{height:auto;min-height:0;padding:10px 12px 0;gap:8px}
+ #root .header .app-tabs{width:100%;justify-content:space-between;overflow:visible;gap:0}
+ #root .header .app-tabs button{min-width:0;padding:12px 5px;font-size:12px;gap:4px}
+ #root .header .app-tabs button svg{width:16px;height:16px}
+ #root .video-workflow-nav{margin:0;padding:0 12px;width:100%;max-width:100%;justify-content:stretch;white-space:normal}
+ #root .video-workflow-nav[aria-label="Video tools"]{display:none}
+ #root .video-workflow-nav[aria-label="Image tools"] button{flex:1;min-height:44px}
+ .mobile-tool-picker{display:flex;align-items:center;gap:12px;padding:10px 12px;background:#fff;border-bottom:1px solid #e1dcec}
+ .mobile-tool-picker label{font-size:12px;color:#716a85;white-space:nowrap}
+ .mobile-tool-picker select{flex:1;min-width:0;min-height:44px;font-size:16px;border:1px solid #e1dcec;border-radius:8px;padding:8px;background:#f8f7fc}
+ #root .queue-activity{display:none}
+ #root .studio-main,#root>main.video-studio{margin:0;padding:12px;width:100%;height:auto;overflow:visible;flex:none}
+ #root .studio-grid,main.video-studio .vs-grid{display:block;min-height:0}
+ #root .studio-controls,#root .controls-scroll,main.video-studio .vs-controls,main.video-studio .vs-scroll{height:auto;min-height:0;max-height:none;overflow:visible}
+ #root .studio-main .studio-result{display:none}
+ #root .studio-main .results-rail,#root .studio-main .rail-open{display:none}
+ main.video-studio .vs-result{position:static;height:auto;min-height:0;padding:12px;overflow:visible;display:flex;flex-direction:column}
+ #root .studio-main .result-canvas,main.video-studio .vs-stage,main.video-studio .reference-output{height:min(54dvh,560px);min-height:220px;max-height:none;flex:none;overflow:hidden}
+ #root .studio-main .result-canvas img,main.video-studio .vs-stage img,main.video-studio .vs-stage video{max-width:100%;max-height:100%;object-fit:contain}
+ #root .generate-dock,main.video-studio .vs-action{position:static;margin-top:10px;padding:12px;max-width:100%}
+ #root .generate-dock,main.video-studio .vs-action{position:fixed;left:0;right:0;bottom:0;z-index:50;margin:0;width:auto;border-radius:0;border-width:1px 0 0;box-shadow:0 -4px 22px #24213412;padding:10px 12px calc(10px + env(safe-area-inset-bottom))!important;max-height:30dvh;overflow:auto}
+ .orbit-page .orbit-intro>p{font-size:12px;line-height:1.45}
+ .orbit-page .orbit-symbol{width:42px;height:42px;font-size:15px}
+ .orbit-page .orbit-photo{max-width:260px}
+ .mobile-workspace-bar{display:grid;grid-template-columns:1fr 1fr;position:fixed;inset:auto 0 0;z-index:60;padding:8px 12px calc(8px + env(safe-area-inset-bottom));gap:8px;background:#fffffff5;border-top:1px solid #ded8ec;backdrop-filter:blur(14px)}
+ .mobile-workspace-bar button{min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;font-size:15px;font-weight:600;background:#f0edf7;color:#645c78}
+ .mobile-workspace-bar button[aria-pressed=true]{background:#684ce6;color:white}
+ .mobile-running{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:400}.mobile-work-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+ #root .download-pills{bottom:calc(120px + env(safe-area-inset-bottom));left:12px;max-width:calc(100% - 24px)}
+ input,select,textarea{max-width:100%;min-width:0}select,textarea,input:not([type=range]):not([type=checkbox]){font-size:16px}
+ .section-heading,.result-actions,.vs-action-row{flex-wrap:wrap;min-width:0}
+ main.video-studio .vs-action .vs-submit{min-width:0;flex:1;white-space:normal}
+ .swap-panel .segmented,.swap-modes{max-width:100%;flex-wrap:wrap}
+ .swap-panel .segmented button,.swap-modes button{min-width:0;white-space:normal}
+ .connection-notice{margin:8px 12px;flex-wrap:wrap}
+ dialog{max-width:calc(100vw - 24px);max-height:calc(100dvh - 32px);box-sizing:border-box}
+ .model-status,.model-note,.vs-vram,.vp-warning{overflow-wrap:anywhere}
+}

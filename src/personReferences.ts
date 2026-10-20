@@ -2,7 +2,7 @@ export type ReferencePerson={id:string;images:string[]};
 export const personImages=(people:ReferencePerson[])=>people.flatMap(person=>person.images);
 export function remapPersonTags(text:string,before:ReferencePerson[],after:ReferencePerson[]){
   let removed=false;
-  const value=text.replace(/@Person(\d+)\b/gi,(_,number:string)=>{const old=before[Number(number)-1];const index=after.findIndex(person=>person.id===old?.id);if(index<0){removed=true;return '';}return `@Person${index+1}`;});
+  const value=text.replace(/@(Person|Ref)(\d+)\b/gi,(_,kind:string,number:string)=>{const isPerson=kind.toLowerCase()==='person';const old=isPerson?before[Number(number)-1]?.id:personImages(before)[Number(number)-1];const index=isPerson?after.findIndex(person=>person.id===old):personImages(after).indexOf(old);if(index<0){removed=true;return '';}return `@${isPerson?'Person':'Ref'}${index+1}`;});
   return removed?'':value;
 }
 export function migratePeople<T extends {reference_images:string[];reference_people?:ReferencePerson[];person_assignments:Record<string,string|null>;prompt:string;replacement_prompt:string;workflow_prompts?:Partial<Record<string,string>>}>(saved:T){

@@ -75,6 +75,20 @@ class ResidentWorkerTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIsNot(failed, success)
 
+    def test_completion_read_retries_windows_sharing_error(self):
+        original = Path.read_text
+        attempts = []
+        def read(path, *args, **kwargs):
+            if path.name == 'worker.done.json':
+                attempts.append(path)
+                if len(attempts) == 1: raise PermissionError('temporary file share')
+            return original(path, *args, **kwargs)
+        with patch.object(Path, 'read_text', read):
+            process, code = self.run_job()
+        self.assertEqual(code, 0)
+        self.assertGreaterEqual(len(attempts), 2)
+        self.assertIsNone(process.poll())
+
     def test_release_and_parent_pipe_eof_exit_cleanly(self):
         process, _ = self.run_job()
         self.worker.close()
@@ -83,3 +97,22 @@ class ResidentWorkerTests(unittest.TestCase):
         process, _ = self.run_job()
         process.stdin.close()
         self.assertEqual(process.wait(timeout=5), 0)
+
+    def test_release_endpoint_stops_the_resident_process_and_next_job_can_load(self):
+        from fastapi.testclient import TestClient
+        from backend import server
+        process, _ = self.run_job()
+        with patch.multiple(server, image_worker=self.worker, active_job=None,
+                            pending_jobs=[], image_warmup_suspended=False):
+            # No lifespan: this check must not scan history, warm real models or start downloads.
+            client = TestClient(server.app)
+            response = client.post('/api/models/release', headers={'X-Studio-Token': server.SESSION_TOKEN})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(process.poll(), 0)
+            self.assertFalse(response.json()['loaded'])
+            self.assertTrue(server.image_warmup_suspended)
+            self.assertTrue((self.root / '1' / 'request.json').exists())
+            next_process, code = self.run_job()
+            self.assertEqual(code, 0)
+            self.assertIsNot(process, next_process)
+            client.close()

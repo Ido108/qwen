@@ -1,6 +1,7 @@
 """Exercise the real scheduler/API with controlled worker processes, without CUDA."""
 from collections import deque
 import json
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -72,13 +73,17 @@ class QueueTests(unittest.TestCase):
             def close(self):
                 pass
 
+            def warm(self, request, directory):
+                pass
+
             def status(self):
                 return {'loaded': False}
 
         self.patches = [
             patch.multiple(server, DATA_DIR=self.root, JOBS_DIR=self.jobs, active_job=None,
                            active_process=None, pending_jobs=[], recent_jobs=deque(maxlen=20),
-                           cancelled_jobs=set(), queue_paused=False, shutting_down=False),
+                           cancelled_jobs=set(), queue_paused=False, shutting_down=False,
+                           image_warmup_suspended=False),
             patch.object(server.subprocess, 'Popen', Process),
             patch.object(server, 'image_worker', ImageWorker()),
             patch.object(server, 'stop_worker', lambda process: process.gate.set()),
@@ -194,6 +199,52 @@ class QueueTests(unittest.TestCase):
         self.finish(third['id'])
         eventually(lambda: server.active_job is None)
         self.assertEqual(self.peak, 1)
+
+    def test_unload_rejects_active_job_without_stopping_it(self):
+        job = self.add('Keep running')
+        eventually(lambda: job['id'] in self.started)
+        with patch.object(server.image_worker, 'close') as close:
+            response = self.client.post('/api/models/release', headers=self.headers)
+            self.assertEqual(response.status_code, 409)
+            close.assert_not_called()
+            self.assertFalse(server.image_warmup_suspended)
+            self.assertEqual(server.active_job, job['id'])
+            self.assertFalse(self.processes[job['id']].gate.is_set())
+        self.finish(job['id'])
+        eventually(lambda: server.active_job is None)
+
+    def test_manual_unload_stays_unloaded_until_next_local_image(self):
+        with patch.dict(os.environ, {'QWEN_NO_WARMUP': ''}), \
+                patch.object(server.image_worker, 'warm') as warm:
+            first = self.add('Previously loaded image')
+            self.finish(first['id'])
+            eventually(lambda: server.active_job is None)
+            eventually(lambda: warm.called)
+            warm.reset_mock()
+            saved_request = (self.jobs / first['id'] / 'request.json').read_bytes()
+
+            with patch.object(server.image_worker, 'close') as close:
+                released = self.post('/api/models/release')
+                close.assert_called_once_with()
+            self.assertFalse(released['loaded'])
+            self.assertTrue(server.image_warmup_suspended)
+            self.post('/api/queue/control', {'paused': True})
+            self.post('/api/queue/control', {'paused': False})
+            warm.assert_not_called()
+
+            video = self.add('Video keeps image memory free', video=True)
+            self.finish(video['id'])
+            eventually(lambda: server.active_job is None)
+            warm.assert_not_called()
+            self.assertTrue(server.image_warmup_suspended)
+            self.assertEqual((self.jobs / first['id'] / 'request.json').read_bytes(), saved_request)
+
+            next_image = self.add('Load model again')
+            eventually(lambda: next_image['id'] in self.started)
+            eventually(lambda: not server.image_warmup_suspended)
+            self.finish(next_image['id'])
+            eventually(lambda: server.active_job is None)
+            eventually(lambda: warm.called)
 
     def test_restart_restores_waiting_order_and_pause(self):
         self.post('/api/queue/control', {'paused': True})

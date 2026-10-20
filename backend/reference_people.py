@@ -18,6 +18,13 @@ RECOGNIZER_SHA256 = '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c
 _download_lock = threading.Lock()
 
 
+def face_detector():
+    """Use the same CPU detector for still pictures and source video frames."""
+    import cv2
+    return cv2.FaceDetectorYN.create(str(DETECTOR), '', (320, 320), score_threshold=0.65,
+                                    nms_threshold=0.3, top_k=500)
+
+
 def ensure_recognizer() -> Path:
     with _download_lock:
         if RECOGNIZER.is_file() and _sha256(RECOGNIZER) == RECOGNIZER_SHA256:
@@ -56,8 +63,7 @@ def analyze_people(path: Path, start: float, end: float, max_people: int = 12) -
     if end <= start:
         raise ValueError('Select a source segment before detecting people.')
     recognizer = cv2.FaceRecognizerSF.create(str(ensure_recognizer()), '')
-    detector = cv2.FaceDetectorYN.create(str(DETECTOR), '', (320, 320), score_threshold=0.65,
-                                          nms_threshold=0.3, top_k=500)
+    detector = face_detector()
     targets = np.linspace(start + min(0.15, (end-start)/4),
                           max(start + min(0.15, (end-start)/4), end-0.15), 12)
     groups: list[dict] = []

@@ -19,7 +19,8 @@ REQUEST = {'name': 'Knit Elephant!', 'arch': 'z-image-turbo', 'subject': 'charac
 
 class ConfigTests(unittest.TestCase):
     def test_each_architecture_uses_the_ai_toolkit_defaults(self):
-        expected = {'qwen-image-2.1': ('qwen_image_2', 'Comfy-Org/Qwen-Image-2.1', 'shift', None, ['qwen-image-2.1']),
+        expected = {'flux3-klein-base': ('flux3','black-forest-labs/flux-3-image-klein-base','shift',None,['flux3-klein','flux3-klein-base']),
+                    'qwen-image-2.1': ('qwen_image_2', 'Comfy-Org/Qwen-Image-2.1', 'shift', None, ['qwen-image-2.1']),
                     'qwen-image-2.1-turbo': ('qwen_image_2', 'Comfy-Org/Qwen-Image-2.1/diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors',
                                              'shift', 'ostris/qwen_image_2_turbo_training_adapter', ['qwen-image-2.1-turbo']),
                     'krea-2': ('krea2', 'krea/Krea-2-Raw', 'linear', None, ['krea-2']),
@@ -30,7 +31,11 @@ class ConfigTests(unittest.TestCase):
         for key, (arch, path, timestep, adapter, families) in expected.items():
             config = training.build_config({**REQUEST, 'arch': key}, Path('data'), Path('out'))
             process = config['config']['process'][0]
-            self.assertEqual((process['model']['arch'], process['model']['name_or_path'], process['train']['timestep_type']), (arch, path, timestep), key)
+            selected_path=process['model']['name_or_path']
+            if arch=='flux3':
+                self.assertEqual(Path(selected_path),Path(process['model']['model_kwargs']['model_path']).parent)
+                selected_path=path
+            self.assertEqual((process['model']['arch'], selected_path, process['train']['timestep_type']), (arch, path, timestep), key)
             self.assertEqual(process['model'].get('assistant_lora_path', '').startswith(adapter) if adapter else 'assistant_lora_path' not in process['model'], True, key)
             self.assertEqual(training.ARCHS[key]['families'], families)
             self.assertTrue(process['model']['quantize'] and process['model']['low_vram'])
@@ -139,8 +144,7 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(self.client.post('/api/training/start', json=body, headers=self.headers).status_code, 409)
         self.assertEqual(self.client.post('/api/training/start', json={**body, 'arch': 'sdxl'}, headers=self.headers).status_code, 422)
         self.assertEqual(self.client.post('/api/training/start', json={**body, 'images': []}, headers=self.headers).status_code, 422)
-        with patch('backend.antigravity.status', return_value={'connected': False}):
-            self.assertEqual(self.client.post('/api/training/captions', json={'images': ['a']}, headers=self.headers).status_code, 409)
+        self.assertEqual(self.client.post('/api/training/captions', json={'images': ['a']}, headers=self.headers).status_code, 400)
 
     def test_start_queues_a_training_job(self):
         from backend import server
@@ -160,6 +164,39 @@ class ApiTests(unittest.TestCase):
             with server.active_lock:
                 if job['id'] in server.pending_jobs:
                     server.pending_jobs.remove(job['id'])
+
+    def test_zip_upload_and_caption_queue_contract_without_gpu(self):
+        from backend import server, training_data
+        from tests.test_training_dataset import picture, archive
+        raw=archive([('photos/a.png',picture()),('photos/a.txt','Existing caption')])
+        with tempfile.TemporaryDirectory() as folder, patch.object(training_data,'ROOT',Path(folder)/'imports'), patch.object(server,'JOBS_DIR',Path(folder)/'jobs'), patch.object(server,'pending_jobs',[]), patch.object(server,'start_next_locked'), patch.object(server,'save_queue_locked'):
+            server.JOBS_DIR.mkdir()
+            response=self.client.post('/api/training/imports',json={'files':[{'name':'photos.zip','size':len(raw)}]},headers=self.headers)
+            self.assertEqual(response.status_code,200,response.text);ident=response.json()['id']
+            sent=self.client.put(f'/api/training/imports/{ident}/files/0?offset=0',content=raw,headers={**self.headers,'Content-Type':'application/octet-stream'})
+            self.assertEqual(sent.json()['offset'],len(raw))
+            result=self.client.post(f'/api/training/imports/{ident}/finish',headers=self.headers)
+            self.assertEqual(result.status_code,200,result.text);item=result.json()['items'][0]
+            self.assertEqual(item['caption'],'Existing caption')
+            self.assertFalse(training_data.directory(ident).exists())
+            result=self.client.post('/api/training/captions',json={'images':[item['id'],item['id']],'name':'Cup','trigger_word':'cupx','subject':'style'},headers=self.headers)
+            self.assertEqual(result.status_code,202,result.text)
+            job=result.json();self.assertEqual((job['kind'],job['total_steps']),('captioning',1))
+            self.assertNotIn('thumbnail_url',job)
+            self.assertEqual(self.client.get('/api/training/captions/'+job['id']).json()['captions'],{})
+
+    def test_recommended_training_uses_actual_image_sizes(self):
+        from backend import server
+        from tests.test_training_dataset import picture
+        item=self.client.post('/api/uploads',files={'files':('tiny.png',picture(),'image/png')},headers=self.headers).json()[0]
+        with tempfile.TemporaryDirectory() as folder,patch.object(server,'JOBS_DIR',Path(folder)),patch.object(server,'pending_jobs',[]),patch.object(server,'start_next_locked'),patch.object(server,'save_queue_locked'),patch.object(training,'setup_status',return_value={'ready':True}):
+            response=self.client.post('/api/training/start',json={**REQUEST,'settings_mode':'recommended','steps':19999,'images':[{'id':item['id'],'caption':'User text'}]},headers=self.headers)
+            self.assertEqual(response.status_code,202,response.text)
+            r=response.json()['request']
+            self.assertEqual(r['steps'],500)
+            self.assertEqual(r['resolutions'],[512])
+            self.assertEqual(r['images'][0]['caption'],'User text')
+            self.assertTrue(r['profile_version'])
 
 
 if __name__ == '__main__':
