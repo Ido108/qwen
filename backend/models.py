@@ -242,13 +242,14 @@ def required_video(request):
 
 
 def video_rewriters(request):
-    """Enhance prompt on a video job runs on this computer (Settings > Prompts): Qwen PE T2I, plus the vision projector
-    of PE I2I when the job has pictures."""
+    """Enhance prompt on a video job runs on this computer: the video enhancer chosen in Settings > Prompts (Gemma 4 by
+    default), with its vision files when the job has pictures."""
     if not getattr(request,'enhance',False) or getattr(request,'execution','local')=='runpod':
         return []
-    from .prompt_enhancer import VIDEO_MODEL, VIDEO_VISION
+    from .prompt_enhancer import video_models
+    model,vision=video_models()
     pictures=any(getattr(request,name,None) for name in ('first_frame','last_frame','reference_images','source_video','images'))
-    return [VIDEO_MODEL]+([VIDEO_VISION] if pictures else [])
+    return list(dict.fromkeys([model]+([vision] if pictures else [])))
 
 
 def video_loras(item,request):

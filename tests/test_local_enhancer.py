@@ -142,7 +142,9 @@ class WorkerRouteTests(unittest.TestCase):
         from backend import llama_runtime
         sent = {}
         class Server:
+            process = type('Process', (), {'poll': lambda self: None})()
             def __init__(self, *_): pass
+            def close(self): sent['closed'] = True
             def __enter__(self): return self
             def __exit__(self, *_): pass
             def chat(self, body):
@@ -151,5 +153,27 @@ class WorkerRouteTests(unittest.TestCase):
         with patch.object(llama_runtime, 'Server', Server), patch.object(prompt_enhancer, '_free_comfy_gpu', lambda: None),                 patch.object(models, 'local_path', lambda item, file: 'x.gguf'):
             result = prompt_enhancer.enhance_local('שלט שכתוב עליו "שלום"', [], spec='qwen-image-2.1-t2i', runner='llama', fast=True)
         self.assertFalse(sent['chat_template_kwargs']['enable_thinking'])
+        self.assertTrue(sent['closed'])  # no image model in the GPU here, so the rewriter does not stay loaded
         self.assertEqual(sent['messages'][-1], {'role': 'assistant', 'content': prompt_enhancer.FAST_OPENING})
         self.assertEqual(result['positive_prompt'], 'a red sign that says "שלום"')
+
+    def test_the_rewriter_stays_loaded_only_when_the_gpu_has_room(self):
+        from backend import llama_runtime
+        started, closed = [], []
+        class Server:
+            process = type('Process', (), {'poll': lambda self: None})()
+            def __init__(self, *files): started.append(files)
+            def close(self): closed.append(True)
+            def chat(self, body):
+                return {'choices': [{'message': {'content': '{"rewritten_prompt": "a cat", "wh_ratio": "1:1"}'}}], 'usage': {}}
+        run = lambda: prompt_enhancer.enhance_local('חתול', [], spec='qwen-image-2.1-t2i', runner='llama', fast=True)
+        with patch.object(llama_runtime, 'Server', Server), patch.object(prompt_enhancer, '_free_comfy_gpu', lambda: None), \
+                patch.object(models, 'local_path', lambda item, file: 'x.gguf'), \
+                patch.object(prompt_enhancer, '_image_model_loaded', lambda: True):
+            with patch.object(prompt_enhancer, '_free_vram', lambda: 20 * 1024**3):
+                run(); run()
+            self.assertEqual((len(started), closed), (1, []))  # the second job reused the loaded rewriter
+            with patch.object(prompt_enhancer, '_free_vram', lambda: 3 * 1024**3):
+                run()
+            self.assertEqual((len(started), closed), (1, [True]))  # too little room left: it closes after writing
+        llama_runtime.release()

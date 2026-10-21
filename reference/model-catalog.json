@@ -2157,6 +2157,30 @@
     "note": "Qwen's official Qwen-Image-2.1 image-editing prompt rewriter with its untouched vision encoder, Heretic build without refusals. Sees the input images. Runs on this computer in llama.cpp."
   },
   {
+    "id": "gemma4-12b-heretic-q6",
+    "title": "Video prompt enhancer (Gemma 4 12B Heretic, Q6_K)",
+    "kind": "image-support",
+    "format": "GGUF Q6_K",
+    "repo": "llmfan46/gemma-4-12B-it-uncensored-heretic-GGUF",
+    "revision": "e169171d3f2d19734afc1fb6521daa4da1c0a5bd",
+    "directory": "text_encoders/gemma4-heretic",
+    "files": [
+      {
+        "path": "gemma-4-12B-it-uncensored-heretic-Q6_K.gguf",
+        "bytes": 9786024096,
+        "sha256": "2ea1c682181462a9cab0f980b884a4f77b9bb5580551db1ed01f69a221232041"
+      },
+      {
+        "path": "gemma-4-12B-it-uncensored-heretic-mmproj-BF16.gguf",
+        "bytes": 175115328,
+        "sha256": "260bf379fb313557642b51f55699530cf76d3b76555ca84b7ac7434873512cef"
+      }
+    ],
+    "bytes": 9961139424,
+    "dependencies": [],
+    "note": "Gemma 4 12B, the model family LTX 2.5 uses as its text encoder and official prompt enhancer; Heretic build (6 of 100 refusals, KL 0.12), Apache-2.0. Writes video prompts on this computer in llama.cpp and sees the first frame."
+  },
+  {
     "id": "flux3-prompt",
     "title": "FLUX.3 prompt model - W4A8",
     "kind": "image-support",

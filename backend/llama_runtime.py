@@ -1,6 +1,7 @@
 """Pinned llama.cpp for the local prompt rewriters. Its generation loop measured about 120 tokens per second for
 the 9B prompt models on an RTX 5090, against about 11 in ComfyUI's TextGenerate (2026-10-21)."""
 from pathlib import Path
+import atexit
 import hashlib
 import json
 import os
@@ -94,3 +95,34 @@ class Server:
 
     def __exit__(self, *_):
         self.close()
+
+
+# One rewriter can stay loaded between jobs (measured 2026-10-21: starting Qwen PE Q8 took 5.6 to 6.2 s of a 10.3 s
+# Enhance, writing 3.3 to 3.6 s). The caller decides after each rewrite whether the GPU has room to keep it.
+_resident = None
+
+
+def is_resident(model, mmproj=None):
+    return bool(_resident and _resident[0] == (str(model), str(mmproj) if mmproj else None) and _resident[1].process.poll() is None)
+
+
+def shared(model, mmproj=None):
+    """The loaded rewriter for these files, started if needed (any other one is closed first)."""
+    global _resident
+    if is_resident(model, mmproj):
+        return _resident[1]
+    release()
+    server = Server(model, mmproj)
+    _resident = ((str(model), str(mmproj) if mmproj else None), server)
+    return server
+
+
+def release():
+    global _resident
+    if _resident:
+        _resident[1].close()
+        _resident = None
+
+
+# The worker exits through its stop message; a hung worker is ended with its whole process tree.
+atexit.register(release)
