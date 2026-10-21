@@ -15,10 +15,10 @@ dialog.lightbox .zoom-controls button{min-height:32px;min-width:36px;padding:0 8
 dialog.lightbox .zoom-controls .image-load-state,dialog.lightbox .zoom-controls .viewer-error{position:static;flex-basis:100%;margin:0;padding:2px 8px;border-radius:0;transform:none;text-align:center;font-size:11px}
 dialog.lightbox .preview-run-details{display:block;order:0;flex:none;min-height:0;max-height:25dvh;overflow:auto;overscroll-behavior:contain;margin:0;padding:6px 14px;background:#fff;border:0;border-top:1px solid var(--line);border-radius:0}
 dialog.lightbox .preview-run-details .run-details{margin:0;font-size:11px}
-dialog.lightbox .preview-run-details .run-details-summary{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;gap:12px;padding-bottom:2px}
+dialog.lightbox .preview-run-details .run-details-summary{flex-wrap:wrap;gap:4px 12px;padding-bottom:2px}
 dialog.lightbox .preview-run-details .run-details-summary>span{flex:none}
 dialog.lightbox .preview-run-details .run-model{max-width:230px;white-space:nowrap}
-dialog.lightbox .preview-run-details .run-details-button{flex:none;min-height:28px;margin-left:auto;padding:0 3px}
+dialog.lightbox .preview-run-details .run-details-button{min-height:30px}
 dialog.lightbox .preview-run-details .run-loras{margin:2px 0;flex-wrap:nowrap}
 dialog.lightbox .preview-run-details .run-loras dd{white-space:nowrap;overflow-x:auto;scrollbar-width:thin}
 dialog.lightbox .preview-run-details .result-prompt{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"text more copy";align-items:center;column-gap:8px;margin:2px 0 0;padding:2px 0;border:0;border-top:1px solid var(--line);border-radius:0;background:none;font-size:12px}
@@ -52,3 +52,20 @@ dialog.lightbox .preview-action-error{position:static;order:0;flex:none;margin:0
  dialog.lightbox .preview-run-details{max-height:27dvh}
  dialog.lightbox .preview-run-details .run-loras{display:none}
 }
+/* One action row: plain text buttons of one height, border, weight and color. "Use as" keeps only its dropdown arrow. */
+dialog.lightbox[open]:focus{outline:none}
+dialog.lightbox .preview-actions .button,dialog.lightbox .preview-actions .use-image-as>label{box-sizing:border-box;height:36px;min-height:36px;padding:0 14px;border:1px solid #d3cbe6;border-radius:7px;background:#fff;color:#2a2238;font-size:13px;font-weight:600;line-height:1;gap:0;justify-content:center}
+dialog.lightbox .preview-actions .button:hover,dialog.lightbox .preview-actions .use-image-as>label:hover{background:#f3effb}
+dialog.lightbox .preview-actions .button>svg{display:none}
+dialog.lightbox .preview-actions .use-image-as>label>svg{display:none}
+dialog.lightbox .preview-actions .use-image-as select{width:64px!important;min-height:0;height:34px;padding:0 2px;color:inherit;font:inherit;font-weight:600}
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){
+ dialog.lightbox .preview-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:6px;padding:0 6px 6px;overflow:visible}
+ dialog.lightbox .preview-actions>*{min-width:0}
+ dialog.lightbox .preview-actions .button,dialog.lightbox .preview-actions .use-image-as,dialog.lightbox .preview-actions .use-image-as>label{width:100%;height:40px;min-height:40px;padding:0 4px}
+ dialog.lightbox .preview-actions .use-image-as select{width:100%!important;height:38px;min-height:0!important;font-size:13px!important;font-weight:600;text-align:center;text-align-last:center}
+}
+dialog.lightbox .preview-actions .use-image-as select{appearance:none;-webkit-appearance:none;background:none!important;text-align:center;text-align-last:center}
+dialog.lightbox .preview-actions .use-image-as>label::after{content:'▾';flex:none;margin-left:3px;font-size:11px;color:#5d4f78;pointer-events:none}
+dialog.lightbox .preview-actions .use-image-as select{field-sizing:content;width:auto!important;min-width:0;padding:0!important}
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){dialog.lightbox .preview-actions .use-image-as select{field-sizing:content;width:auto!important;max-width:100%;padding:0!important}dialog.lightbox .preview-actions .use-image-as>label{padding:0 6px 0 2px}}

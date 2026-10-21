@@ -81,13 +81,68 @@ class HubTests(unittest.TestCase):
         self.assertIn('does not declare', result['versions'][0]['problem'])
 
     def test_identity_edit_adapters_are_not_installed_as_plain_loras(self):
-        for repo, text in (('conradlocke/krea2-identity-edit', ''), ('other/edit', 'Install comfyui-krea2edit. Both nodes are required.')):
-            hf_hub._cache.clear()
-            result = self.details(card(repo=repo, files=('a.safetensors',), text=text), {'a.safetensors': KREA_LORA})
-            version = result['versions'][0]
-            self.assertFalse(version['supported'])
-            self.assertEqual(version['problem'], hf_hub.SPECIAL_PROBLEM)
-            self.assertFalse(version['files'][0]['supported'])
+        result = self.details(card(repo='other/edit', files=('a.safetensors',), text='Install comfyui-krea2edit. Both nodes are required.'), {'a.safetensors': KREA_LORA})
+        version = result['versions'][0]
+        self.assertFalse(version['supported'])
+        self.assertFalse(version['files'][0]['supported'])
+        self.assertIn('Krea 2 edit nodes', version['problem'])
+        self.assertEqual(version['problem'], version['files'][0]['problem'])  # the file's own reason, not a generic one
+
+    def test_files_the_app_already_runs_are_built_in_not_unsupported(self):
+        """The user's case: conradlocke/krea2-identity-edit said 'not supported' although the app runs its V2 r128 file."""
+        identity = 'krea2_identity_edit_v2_r128.safetensors'
+        made = card(repo='conradlocke/krea2-identity-edit', bases=('krea/Krea-2-Raw',), files=(identity, 'krea2_identity_edit_v1.safetensors'),
+                    text='Requires the ComfyUI-Krea2Edit node pack (comfyui-krea2edit).')
+        made['files'][0]['sha256'] = '2082515f1eb66532f5efb5343eb15048a29e3abe9f356e35e784cc60d00b45f7'  # the built-in catalog file
+        result = self.details(made, {identity: KREA_LORA, 'krea2_identity_edit_v1.safetensors': KREA_LORA})
+        version = result['versions'][0]
+        files = {f['name']: f for f in version['files']}
+        self.assertTrue(version['supported'])
+        self.assertIsNone(version['problem'])
+        self.assertTrue(files[identity]['supported'])
+        self.assertEqual(files[identity]['in_app']['id'], 'krea2-lora-identity-edit')
+        self.assertIn('Keep the person', files[identity]['in_app']['where'])
+        older = files['krea2_identity_edit_v1.safetensors']
+        self.assertFalse(older['supported'])
+        self.assertIn(f'the app already runs {identity}', older['problem'])
+        self.assertNotIn('not supported yet', older['problem'])
+        with patch.object(hf_hub.HF, 'card', return_value=made), patch.object(hf_hub, 'remote_shapes', return_value=KREA_LORA):
+            with self.assertRaisesRegex(ValueError, 'already built into the app'):
+                hf_hub.selected_file('huggingface', made['repo'], identity)
+
+    def test_unsupported_edit_repos_name_the_missing_nodes(self):
+        result = self.details(card(repo='yijunwang2/krea2-reid', files=('a.safetensors',)), {'a.safetensors': KREA_LORA})
+        self.assertEqual(result['versions'][0]['problem'], hf_hub.OSTRIS_PROBLEM)
+        found = hf_hub._summary({'repo': 'yijunwang2/krea2-reid', 'name': 'krea2-reid', 'creator': 'y', 'downloads': 1, 'likes': 1,
+                                 'bases': ['krea/Krea-2-Turbo'], 'preview': None}, 'LORA', set(), set())
+        self.assertEqual((found['problem'], found['note']), (hf_hub.OSTRIS_PROBLEM, None))
+        built = hf_hub._summary({'repo': 'conradlocke/krea2-identity-edit', 'name': 'x', 'creator': 'c', 'downloads': 1, 'likes': 1,
+                                 'bases': ['krea/Krea-2-Raw'], 'preview': None}, 'LORA', set())
+        self.assertIsNone(built['problem'])
+        self.assertIn('Built into the app', built['note'])
+
+    def test_a_repo_with_two_architectures_offers_both(self):
+        made = card(repo='Alissonerdx/BFS-Best-Face-Swap', bases=('Qwen/Qwen-Image-2.1', 'black-forest-labs/FLUX.2-klein-9B', 'krea/Krea-2-Raw'),
+                    files=('bfs_head_v1_qwen_2.1.safetensors', 'bfs_head_swap_v1.1_krea2.safetensors'))
+        result = self.details(made, {'bfs_head_v1_qwen_2.1.safetensors': QWEN21_LORA, 'bfs_head_swap_v1.1_krea2.safetensors': KREA_LORA})
+        files = {f['name']: f for f in result['versions'][0]['files']}
+        self.assertEqual(files['bfs_head_v1_qwen_2.1.safetensors']['base_model'], 'Qwen 2.1')
+        self.assertEqual(files['bfs_head_swap_v1.1_krea2.safetensors']['base_model'], 'Krea 2')
+        self.assertTrue(all(f['supported'] for f in files.values()))
+
+    def test_gated_repo_says_so(self):
+        def locked(url, headers):
+            raise ConnectionError('The file header could not be read (403).')
+        made = card(repo='Lightricks/LTX-2.5-22b-IC-LoRA-Deblur', bases=('Lightricks/LTX-2.5',), files=('a.safetensors',))
+        with patch.object(hf_hub.HF, 'card', return_value=made), patch.object(hf_hub, 'remote_shapes', side_effect=locked):
+            version = hf_hub.details('huggingface', made['repo'])['versions'][0]
+        self.assertEqual(version['problem'], hf_hub.GATED_PROBLEM)
+
+    def test_ic_loras_say_why(self):
+        LTX_LORA = {'transformer_blocks.0.audio_attn1.to_q.lora_A.weight': [32, 2048]}
+        made = card(repo='Lightricks/LTX-2.5-22b-IC-LoRA-Deblur', bases=('Lightricks/LTX-2.5',), files=('ltx-2.5-22b-ic-lora-deblur.safetensors',))
+        version = self.details(made, {'ltx-2.5-22b-ic-lora-deblur.safetensors': LTX_LORA})['versions'][0]
+        self.assertEqual(version['problem'], hf_hub.IC_LORA_PROBLEM)
 
     def test_mixed_official_repo_keeps_each_file_type(self):
         made = card(repo='Comfy-Org/Qwen-Image-2.1', bases=('Qwen/Qwen-Image-2.1',), relation='quantized',
@@ -101,10 +156,39 @@ class HubTests(unittest.TestCase):
         self.assertGreater(standard['generation_defaults']['steps'], 10)  # the Turbo sentence does not apply to the Standard file
         self.assertEqual(turbo['generation_defaults']['steps'], 8)
 
-    def test_video_checkpoints_are_not_offered_yet(self):
+    def test_video_checkpoints_are_offered_like_civitai_ones(self):
+        """The user's case: Video > Models said 'not supported' for MiniMax H3 and LTX 2.5, which the app runs."""
+        from backend import models
         H3_MODEL = {'audio_patch_proj.weight': [5376, 64]}
-        result = self.details(card(bases=('MiniMaxAI/MiniMax-H3',), relation='finetune', files=('h3.safetensors',)), {'h3.safetensors': H3_MODEL})
-        self.assertEqual(result['versions'][0]['files'][0]['problem'], hf_hub.VIDEO_MODEL_PROBLEM)
+        fl, ref = 'minimax_h3_fl2va_pruned_fp8_scaled.safetensors', 'minimax_h3_ref2va_pruned_fp8_scaled.safetensors'
+        made = card(repo='Comfy-Org/MiniMax-H3', bases=('MiniMaxAI/MiniMax-H3',), relation='quantized', files=(f'diffusion_models/{fl}', f'diffusion_models/{ref}'))
+        version = self.details(made, {fl: H3_MODEL, ref: H3_MODEL})['versions'][0]
+        files = {f['name'].rsplit('/', 1)[-1]: f for f in version['files']}
+        self.assertTrue(version['supported'])
+        self.assertIsNone(version['problem'])
+        self.assertEqual((files[fl]['family'], files[ref]['family']), ('minimax-h3', 'minimax-h3-ref2va'))
+        self.assertTrue(all(f['supported'] and f['generation_defaults'] for f in files.values()))
+        fields = hf_hub._entry_fields('minimax-h3', False, False, False, files[ref], made, '', ref)
+        self.assertEqual((fields['kind'], fields['family']), ('reference-video', 'minimax-h3-ref2va'))
+        self.assertEqual(fields['dependencies'], models.entry('h3-ref-base-int8')['dependencies'])
+
+    def test_ltx_checkpoints_get_their_variant(self):
+        LTX_MODEL = {'audio_adaln_single.linear.weight': [12288, 2048]}
+        dev_name, distilled_name = 'ltx-2.5-22b-dev-transformer-bf16.safetensors', 'ltx-2.5-22b-distilled-transformer-bf16.safetensors'
+        made = card(repo='Lightricks/LTX-2.5', bases=(), relation=None, files=(f'diffusion_models/{dev_name}', f'diffusion_models/{distilled_name}'))
+        result = self.details(made, {dev_name: LTX_MODEL, distilled_name: LTX_MODEL})
+        files = {f['name'].rsplit('/', 1)[-1]: f for f in result['versions'][0]['files']}
+        self.assertEqual(result['versions'][0]['base_model'], 'LTXV 2.5')  # the official repo is its own base
+        dev, distilled = files[dev_name], files[distilled_name]
+        self.assertEqual((dev['ltx_variant'], distilled['ltx_variant']), ('dev', 'distilled'))
+        self.assertIn('ltx25-distill-lora', hf_hub._entry_fields('ltx25', False, False, False, dev, made, '', dev_name)['dependencies'])
+        self.assertNotIn('ltx25-distill-lora', hf_hub._entry_fields('ltx25', False, False, False, distilled, made, '', distilled_name)['dependencies'])
+
+    def test_every_built_in_file_has_a_place(self):
+        found = hf_hub.app_files()
+        self.assertEqual(found['2082515f1eb66532f5efb5343eb15048a29e3abe9f356e35e784cc60d00b45f7']['id'], 'krea2-lora-identity-edit')
+        self.assertIn('Images > Swap > Head swap', found['d1d748d5601077f3b6d05766f6823510e901970d916afa404a97e85dc92fa88e']['where'])
+        self.assertIn('Tool > Head swap (Krea 2)', found['abc6c468c578b36e6bd960106ad5886afd3f5321e4fe2de26c05bb5c6585b836']['where'])
 
     def test_search_keeps_only_declared_bases_and_maps_labels(self):
         items = [{'repo': 'a/one', 'name': 'one', 'creator': 'a', 'downloads': 9, 'likes': 1, 'bases': ['krea/Krea-2-Turbo'], 'preview': None, 'relation': 'adapter'},

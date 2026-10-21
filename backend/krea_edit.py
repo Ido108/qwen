@@ -58,14 +58,21 @@ def image_tensor(image):
     return torch.from_numpy(np.array(image.convert('RGB')).astype(np.float32) / 255.0).unsqueeze(0)
 
 
-def encode(clip, prompt, images):
+def tool_settings(tool, count):
+    """Node settings of a Krea 2 edit tool (reference/image-tools.json "krea_edit", from its card or workflow)."""
+    edit = tool['krea_edit']
+    return {'ref_boost': float(edit.get('ref_boost', 1.0)), 'ref_boost_a': float(edit.get('ref_boost_a', 1.0)),
+            'ref_position': edit.get('ref_position', ALIGNED), 'ref_position_a': edit.get('ref_position_a', ALIGNED)}
+
+
+def encode(clip, prompt, images, grounding_px=GROUNDING_PX):
     """Krea2EditGroundedEncode: the instruction with up to two photos in training order (scene, person)."""
     tensors = [image_tensor(image) for image in images[:2]]
     node = pack().Krea2EditGroundedEncode()
-    return node.encode(clip, prompt, image=tensors[0], image_b=tensors[1] if len(tensors) > 1 else None, grounding_px=GROUNDING_PX)[0]
+    return node.encode(clip, prompt, image=tensors[0], image_b=tensors[1] if len(tensors) > 1 else None, grounding_px=grounding_px)[0]
 
 
-def patch(model, vae, images, latent):
+def patch(model, vae, images, latent, settings=None):
     """Krea2EditModelPatch on the pixel path (fit, pre-encoded at the target size before sampling)."""
     import torch
     tensors = [image_tensor(image) for image in images[:2]]
@@ -73,7 +80,7 @@ def patch(model, vae, images, latent):
     placeholder = {'samples': torch.zeros(latent.shape[:-2] + (1, 1), dtype=latent.dtype)}
     patched = pack().Krea2EditModelPatch().patch(model, placeholder, vae=vae, source_image=tensors[0],
         source_image_b=tensors[1] if len(tensors) > 1 else None, fit_mode='fit', target_latent={'samples': latent},
-        **reference_settings(len(tensors)))[0]
+        **(settings or reference_settings(len(tensors))))[0]
     # The node registers its forward in transformer_options, which ComfyUI places outside the patcher's wrappers
     # (sampler_helpers merges them first). Its forward never calls the next wrapper, so the runtime LoRA hooks
     # would never attach. Moved into the patcher list after the LoRAs, it runs inside them.

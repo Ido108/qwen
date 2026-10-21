@@ -35,16 +35,7 @@ def run(request, job, directory, update):
         from .stream_upscale import run as run_streaming
         run_streaming(request,selected,source,directory,update,(width,height))
         return finish_output(request,job,directory,update)
-    model_name=Path(selected['files'][0]['path']).name
-    model_dir=local_path(selected,selected['files'][0]).parent
-    # SeedVR2 reads the DiT and its VAE from one folder; the D:\models library and the data folder can each hold one of them.
-    vae=entry('seedvr2-vae');vae_path=local_path(vae,vae['files'][0])
-    if vae_path.parent!=model_dir and not (model_dir/vae_path.name).is_file():
-        import shutil
-        shutil.copy2(vae_path,model_dir/(vae_path.name+'.part'));(model_dir/(vae_path.name+'.part')).replace(model_dir/vae_path.name)
-    cli=APP_DIR/'vendor'/'SeedVR2'/'inference_cli.py'
-    if not cli.is_file():
-        raise RuntimeError('The SeedVR2 inference package is missing. Run Start Qwen.bat again.')
+    model_dir,model_name=seed_model_dir(selected)
     raw=directory/'upscaled_raw.mp4'
     short=min(width,height)
     cmd=[sys.executable,'-u','-m','backend.seedvr2_cli',str(source),
@@ -86,7 +77,21 @@ def run(request, job, directory, update):
     finish_output(request,job,directory,update)
 
 
-def run_seed(cmd, environment, update):
+def seed_model_dir(selected):
+    """The folder and file name of a SeedVR2 DiT, with its VAE beside it; shared by the video and image upscalers."""
+    model_name=Path(selected['files'][0]['path']).name
+    model_dir=local_path(selected,selected['files'][0]).parent
+    # SeedVR2 reads the DiT and its VAE from one folder; the D:\models library and the data folder can each hold one of them.
+    vae=entry('seedvr2-vae');vae_path=local_path(vae,vae['files'][0])
+    if vae_path.parent!=model_dir and not (model_dir/vae_path.name).is_file():
+        shutil.copy2(vae_path,model_dir/(vae_path.name+'.part'));(model_dir/(vae_path.name+'.part')).replace(model_dir/vae_path.name)
+    cli=APP_DIR/'vendor'/'SeedVR2'/'inference_cli.py'
+    if not cli.is_file():
+        raise RuntimeError('The SeedVR2 inference package is missing. Run Start Qwen.bat again.')
+    return model_dir,model_name
+
+
+def run_seed(cmd, environment, update, phases=PHASE):
     process=subprocess.Popen(cmd,cwd=APP_DIR,env=environment,
                              stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                              encoding='utf-8',errors='replace',bufsize=1,
@@ -105,7 +110,7 @@ def run_seed(cmd, environment, update):
             batch=BATCH.search(clean)
             if batch:
                 name,index,total=batch.group(1).lower(),int(batch.group(2)),int(batch.group(3))
-                stage,label=PHASE[name]
+                stage,label=phases[name]
                 update(stage=stage,message=f'{label} · {index} of {total}',
                        step=index,total_steps=total)
         return process.wait()

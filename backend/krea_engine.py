@@ -131,11 +131,20 @@ def generate(request, prompt, images, width, height, progress):
     cfg = krea_cfg(request, defaults)
     negative_text = request.get('negative_prompt', '').strip()
     started = time.perf_counter()
-    identity = bool(images) and (request.get('krea_reference_mode') or 'identity') == 'identity'
-    if identity:
+    # A Krea 2 tool (reference/image-tools.json "krea_edit"): its own edit LoRA on the same edit nodes, with the
+    # photos in the tool's input order and its card's node settings.
+    tool = None
+    if request.get('tool_id') and images:
+        from .models import image_tool
+        tool = image_tool(request['tool_id'])
+        tool = tool if tool.get('krea_edit') else None
+    identity = bool(images) and (tool is not None or (request.get('krea_reference_mode') or 'identity') == 'identity')
+    grounding = int(tool['krea_edit'].get('grounding_px', 768)) if tool else 768
+    if identity and not tool:
         from .krea_edit import identity_photos
         images = identity_photos(images, request)
-    conditioning_key = _conditioning.fingerprint(f"krea2|{cfg > 1}|{'identity' if identity else 'style'}|{prompt}", negative_text, images)
+    mode = f"tool:{tool['id']}:{grounding}" if tool else 'identity' if identity else 'style'
+    conditioning_key = _conditioning.fingerprint(f"krea2|{cfg > 1}|{mode}|{prompt}", negative_text, images)
     cached = _conditioning.get(conditioning_key)
     progress(stage='encoding', message='Using saved prompt and image data.' if cached else
              ('Processing prompt and the person photo…' if identity else 'Processing prompt and style images…' if images else 'Processing prompt…'), step=0, conditioning_reused=cached is not None)
@@ -143,7 +152,7 @@ def generate(request, prompt, images, width, height, progress):
         with torch.inference_mode():
             if identity:
                 from .krea_edit import encode as identity_encode
-                positive = identity_encode(clip, prompt, images)
+                positive = identity_encode(clip, prompt, images, grounding)
             elif images:
                 # Official style reference workflow: Qwen edit-style encoding of 1 to 3 images (384 px for
                 # the vision encoder, 1 MP reference latents), then the index_timestep_zero method.
@@ -159,7 +168,7 @@ def generate(request, prompt, images, width, height, progress):
                 # Krea's own sampler encodes the negative prompt text ('' by default), not zeros.
                 negative = clip.encode_from_tokens_scheduled(clip.tokenize(negative_text))
                 if identity:
-                    negative = identity_encode(clip, negative_text, images)  # the card: ground the negative on the same photo
+                    negative = identity_encode(clip, negative_text, images, grounding)  # the card: ground the negative on the same photo
                 elif images:
                     extra = {key: positive[0][1][key] for key in ('reference_latents', 'reference_latents_method') if key in positive[0][1]}
                     negative = node_helpers.conditioning_set_values(negative, extra)
@@ -214,7 +223,8 @@ def generate(request, prompt, images, width, height, progress):
     progress(diffusion_load_seconds=round(time.perf_counter() - started, 3))
 
     # The identity or style reference LoRA for input images (strength 1 on both cards), then the user's LoRAs.
-    stack = [(KREA_IDENTITY_LORA if identity else KREA_STYLE_LORA, 1.0)] if images else []
+    stack = ([(tool['lora'], float(request.get('lora_strength') or tool['strength']))] if tool else
+             [(KREA_IDENTITY_LORA if identity else KREA_STYLE_LORA, 1.0)] if images else [])
     stack += [(lora['id'], float(lora.get('strength', 1.0))) for lora in request.get('loras') or []]
     applied_loras = None
     lora_checks = []
@@ -256,14 +266,15 @@ def generate(request, prompt, images, width, height, progress):
     latent = comfy.sample.fix_empty_latent_channels(model, latent)
     if identity:
         # Added after the LoRAs: the runtime LoRA wrapper stays outside and still runs its hooks.
-        from .krea_edit import patch as identity_patch, reference_settings
-        model = identity_patch(model, vae, images, latent)
+        from .krea_edit import patch as identity_patch, reference_settings, tool_settings
+        settings = tool_settings(tool, len(images)) if tool else reference_settings(len(images))
+        model = identity_patch(model, vae, images, latent, settings)
         # The photo tokens double the sequence: free the encoder (8.9 GB BF16) and the VAE before sampling.
         memory.unload_model_and_clones(clip.patcher)
         memory.unload_model_and_clones(vae.patcher)
         memory.soft_empty_cache()
         retain_lora_clone(model, _components['model'])
-        progress(krea_reference_mode='identity', **{key: value for key, value in reference_settings(len(images)).items()})
+        progress(krea_reference_mode=f"tool: {tool['title']}" if tool else 'identity', grounding_px=grounding, **settings)
     noise = comfy.sample.prepare_noise(latent, request['seed'])
 
     def callback(step, x0, x, total):

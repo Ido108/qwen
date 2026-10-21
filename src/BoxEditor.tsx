@@ -5,7 +5,7 @@ type Box={x:number;y:number;w:number;h:number};
 const RED='rgb(239,68,68)';
 
 /** Draw red boxes on an image (Remove object tool) and return the marked image as a PNG blob. */
-export function BoxEditor({src,open,onClose,onApply}:{src:string;open:boolean;onClose:()=>void;onApply:(png:Blob)=>Promise<void>}){
+export function BoxEditor({src,open,onClose,onApply,title='Mark the object to remove',hint='Drag a box around the object. One or two boxes work best.'}:{src:string;open:boolean;onClose:()=>void;onApply:(png:Blob)=>Promise<void>;title?:string;hint?:string}){
   const dialog=useRef<HTMLDialogElement>(null);const image=useRef<HTMLImageElement>(null);
   const [boxes,setBoxes]=useState<Box[]>([]);const [draft,setDraft]=useState<Box|null>(null);const [saving,setSaving]=useState(false);const [error,setError]=useState('');
   const start=useRef<{x:number;y:number}|null>(null);
@@ -27,8 +27,8 @@ export function BoxEditor({src,open,onClose,onApply}:{src:string;open:boolean;on
     }catch(e){setError((e as Error).message);}finally{setSaving(false);}
   }
   const shown=draft?[...boxes,draft]:boxes;
-  return <dialog ref={dialog} className="box-editor" aria-label="Mark the object to remove" onCancel={onClose}>
-    <div className="box-editor-head"><div><h2>Mark the object to remove</h2><p>Drag a box around the object. One or two boxes work best.</p></div><button className="icon-button" onClick={onClose} aria-label="Close"><X size={20}/></button></div>
+  return <dialog ref={dialog} className="box-editor" aria-label={title} onCancel={onClose}>
+    <div className="box-editor-head"><div><h2>{title}</h2><p>{hint}</p></div><button className="icon-button" onClick={onClose} aria-label="Close"><X size={20}/></button></div>
     <div className="box-editor-stage"><div className="box-editor-frame" onPointerDown={down} onPointerMove={move} onPointerUp={up}>
       <img ref={image} src={src} alt="Image to mark" draggable={false} crossOrigin="anonymous"/>
       {shown.map((b,i)=><span key={i} className="box-editor-box" style={{left:`${b.x*100}%`,top:`${b.y*100}%`,width:`${b.w*100}%`,height:`${b.h*100}%`}}/>)}

@@ -30,10 +30,11 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
   const elapsed=valid(job.elapsed_seconds)?job.elapsed_seconds:valid(job.started_at)&&valid(job.finished_at)&&job.finished_at>=job.started_at?job.finished_at-job.started_at:null;
   const model=models?.models.find(item=>item.id===job.request.model_id)?.title||job.request.model_id;
   const seed=job.seed_used===false?null:valid(job.seed)?job.seed:job.request.randomize_seed===false&&valid(job.request.seed)?job.request.seed:null;
-  const steps=job.kind==='upscale'?job.total_chunks:[job.actual_steps,job.total_steps,job.request.steps].find(positive);
+  const imageUpscale=job.kind==='image-upscale';
+  const steps=job.kind==='upscale'?job.total_chunks:imageUpscale?undefined:[job.actual_steps,job.total_steps,job.request.steps].find(positive);
   const cfg=resultCfg(job);
   const sampling=resultSampling(job);
-  const showSampling=job.kind!=='upscale'&&job.kind!=='training'&&job.kind!=='captioning';
+  const showSampling=job.kind!=='upscale'&&!imageUpscale&&job.kind!=='training'&&job.kind!=='captioning';
   const loras=resultLoras(job);
   const prompt=job.request.prompt;
   const usedPrompt=job.actual_prompt||job.expanded_prompt||job.rewritten_prompt;
@@ -55,6 +56,8 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
   if(twoPasses)facts.push(['Passes','2: subject replacement, then camera view']);
   if(job.request.refine&&job.kind==='multi-reference')facts.push(['Passes','8 generation steps + 3 refinement steps']);
   if(seed!==null)facts.push(['Seed',String(seed)]);
+  const source=job as {source_width?:number;source_height?:number};
+  if(positive(source.source_width)&&positive(source.source_height))facts.push(['Source size',`${source.source_width} × ${source.source_height}`]);
   if(size)facts.push(['Output size',size]);
   if(positive(job.duration_seconds))facts.push(['Video length',`${Number(job.duration_seconds.toFixed(2))}s`]);
   if(positive(job.fps))facts.push(['Frame rate',`${job.fps} fps`]);
@@ -74,11 +77,11 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
   async function copy(){try{await navigator.clipboard.writeText([...facts,...stages.map(([label,value]):[string,string]=>[stageName(label),time(value)])].map(([label,value])=>`${label}: ${value}`).join('\n'));setCopyState('Copied');}catch{setCopyState('Could not copy');}}
   return <div className={`run-details${detailsOnly?' run-details-compact':''}`} data-run-id={job.id}>
     {detailsOnly?<button type="button" className="button secondary" onClick={()=>dialog.current?.showModal()} aria-label="View run details">Details</button>:<><div className="run-details-summary" aria-label="Completed run summary">
+      <button type="button" className="run-details-button" onClick={()=>dialog.current?.showModal()} aria-label="View run details">Details</button>
       <button type="button" className="run-time" title="Time by stage" onClick={()=>dialog.current?.showModal()}><Clock3 size={12}/>{elapsed!==null?`Time ${time(elapsed)}`:'Time unavailable'}{inference!==null?` · Inference ${time(inference)}`:''}</button>
       {model?<span className="run-model" title={model}>{model}</span>:null}
       {steps?<span>{steps} {countLabel}</span>:null}{cfg!==null?<span>CFG {cfg}</span>:null}{size?<span>{size}</span>:null}{seed!==null?<span>Seed {seed}</span>:null}
       {showSampling?<><span>Sampler {sampling.sampler??'Not saved'}</span><span>Schedule {scheduleLabel(sampling.scheduler)}</span></>:null}
-      <button type="button" className="run-details-button" onClick={()=>dialog.current?.showModal()} aria-label="View run details">Details</button>
     </div>
     {loras!==null?<dl className="run-loras"><dt>LoRAs (strength)</dt><dd>{loras}</dd></dl>:null}
     <ResultPrompt key={job.id} text={prompt||usedPrompt}/></>}

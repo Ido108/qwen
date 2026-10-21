@@ -119,6 +119,9 @@ def run():
     if request.get('kind') == 'upscale':
         from .upscale_worker import run as run_upscale
         return run_upscale(request, job, directory, update)
+    if request.get('kind') == 'image-upscale':
+        from .image_upscale import run as run_image_upscale
+        return run_image_upscale(request, job, directory, update)
     import torch
     from PIL import Image
     from PIL.PngImagePlugin import PngInfo
@@ -226,6 +229,8 @@ def execute(folder):
                            'Close unused AI apps and retry.' if job.get('stage') == 'encoding' else
                            'Not enough free GPU memory while generating video. '
                            'Close unused AI apps, choose a smaller size or shorter duration, and retry.')
+            elif request.get('kind') == 'image-upscale':
+                message = 'Not enough free GPU memory while upscaling. Close unused AI apps, choose a smaller size, and retry.'
             else:
                 message = 'Not enough free GPU memory. Close unused AI apps, choose a 1K size, and retry.'
         elif '1455' in message or 'paging file is too small' in message.lower():

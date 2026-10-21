@@ -33,6 +33,8 @@ from .resident_worker import ImageWorker
 
 from .common import AUDIO_UPLOADS_DIR, resolve_audio
 from .ltx_settings import MultiReferenceRequest, required_ltx, is_ref2va, media_inputs as ltx_media_inputs
+from . import image_upscale
+from .image_upscale import ImageUpscaleRequest
 
 SESSION_TOKEN = secrets.token_urlsafe(32)
 register_heif_opener(thumbnails=False)
@@ -52,6 +54,8 @@ IDLE_MODEL_RELEASE_SECONDS = 10 * 60
 image_idle_since = time.monotonic()
 image_worker = ImageWorker()
 VIDEO_KINDS={'video','reference-video','multi-reference','upscale'}
+# Image results: generated images and upscaled images. An image upscale runs in its own process, like a video job.
+IMAGE_KINDS={'image','image-upscale'}
 # Completed job IDs never change their output. Keep private images in this browser,
 # not in shared proxies. Mutable API responses and failed reads remain no-store.
 RESULT_CACHE = {'Cache-Control': 'private, max-age=604800, immutable'}
@@ -371,6 +375,7 @@ def run_job(job_id):
     try:
         request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
         is_video = request.get('kind') in VIDEO_KINDS
+        separate = is_video or request.get('kind') == 'image-upscale'
         if request.get('kind') in ('training', 'captioning'):
             run_training(job_id, request, directory)
             return
@@ -385,7 +390,7 @@ def run_job(job_id):
                     job.update(status='cancelled', message='Generation cancelled.', finished_at=time.time())
                     write_json(directory / 'status.json', job)
                     return
-                if is_video:
+                if separate:
                     image_worker.close()
                     active_process = subprocess.Popen(
                         [sys.executable, '-X', 'faulthandler', '-u', '-m', 'backend.worker', str(directory)],
@@ -397,7 +402,7 @@ def run_job(job_id):
                     # A new local image explicitly requests the model again.
                     image_warmup_suspended = False
                 process = active_process
-            return_code = process.wait() if is_video else image_worker.wait(directory, process)
+            return_code = process.wait() if separate else image_worker.wait(directory, process)
         with active_lock:
             job = read_job(job_id)
             if job_id in cancelled_jobs:
@@ -479,6 +484,8 @@ def prepare_job_models(job_id,request):
         needed=models.required_reference(ReferenceVideoRequest(**request))
     elif kind=='upscale':
         needed=models.required_upscale(UpscaleRequest(**request))
+    elif kind=='image-upscale':
+        needed=image_upscale.required(request)
     else:
         needed=models.required_image(request)
     def cancelled():
@@ -1464,7 +1471,9 @@ def generate(body: GenerationRequest):
         from .image_sampling import validate as validate_sampling
         validate_sampling(body.model_dump(), models.entry(body.model_id))
         needed = models.required(body.model_id, body.text_encoder, body.tool_id, body.vae_id, [lora.id for lora in body.loras], len(body.images), body.krea_reference_mode)
-        if (body.images and body.krea_reference_mode == 'identity' and models.is_krea(models.entry(body.model_id))
+        if body.tool_id and models.image_tool(body.tool_id).get('krea_edit') and not body.prompt.strip():
+            raise ValueError(f"{models.image_tool(body.tool_id)['title']} needs an instruction in the prompt, for example: remove the person on the left.")
+        if (body.images and not body.tool_id and body.krea_reference_mode == 'identity' and models.is_krea(models.entry(body.model_id))
                 and not body.prompt.strip() and not body.enhance):
             # The identity LoRA restages from "an image and a plain-language instruction" (its card); with no instruction
             # it copies the photo, and the beside placement turned that into a two-panel image.
@@ -1522,7 +1531,8 @@ def generate(body: GenerationRequest):
         data.update(source_prompt=source_prompt, source_negative_prompt=source_negative_prompt)
         data['execution'] = 'runpod' if remote else 'local'
         defaults = models.entry(body.model_id)['generation_defaults']
-        data['steps'] = body.steps if body.steps is not None else defaults['steps']
+        # A tool's card can name its own step count (BFS Krea 2 body swap: 10 steps on Turbo).
+        data['steps'] = body.steps if body.steps is not None else (tool or {}).get('steps') or defaults['steps']
         data['steps_mode'] = 'custom' if body.steps is not None else 'model'
         if tool:
             data['enhance'] = False
@@ -1673,6 +1683,58 @@ def generate_upscale(body: UpscaleRequest):
         job={'id':job_id,'kind':'upscale','status':'queued','message':'Waiting in queue','stage':'queued',
              'created_at':time.time(),'seed':body.seed,'request':data,'rewritten_prompt':'','step':0,'total_steps':0}
         enqueue_locked(job,data)
+    return public_job(job)
+
+
+def image_upscale_source(source_image: str, source_job: str) -> Path:
+    if source_job:
+        return image_upscale.job_image(source_job)
+    if not source_image:
+        raise ValueError('Choose an image to upscale.')
+    return resolve_image(source_image)
+
+
+@app.get('/api/image-upscale/plan')
+def image_upscale_plan(source_image: str = Query('', max_length=200), source_job: str = Query('', max_length=32),
+                       size_mode: Literal['scale', 'long_side'] = 'scale', scale: int = Query(2, ge=2, le=4, multiple_of=2),
+                       long_side: int = Query(4096, ge=256, le=image_upscale.MAX_SIDE), model_id: str = Query('', max_length=200)):
+    """Source size and result size before a job starts; nothing is loaded on the GPU."""
+    try:
+        path = image_upscale_source(source_image, source_job)
+        return image_upscale.plan(path, {'size_mode': size_mode, 'scale': scale, 'long_side': long_side, 'model_id': model_id}, strict=False)
+    except (ValueError, OSError, UnidentifiedImageError) as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post('/api/image-upscale/generate', status_code=202)
+def generate_image_upscale(body: ImageUpscaleRequest):
+    try:
+        image_upscale.required(body.model_dump())
+        path = image_upscale_source(body.source_image, body.source_job)
+        sizes = image_upscale.plan(path, body.model_dump())
+        if body.source_job:
+            # A gallery image becomes an upload, so the result can show and compare it as its input.
+            with Image.open(path) as picture:
+                body.source_image = save_upload(ImageOps.exif_transpose(picture).convert('RGBA'), path.name)['id']
+        destination = Path(body.output_dir.strip() or OUTPUTS_DIR).expanduser().resolve()
+        destination.mkdir(parents=True, exist_ok=True)
+        probe = destination / f'.write-test-{uuid.uuid4().hex}'
+        probe.write_bytes(b''); probe.unlink()
+        if shutil.disk_usage(destination).free < 1024**3:
+            raise ValueError('The output drive needs at least 1 GB of free space.')
+    except (ValueError, OSError, UnidentifiedImageError) as exc:
+        raise HTTPException(400, str(exc))
+    with active_lock:
+        data = body.model_dump()
+        # Always on this GPU: the RunPod workers have no image upscaler. images lets the gallery show the input.
+        data.update(kind='image-upscale', execution='local', output_dir=str(destination), images=[body.source_image],
+                    prompt='', source_width=sizes['source_width'], source_height=sizes['source_height'])
+        job_id = uuid.uuid4().hex
+        job = {'id': job_id, 'kind': 'image-upscale', 'status': 'queued', 'message': 'Waiting in queue', 'stage': 'queued',
+               'created_at': time.time(), 'seed': body.seed, 'request': data, 'rewritten_prompt': '', 'step': 0, 'total_steps': 0,
+               'width': sizes['width'], 'height': sizes['height'],
+               'source_width': sizes['source_width'], 'source_height': sizes['source_height']}
+        enqueue_locked(job, data)
     return public_job(job)
 
 
@@ -1838,6 +1900,8 @@ def retry_job(job_id: str):
         return generate_reference_video(ReferenceVideoRequest(**data))
     if kind=='upscale':
         return generate_upscale(UpscaleRequest(**data))
+    if kind=='image-upscale':
+        return generate_image_upscale(ImageUpscaleRequest(**data))
     if kind=='captioning':
         return training_captions(CaptionRequest(**{**data, 'images': [i['id'] for i in data['images']]}))
     if kind=='training':
@@ -1850,7 +1914,7 @@ def library_jobs(kind: str, search: str) -> list[dict]:
     titles = {item['id']: item['title'] for item in models.catalog()}
     jobs = [j for j in all_jobs() if j.get('status') == 'succeeded' and j.get('kind') not in ('training', 'captioning')
             and (kind == 'all' or (kind=='video' and j.get('kind') in VIDEO_KINDS)
-                 or j.get('kind', 'image') == kind)
+                 or j.get('kind', 'image') == kind or (kind == 'image' and j.get('kind') == 'image-upscale'))
             and (not query or query in (j.get('request', {}).get('prompt', '') + ' ' + j.get('request', {}).get('model_id', '')
                  + ' ' + titles.get(j.get('request', {}).get('model_id', ''), '')).casefold())]
     jobs.sort(key=lambda j: j['created_at'], reverse=True)
@@ -2091,7 +2155,7 @@ def history(kind: str = 'image'):
     for path in JOBS_DIR.glob('*/status.json'):
         try:
             job = read_json(path)
-            if job.get('status') == 'succeeded' and job.get('kind','image') == kind:
+            if job.get('status') == 'succeeded' and (job.get('kind','image') == kind or (kind == 'image' and job.get('kind') == 'image-upscale')):
                 jobs.append(public_job(job))
         except (ValueError, OSError):
             pass
@@ -2100,7 +2164,7 @@ def history(kind: str = 'image'):
 @app.get('/api/jobs/{job_id}/image')
 def result(job_id: str, download: bool = False):
     job = read_job(job_id)
-    if job.get('kind','image') != 'image' or job['status'] != 'succeeded' or not Path(job.get('output_path', '')).is_file():
+    if job.get('kind','image') not in IMAGE_KINDS or job['status'] != 'succeeded' or not Path(job.get('output_path', '')).is_file():
         raise HTTPException(404, 'Saved image not found.')
     path = Path(job['output_path'])
     return FileResponse(path, media_type='image/png', filename=path.name if download else None, headers=RESULT_CACHE)
@@ -2111,7 +2175,7 @@ def display_image(job_id: str):
     """A bounded, alpha-preserving viewing copy. /image remains the original PNG."""
     job = read_job(job_id)
     source = Path(job.get('output_path', ''))
-    if job.get('kind', 'image') != 'image' or job['status'] != 'succeeded' or not source.is_file():
+    if job.get('kind', 'image') not in IMAGE_KINDS or job['status'] != 'succeeded' or not source.is_file():
         raise HTTPException(404, 'Saved image not found.')
     directory = JOBS_DIR / job_id
     cached = directory / 'display-v1.webp'
@@ -2197,7 +2261,7 @@ def metadata(job_id: str):
 def reuse(job_id: str):
     job = read_job(job_id)
     path = Path(job.get('output_path', ''))
-    if job.get('kind','image') != 'image' or job['status'] != 'succeeded' or not path.is_file():
+    if job.get('kind','image') not in IMAGE_KINDS or job['status'] != 'succeeded' or not path.is_file():
         raise HTTPException(404, 'Saved image not found.')
     with Image.open(path) as picture:
         return save_upload(picture.convert('RGBA'), path.name)

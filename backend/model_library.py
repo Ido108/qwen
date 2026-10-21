@@ -24,7 +24,7 @@ SEGMENTS = {'diffusion_models': 'diffusion_models', 'unet': 'diffusion_models', 
             'checkpoints': 'checkpoints'}
 KINDS = {'image': 'diffusion_models', 'video': 'diffusion_models', 'reference-video': 'diffusion_models', 'multi-reference': 'diffusion_models',
          'training-base': 'diffusion_models', 'encoder': 'text_encoders', 'vae': 'vae', 'image-lora': 'loras', 'video-lora': 'loras',
-         'reference-lora': 'loras', 'upscale': 'upscale_models', 'upscale-support': 'upscale_models', 'enhancer': 'diffusers', 'diffusers': 'diffusers'}
+         'reference-lora': 'loras', 'upscale': 'upscale_models', 'upscale-support': 'upscale_models', 'image-upscale': 'upscale_models', 'enhancer': 'diffusers', 'diffusers': 'diffusers'}
 # Folder names that only repeat the type ('civitai/loras', 'video/Comfy-Org-MiniMax-H3', 'upscale/SeedVR2').
 GENERIC = {'video', 'upscale', 'civitai', 'loras', 'models', 'vae'}
 # Upscalers load their companion files by name from one folder (SeedVR2 --model_dir, the FlashVSR folder): keep each folder together.

@@ -45,12 +45,18 @@ BASE_REPOS = {
 }
 RELATIONS = {'LORA': ('adapter',), 'Checkpoint': ('finetune', 'quantized', 'merge')}
 # Edit and identity adapters that need their own conditioning nodes. Their keys look like an ordinary
-# LoRA, but loaded as one they do not do their job.
-SPECIAL_REPOS = {'conradlocke/krea2-identity-edit', 'yijunwang2/krea2-reid', 'aliveai/krea-2-edit-outfit-transfer'}
+# LoRA, but loaded as one they do not do their job. Files of these repos that the app runs through its own
+# tools (same sha256 as a built-in catalog entry) are shown as built in, not as unsupported.
+OSTRIS_PROBLEM = 'This LoRA needs the ComfyUI-Krea2-Ostris-Edit nodes, which this app does not include.'
+SPECIAL_REPOS = {'yijunwang2/krea2-reid': OSTRIS_PROBLEM, 'yijunwang2/krea2-anypaint': OSTRIS_PROBLEM, 'yijunwang2/krea2-outpaint': OSTRIS_PROBLEM,
+                 'cierpliwy/krea2-inpaint-edit': OSTRIS_PROBLEM, 'cierpliwy/krea2_lineart_edit': OSTRIS_PROBLEM, 'siraxe/krea2_to_selfie_edit': OSTRIS_PROBLEM}
 SPECIAL_TEXT = re.compile(r'comfyui-krea2edit|krea2ostrisedit|krea2edit|both nodes are required|requires? (?:the |these |our )?(?:custom )?nodes?\b'
                           r'|custom nodes? (?:are |is )?required|reference latent mode|ref(?:erence)?[ _-]?boost', re.I)
-SPECIAL_PROBLEM = 'Needs its own edit mode, not supported yet.'
-VIDEO_MODEL_PROBLEM = 'Video models from this source are not supported yet. Video LoRAs are.'
+KREA2EDIT_TEXT = re.compile(r'comfyui-krea2edit|Krea2Edit(?:ModelPatch|GroundedEncode)', re.I)
+OSTRIS_TEXT = re.compile(r'krea2[-_ ]?ostris[-_ ]?edit', re.I)
+IC_LORA = re.compile(r'(^|[^a-z])ic[-_ ]?lora', re.I)
+IC_LORA_PROBLEM = 'IC-LoRAs need a guide video or image that only their own workflow sends. The app runs only the MSR V2 IC-LoRA (Video > Multi reference).'
+GATED_PROBLEM = 'This repo is gated: accept its terms on Hugging Face with the account of your token, then open it again.'
 _cache: dict = {}
 _lock = threading.RLock()
 
@@ -215,12 +221,57 @@ def _source(name: str):
 
 def _base(bases: list[str]) -> tuple[str, str, bool | None] | None:
     """The first declared base this app runs: (repo, Civitai base name, Turbo)."""
+    found = _bases(bases)
+    return found[0] if found else None
+
+
+def _bases(bases: list[str]) -> list[tuple[str, str, bool | None]]:
+    """Every declared base this app runs, one per architecture, in the declared order. A repo such as
+    BFS-Best-Face-Swap holds Qwen-Image-2.1 and Krea 2 files on one page."""
     lowered = {repo.lower(): repo for repo in BASE_REPOS}
+    found, archs = [], set()
     for base in bases:
         repo = lowered.get(str(base).strip().lower())
-        if repo:
-            return (repo, *BASE_REPOS[repo])
-    return None
+        arch = civitai.BASE_MODELS[BASE_REPOS[repo][0]]['arch'] if repo else None
+        if repo and arch not in archs:
+            archs.add(arch)
+            found.append((repo, *BASE_REPOS[repo]))
+    return found
+
+
+def app_files() -> dict[str, dict]:
+    """sha256 -> the built-in catalog entry with that exact file and where the app uses it."""
+    from . import models
+    items = json.loads(models.CATALOG_PATH.read_text(encoding='utf-8'))
+    if models.EXTENSION_CATALOG_PATH.is_file():
+        items += json.loads(models.EXTENSION_CATALOG_PATH.read_text(encoding='utf-8'))
+    tools = {}
+    for tool in json.loads(models.TOOLS_PATH.read_text(encoding='utf-8')):
+        tools.setdefault(tool['lora'], f"Images > {'Swap' if tool.get('swap') else 'Tool'} > {tool['title']}")
+    special = {models.KREA_IDENTITY_LORA: 'Images > Krea 2 with input photos > Keep the person',
+               models.KREA_STYLE_LORA: 'Images > Krea 2 with input photos > Use as style reference'}
+    found = {}
+    for item in items:
+        kind = item.get('kind')
+        where = (special.get(item['id']) or tools.get(item['id'])
+                 or (f"Images > Model > {item['title']}" if kind == 'image' else
+                     f"Video > Model > {item['title']}" if kind in ('video', 'reference-video', 'multi-reference') else
+                     f"Images > LoRAs > {item['title']}" if kind == 'image-lora' else
+                     f"Video > LoRAs > {item['title']}" if kind == 'video-lora' else
+                     f"Used automatically: {item['title']}"))
+        for file in item.get('files', []):
+            if file.get('sha256'):
+                found[file['sha256'].lower()] = {'id': item['id'], 'title': item['title'], 'path': file['path'], 'where': where}
+    return found
+
+
+def _catalog_repos() -> set[str]:
+    """Lower-case Hugging Face repos with at least one file in the built-in catalog."""
+    from . import models
+    items = json.loads(models.CATALOG_PATH.read_text(encoding='utf-8'))
+    if models.EXTENSION_CATALOG_PATH.is_file():
+        items += json.loads(models.EXTENSION_CATALOG_PATH.read_text(encoding='utf-8'))
+    return {item['repo'].lower() for item in items if item.get('repo') and '/' in item['repo']}
 
 
 def _wanted(area: str, arch: str, variant: str, kind: str) -> list[str]:
@@ -239,16 +290,19 @@ def _installed(source: str) -> set[str]:
     return {item['hub']['repo'] for item in civitai.user_catalog() if (item.get('hub') or {}).get('source') == source}
 
 
-def _summary(item: dict, kind: str, installed: set[str]) -> dict | None:
+def _summary(item: dict, kind: str, installed: set[str], built_in: set[str] | None = None) -> dict | None:
     base = _base(item['bases'])
     if not base:
         return None
     _, label, turbo = base
-    special = item['repo'].lower() in SPECIAL_REPOS
+    # One plain sentence on the card: why it cannot be added, or that the app already runs files from this repo.
+    problem = SPECIAL_REPOS.get(item['repo'].lower())
+    in_app = item['repo'].lower() in (built_in if built_in is not None else _catalog_repos())
     return {'id': item['repo'], 'name': item['name'], 'type': kind, 'creator': item['creator'], 'downloads': item['downloads'],
             'likes': item['likes'], 'preview': {'url': item['preview'], 'type': 'video' if (item['preview'] or '').endswith('.mp4') else 'image', 'nsfw_level': 1} if item['preview'] else None,
             'versions': [{'id': 1, 'name': 'Latest', 'base_model': label, 'variant': 'unknown' if turbo is None else 'turbo' if turbo else 'standard'}],
-            'installed': item['repo'] in installed, 'special': special}
+            'installed': item['repo'] in installed, 'problem': problem,
+            'note': None if problem else 'Built into the app (files from this repo)' if in_app else None}
 
 
 def search(source: str, query: str = '', kind: str = 'LORA', sort: str = 'Most Downloaded', cursor: str | None = None,
@@ -258,7 +312,8 @@ def search(source: str, query: str = '', kind: str = 'LORA', sort: str = 'Most D
         return {'items': [], 'total': 0, 'next': None, 'indexing': False}
     items, following, total = _source(source).listing(bases, kind, sort, query.strip(), cursor)
     installed = _installed(source)
-    cards = [card for card in (_summary(item, kind, installed) for item in items) if card]
+    built_in = _catalog_repos() if source == 'huggingface' else set()
+    cards = [card for card in (_summary(item, kind, installed, built_in) for item in items) if card]
     if kind == 'Checkpoint' and variant != 'all':
         cards = [card for card in cards if card['versions'][0]['variant'] == variant]
     return {'items': cards, 'total': total, 'next': following, 'indexing': False}
@@ -318,39 +373,89 @@ def _special(card: dict) -> bool:
     return card['repo'].lower() in SPECIAL_REPOS or bool(SPECIAL_TEXT.search(card.get('text') or ''))
 
 
+def _special_reason(card: dict, used: list[dict], name: str = '') -> str:
+    """One plain sentence: why this edit LoRA cannot be added as an ordinary LoRA."""
+    known = SPECIAL_REPOS.get(card['repo'].lower())
+    if known:
+        return known
+    if used:
+        # The built-in file closest to this one by name (an identity file points to the identity LoRA, not the general one).
+        shared = lambda other: len(os.path.commonprefix([other['path'].rsplit('/', 1)[-1], name.rsplit('/', 1)[-1]]))
+        closest = max(used, key=shared)
+        return (f"This file needs its own edit nodes, so it cannot be added as a plain LoRA; the app already runs "
+                f"{closest['path']} from this repo in {closest['where']}.")
+    text = card.get('text') or ''
+    if KREA2EDIT_TEXT.search(text):
+        return 'This LoRA needs the Krea 2 edit nodes, which the app uses only for the edit tools in its Tool menu, so it cannot be added as a plain LoRA.'
+    if OSTRIS_TEXT.search(text):
+        return OSTRIS_PROBLEM
+    return 'This LoRA needs custom ComfyUI nodes named on its page, which this app does not include.'
+
+
+def _video_fields(arch: str, card: dict, name: str, text: str) -> dict:
+    """Family, modes and settings of a MiniMax H3 or LTX 2.5 model file, as civitai.install sets them,
+    or the exact reason the app cannot choose its settings."""
+    from . import models
+    from .civitai_settings import h3_capabilities, h3_defaults, ltx_defaults
+    file = {'name': name.rsplit('/', 1)[-1]}
+    model = {'name': card['name'], 'description': text, 'type': 'Checkpoint', 'modelVersions': []}
+    version = {'name': '', 'description': '', 'baseModel': 'MiniMax H3' if arch == 'minimax-h3' else 'LTXV 2.5', 'files': [file], 'images': []}
+    if arch == 'minimax-h3':
+        ref2va, modes = h3_capabilities(model, version, file)
+        template = models.entry('h3-ref-base-int8' if ref2va else 'h3-int8')
+        return {'family': template['family'], 'modes': modes, 'generation_defaults': h3_defaults(model, version, template, card['url'], file)}
+    from .civitai_settings import version_settings
+    problem = civitai.ltx_problem(model, version, version_settings(model, version, file), text, file)
+    if problem:
+        return {'supported': False, 'problem': problem.replace('This version', 'This file')}
+    variant = civitai.ltx_variant(card['name'], '', {}, text, file)
+    return {'family': 'ltx25', 'modes': ['text', 'image'], 'ltx_variant': variant, 'generation_defaults': ltx_defaults(model, version, card['url'], file)}
+
+
 def details(source: str, repo: str) -> dict:
     """One repo in the shape the Civitai details dialog shows: one version (the latest revision) whose
     files are the weight files with a matching header."""
     adapter = _source(source)
     card = _cached(('card', source, repo), 300, lambda: adapter.card(repo))
-    base = _base(card['bases'])
+    # An official base repo (Comfy-Org/MiniMax-H3, Lightricks/LTX-2.5) is its own base.
+    bases = _bases(card['bases'] + [card['repo']])
     lora_repo = card.get('relation') == 'adapter' or card.get('type') == 'LORA'
     weights = [f for f in card['files'] if re.search(r'\.(safetensors|gguf)$', f['path'], re.I) and not re.search(r'(^|/)(_?archive|checkpoints?)/', f['path'], re.I)]
     weights = weights or [f for f in card['files'] if re.search(r'\.(safetensors|gguf)$', f['path'], re.I)]
     weights = sorted(weights, key=lambda f: (f['path'].count('/'), f['path']))[:40]
     problem, files, label, turbo = None, [], None, None
-    if not base:
+    known = app_files()
+    if not bases:
         problem = f'This repo does not declare a base model that this app runs. Declared: {", ".join(card["bases"]) or "none"}.'
     else:
-        _, label, turbo = base
-        info = civitai.BASE_MODELS[label]
+        _, label, turbo = bases[0]
+        # Each file is matched to the declared base of its own architecture.
+        archs = {civitai.BASE_MODELS[name]['arch']: (name, kind) for _, name, kind in bases}
         with ThreadPoolExecutor(8) as pool:
             checks = list(pool.map(lambda f: _check(adapter, card, f), weights))
         text = civitai._text(card.get('text'))
-        settings = civitai.author_settings(text, arch=info['arch'])
+        special = _special(card)
+        used = [known[f['sha256']] for f in weights if f['sha256'] in known]
+        locked = [check for check in checks if re.search(r'\((?:401|403)\)', check.get('error') or '')]
         for index, (f, check) in enumerate(zip(weights, checks)):
             lora = check.get('kind') == 'lora'
-            if check['arch'] != info['arch']:
+            if check['arch'] not in archs:
                 continue  # a near match (Qwen-Image 1, FLUX.2 Klein) or another component: hidden
+            file_label, base_turbo = archs[check['arch']]
+            info = civitai.BASE_MODELS[file_label]
+            settings = civitai.author_settings(text, arch=info['arch'])
             name = f['path']
             entry = {'id': index + 1, 'name': name, 'type': 'Model', 'bytes': f['bytes'], 'format': 'GGUF' if name.lower().endswith('.gguf') else 'SafeTensor',
-                     'precision': _precision(name), 'primary': False, 'sha256': f['sha256'], 'kind': check['kind'], 'supported': True, 'problem': None}
+                     'precision': _precision(name), 'primary': False, 'sha256': f['sha256'], 'kind': check['kind'], 'supported': True, 'problem': None,
+                     'base_model': file_label, 'in_app': known.get(f['sha256'])}
             if not lora and info['area'] == 'video':
-                entry.update(supported=False, problem=VIDEO_MODEL_PROBLEM)
+                entry.update(_video_fields(info['arch'], card, name, text))
+            if lora and info['arch'] == 'ltx25' and IC_LORA.search(f"{card['repo']} {name}") and not entry['in_app']:
+                entry.update(supported=False, problem=IC_LORA_PROBLEM)
             if not lora and info['area'] == 'image':
                 # The file name first (official repos hold both types), then the declared base, then the page settings.
                 named = civitai.detect_turbo(name.rsplit('/', 1)[-1].replace('_', ' '), {})
-                file_turbo = named if named is not None else turbo if turbo is not None else civitai.detect_turbo('', settings)
+                file_turbo = named if named is not None else base_turbo if base_turbo is not None else civitai.detect_turbo('', settings)
                 if info['arch'] == 'flux3-klein' and check.get('variant'):
                     file_turbo = check['variant'] == 'distilled'
                 # A page about both types (8 steps for Turbo) must not give a Standard file Turbo settings.
@@ -359,13 +464,12 @@ def details(source: str, repo: str) -> dict:
                              family=civitai.moss_family(file_turbo, card['repo'], name) if info['arch'] == 'moss-image' else
                                     info['arch'] + ('-base' if info['arch'] == 'flux3-klein' and file_turbo is False else '-turbo' if info['arch'] != 'flux3-klein' and file_turbo else ''),
                              generation_defaults=_defaults(bool(file_turbo), fit, card['url'], info['arch']))
-            if _special(card):
-                entry.update(supported=False, problem=SPECIAL_PROBLEM)
+            if special and not entry['in_app']:
+                entry.update(supported=False, problem=_special_reason(card, used, name))
             files.append(entry)
         if not files:
-            problem = f'No file in this repo matches {civitai.BASE_MODELS[label]["arch"]} by its tensor shapes.' if weights else 'This repo has no safetensors or GGUF weights.'
-        elif _special(card):
-            problem = SPECIAL_PROBLEM
+            problem = (GATED_PROBLEM if locked else
+                       f'No file in this repo matches {civitai.BASE_MODELS[label]["arch"]} by its tensor shapes.' if weights else 'This repo has no safetensors or GGUF weights.')
         # A declared adapter is a LoRA repo; otherwise model files win (official repos also carry helper LoRAs).
         lora_repo = lora_repo or not any(f['kind'] == 'model' for f in files)
     kind = 'LORA' if lora_repo else 'Checkpoint'
@@ -375,6 +479,8 @@ def details(source: str, repo: str) -> dict:
         if same:
             f['installed_as'] = same['id']  # the same file from another source or repo: not downloaded twice
     usable = [f for f in files if f['supported']]
+    if files and not usable:
+        problem = next(f['problem'] for f in files if f['problem'])  # the files' own reason, never a generic one
     by_size = sorted(usable, key=lambda f: (civitai.CHECKPOINT_ORDER.get(f['precision'].lower(), 8) if kind == 'Checkpoint' else 0, -f['bytes'] if kind == 'Checkpoint' else f['name'].count('/')))
     if by_size:
         by_size[0]['primary'] = True
@@ -474,6 +580,8 @@ def selected_file(source: str, repo: str, path: str) -> dict:
         raise ValueError(version['problem'] or 'This file does not match an architecture that this app runs.')
     if not file['supported']:
         raise ValueError(file['problem'])
+    if file.get('in_app'):
+        raise ValueError(f"This file is already built into the app: {file['in_app']['where']}. It downloads when you first use it.")
     return {'model': model, 'version': version, 'file': file}
 
 
@@ -487,7 +595,7 @@ def install(source: str, repo: str, path: str, turbo: bool, progress) -> dict:
     if same:
         return same
     card = _cached(('card', source, repo), 300, lambda: adapter.card(repo))
-    label = version['base_model']
+    label = file.get('base_model') or version['base_model']  # a repo can hold files for two architectures
     info = civitai.BASE_MODELS[label]
     lora = file['kind'] == 'lora'
     new_id = entry_id(source, repo, path, lora)
@@ -495,7 +603,7 @@ def install(source: str, repo: str, path: str, turbo: bool, progress) -> dict:
     if '..' in Path(path).parts or Path(path).is_absolute():
         raise ValueError('Invalid file path in this repo.')
     # The same place a Civitai file goes: the shared model library when its drive has room, else the data folder.
-    kind = ('video-lora' if info['area'] == 'video' else 'image-lora') if lora else 'image'
+    kind = ('video-lora' if info['area'] == 'video' else 'image-lora') if lora else 'video' if info['area'] == 'video' else 'image'
     target = models.download_target({'directory': directory, 'kind': kind}, {'path': path, 'bytes': file['bytes']})
     target.parent.mkdir(parents=True, exist_ok=True)
     download(adapter.file_url(repo, card['revision'], path), target, file['bytes'], file['sha256'], adapter.headers(), progress, adapter.name)
@@ -547,6 +655,19 @@ def _entry_fields(arch: str, lora: bool, turbo: bool, gguf: bool, file: dict, ca
         families = {'flux3-klein': ['flux3-klein', 'flux3-klein-base'], 'krea-2': list(civitai.KREA2_FAMILIES), 'z-image': list(civitai.ZIMAGE_FAMILIES),
                     'moss-image': list(civitai.MOSS_FAMILIES)}
         return {'kind': 'image-lora', 'format': 'LoRA', 'families': families.get(arch, ['qwen-image-2.1', 'qwen-image-2.1-turbo'])}
+    if arch == 'minimax-h3':
+        # The same entry civitai.install writes: the built-in FL2VA or Ref2VA entry's encoder, VAEs and engine.
+        from . import models
+        template = models.entry('h3-ref-base-int8' if file.get('family') == 'minimax-h3-ref2va' else 'h3-int8')
+        return {'kind': template['kind'], 'family': template['family'], 'format': precision, 'dependencies': list(template['dependencies']),
+                'generation_defaults': file['generation_defaults'], 'settings_version': civitai.SETTINGS_VERSION, **({'modes': file['modes']} if file.get('modes') else {})}
+    if arch == 'ltx25':
+        # Dev files need the official distillation LoRA; distilled files must not get it twice.
+        dev = file.get('ltx_variant') == 'dev'
+        defaults = file['generation_defaults']
+        return {'kind': 'video', 'family': 'ltx25', 'modes': ['text', 'image'], 'format': precision, 'generation_defaults': defaults,
+                'dependencies': ['ltx25-gemma-int8', 'ltx25-video-vae', 'ltx25-audio-vae', *(['ltx25-distill-lora'] if dev else [])],
+                'settings_version': civitai.SETTINGS_VERSION, **({'distill_lora_strength': defaults['distill_lora_strength']} if dev else {})}
     settings = file.get('author_settings') or {}
     defaults = file.get('generation_defaults') or _defaults(turbo, settings, card['url'], arch)
     common = {'kind': 'image', 'format': precision, 'generation_defaults': defaults, 'settings_version': civitai.SETTINGS_VERSION}

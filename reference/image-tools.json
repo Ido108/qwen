@@ -447,5 +447,363 @@
       "budget",
       590000
     ]
+  },
+  {
+    "id": "angles-qma",
+    "title": "New camera angle (QMA)",
+    "summary": "Show the same subject and scene from another side, height or distance. Directions are relative to the original camera. Adds low angle and close, medium or wide shots.",
+    "lora": "lora-qma-angles",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Subject"
+      ]
+    },
+    "fields": [
+      {
+        "key": "azimuth",
+        "label": "Side",
+        "options": [
+          {
+            "value": "front view",
+            "label": "Front"
+          },
+          {
+            "value": "front-right quarter view",
+            "label": "Front-right quarter"
+          },
+          {
+            "value": "right side view",
+            "label": "Right side"
+          },
+          {
+            "value": "back-right quarter view",
+            "label": "Back-right quarter"
+          },
+          {
+            "value": "back view",
+            "label": "Back"
+          },
+          {
+            "value": "back-left quarter view",
+            "label": "Back-left quarter"
+          },
+          {
+            "value": "left side view",
+            "label": "Left side"
+          },
+          {
+            "value": "front-left quarter view",
+            "label": "Front-left quarter"
+          }
+        ],
+        "default": "front-right quarter view"
+      },
+      {
+        "key": "elevation",
+        "label": "Height",
+        "options": [
+          {
+            "value": "low-angle shot",
+            "label": "Low angle"
+          },
+          {
+            "value": "eye-level shot",
+            "label": "Eye level"
+          },
+          {
+            "value": "elevated shot",
+            "label": "Elevated"
+          },
+          {
+            "value": "high-angle shot",
+            "label": "High angle"
+          }
+        ],
+        "default": "eye-level shot"
+      },
+      {
+        "key": "distance",
+        "label": "Distance",
+        "options": [
+          {
+            "value": "close-up",
+            "label": "Close-up"
+          },
+          {
+            "value": "medium shot",
+            "label": "Medium shot"
+          },
+          {
+            "value": "wide shot",
+            "label": "Wide shot"
+          }
+        ],
+        "default": "medium shot"
+      }
+    ],
+    "prompt": "<qma> {azimuth} {elevation} {distance}",
+    "reference_resolution": 1024,
+    "source": "https://huggingface.co/gribbliest/qwen-image-2.1-qma-camera-angles"
+  },
+  {
+    "id": "move-object",
+    "title": "Move object (experimental)",
+    "summary": "Draw two boxes: one around the object, one where it should go. Experimental: results vary.",
+    "lora": "lora-object-mover",
+    "strength": 1.0,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Image"
+      ]
+    },
+    "needs_box": true,
+    "fields": [],
+    "prompt": "Move the object highlighted in the red box to the location indicated by the other red box in the scene.",
+    "reference_resolution": 1024,
+    "source": "https://huggingface.co/prithivMLmods/Qwen-Image-2.1-Object-Mover-Bbox-turbo"
+  },
+  {
+    "id": "illustration-swap",
+    "title": "Illustration character swap",
+    "summary": "Replace a person in a 2D illustration with the character from picture 2, redrawn in the illustration's own art style. Pose, expression and background stay. Non-commercial use only.",
+    "lora": "lora-illustration-swap",
+    "strength": 0.8,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 2,
+      "max": 2,
+      "labels": [
+        "Illustration",
+        "Character"
+      ]
+    },
+    "fields": [
+      {
+        "key": "who",
+        "label": "Person to replace",
+        "options": [
+          {
+            "value": "the person",
+            "label": "The only person"
+          },
+          {
+            "value": "the leftmost person",
+            "label": "Leftmost person"
+          },
+          {
+            "value": "the rightmost person",
+            "label": "Rightmost person"
+          },
+          {
+            "value": "the person in the middle",
+            "label": "Person in the middle"
+          }
+        ],
+        "default": "the person"
+      }
+    ],
+    "prompt": "In <image1>, replace {who} with the person from <image2>. Keep the pose, facial expression, composition, background, and art style of <image1>. The new person should have the face, hairstyle, hair color, eyes, and outfit design of the person in <image2>, while the pose and the state of the clothing follow <image1>. Do not use the art style of <image2>; draw the new person in the art style of <image1>. Leave everyone else in <image1> unchanged.",
+    "reference_resolution": 0,
+    "source": "https://huggingface.co/Kohei-Yamashita/swap-illustration-lora"
+  },
+  {
+    "id": "next-scene",
+    "title": "Next scene",
+    "summary": "Make the next shot of a film scene from this frame: a camera move, reveal or lighting change in the same world. Best on cinematic scenes and landscapes, not portraits.",
+    "lora": "lora-next-scene",
+    "strength": 0.8,
+    "families": [
+      "qwen-image-2.1",
+      "qwen-image-2.1-turbo"
+    ],
+    "tested_on": [
+      "qwen-image-2.1"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Frame"
+      ]
+    },
+    "fields": [
+      {
+        "key": "shot",
+        "label": "Camera direction first, then the change",
+        "placeholder": "The camera pulls back to a wide shot, revealing the valley at dusk",
+        "default": "The camera pulls back to a wide shot, revealing more of the scene"
+      }
+    ],
+    "prompt": "Next Scene: {shot}",
+    "reference_resolution": 1024,
+    "source": "https://huggingface.co/akhaliq/Qwen-Image-2.1-Next-Scene-LoRA"
+  },
+  {
+    "id": "krea-general-edit",
+    "title": "Edit with instructions (Krea 2)",
+    "summary": "Change one picture from a plain instruction in the prompt: remove, recolor, relight, swap the background, add objects, change text or outfits, restyle. What you do not mention stays.",
+    "lora": "krea2-lora-general-edit",
+    "strength": 1.0,
+    "families": [
+      "krea-2-turbo"
+    ],
+    "tested_on": [
+      "krea-2-turbo"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Image"
+      ]
+    },
+    "fields": [],
+    "prompt": "",
+    "reference_resolution": 0,
+    "krea_edit": {
+      "ref_boost": 4.0,
+      "ref_boost_a": 1.0,
+      "ref_position": "aligned (trained)",
+      "ref_position_a": "aligned (trained)",
+      "grounding_px": 768
+    },
+    "source": "https://huggingface.co/conradlocke/krea2-identity-edit"
+  },
+  {
+    "id": "krea-head-swap",
+    "title": "Head swap (Krea 2)",
+    "summary": "Replace the head in picture 1 with the head from picture 2 (BFS for Krea 2). Body, pose and background come from picture 1.",
+    "lora": "krea2-lora-bfs-head",
+    "strength": 1.0,
+    "families": [
+      "krea-2-turbo"
+    ],
+    "tested_on": [
+      "krea-2-turbo"
+    ],
+    "inputs": {
+      "min": 2,
+      "max": 2,
+      "labels": [
+        "Scene",
+        "Head"
+      ]
+    },
+    "fields": [],
+    "prompt": "head_swap: replace the head with the reference head.",
+    "reference_resolution": 0,
+    "fit_inputs": [
+      1048576,
+      1048576
+    ],
+    "krea_edit": {
+      "ref_boost": 1.0,
+      "ref_boost_a": 1.0,
+      "ref_position": "aligned (trained)",
+      "ref_position_a": "aligned (trained)",
+      "grounding_px": 512
+    },
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md"
+  },
+  {
+    "id": "krea-body-swap",
+    "title": "Body swap (Krea 2, experimental)",
+    "summary": "Replace the person in picture 1 with the person from picture 2 (BFS for Krea 2). Exact pose transfer is not guaranteed. Add \"BG: a new background\" to the prompt to change the background.",
+    "lora": "krea2-lora-bfs-body",
+    "strength": 1.0,
+    "families": [
+      "krea-2-turbo"
+    ],
+    "tested_on": [
+      "krea-2-turbo"
+    ],
+    "inputs": {
+      "min": 2,
+      "max": 2,
+      "labels": [
+        "Scene",
+        "Person"
+      ]
+    },
+    "fields": [],
+    "prompt": "body_swap: replace the person with the reference person.",
+    "reference_resolution": 0,
+    "fit_inputs": [
+      1048576,
+      1048576
+    ],
+    "steps": 10,
+    "krea_edit": {
+      "ref_boost": 1.0,
+      "ref_boost_a": 1.0,
+      "ref_position": "aligned (trained)",
+      "ref_position_a": "aligned (trained)",
+      "grounding_px": 0
+    },
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md"
+  },
+  {
+    "id": "krea-outfit-transfer",
+    "title": "Outfit from a photo (Krea 2)",
+    "summary": "Make a new picture of a person wearing the outfit in the photo. Use a clean front (and back) picture of the outfit. Trained mostly on women's outfits.",
+    "lora": "krea2-lora-outfit-transfer",
+    "strength": 1.0,
+    "families": [
+      "krea-2-turbo"
+    ],
+    "tested_on": [
+      "krea-2-turbo"
+    ],
+    "inputs": {
+      "min": 1,
+      "max": 1,
+      "labels": [
+        "Outfit"
+      ]
+    },
+    "fields": [
+      {
+        "key": "person",
+        "label": "Person and scene",
+        "placeholder": "a woman sitting on a park bench, full body",
+        "default": "a woman standing on a city street, full body"
+      }
+    ],
+    "prompt": "{person}, transfer the outfit",
+    "reference_resolution": 1024,
+    "krea_edit": {
+      "ref_boost": 1.0,
+      "ref_boost_a": 1.0,
+      "ref_position": "aligned (trained)",
+      "ref_position_a": "aligned (trained)",
+      "grounding_px": 768
+    },
+    "source": "https://huggingface.co/AliveAi/Krea-2-Edit-Outfit-Transfer"
   }
 ]

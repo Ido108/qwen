@@ -7,7 +7,7 @@ import type {Api} from './ModelSettings';
 export type SavedJob={id:string;kind?:string;status:string;stage:string;message:string;request:Record<string,any>;seed:number;created_at:number;started_at?:number;finished_at?:number;elapsed_seconds?:number;stage_seconds?:Record<string,number>;step:number;total_steps:number;position?:number;width?:number;height?:number;frames?:number;duration_seconds?:number;image_url?:string;video_url?:string;poster_url?:string;rewritten_prompt?:string;actual_prompt?:string;[key:string]:any};
 export type QueueState={paused:boolean;active:SavedJob|null;pending:SavedJob[];recent:SavedJob[]};
 export const isVideoJob=(job:SavedJob)=>['video','reference-video','multi-reference','upscale'].includes(job.kind||'');
-export const jobKindLabel=(job:SavedJob)=>job.kind==='reference-video'?(job.request.workflow==='crossview'?'Camera view':'Video to video'):job.kind==='multi-reference'?'Reference images':job.kind==='upscale'?'Upscale':job.kind==='video'?(job.request.workflow==='orbit'?'360 Orbit':'Video'):job.kind==='training'?'LoRA training':job.kind==='captioning'?'Training captions':'Image';
+export const jobKindLabel=(job:SavedJob)=>job.kind==='reference-video'?(job.request.workflow==='crossview'?'Camera view':'Video to video'):job.kind==='multi-reference'?'Reference images':job.kind==='upscale'?'Upscale':job.kind==='image-upscale'?'Image upscale':job.kind==='video'?(job.request.workflow==='orbit'?'360 Orbit':'Video'):job.kind==='training'?'LoRA training':job.kind==='captioning'?'Training captions':'Image';
 export function useQueue(api:Api,enabled:boolean){
   const [state,setState]=useState<QueueState>({paused:false,active:null,pending:[],recent:[]});
   const [error,setError]=useState('');
@@ -31,7 +31,7 @@ export function JobQueue({api,state,error,refresh,open,onOpen,onRestore,onView,m
   const total=state.pending.length+(state.active?1:0);
   useEffect(()=>{if(open&&!dialog.current?.open)dialog.current?.showModal();else if(!open)dialog.current?.close();},[open]);
   async function action(path:string|string[],body?:unknown){const paths=Array.isArray(path)?path:[path];setActing(paths[0]||'queue');setActionError('');try{for(const item of paths)await api(item,{method:'POST',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});}catch(e){setActionError((e as Error).message);}finally{await refresh();setActing('');}}
-  function row(job:SavedJob,waiting=false){const active=job.id===state.active?.id;const done=job.status==='succeeded';const thumb=thumbnail(job);const prompt=job.request.prompt||job.request.source_video||'';
+  function row(job:SavedJob,waiting=false){const active=job.id===state.active?.id;const done=job.status==='succeeded';const thumb=thumbnail(job);const prompt=job.request.prompt||job.request.source_video||(job.kind==='image-upscale'&&job.source_width?`${job.source_width} × ${job.source_height} to ${job.width} × ${job.height}`:'');
     const status=waiting?`Waiting · #${job.position}`:active?(job.status==='succeeded'?'Finishing':`${stageLabel(job)}${stepLabel(job)?' · '+stepLabel(job):''}`):done?'Completed':job.status==='cancelled'?'Cancelled':'Failed';
     return <article className={`queue-job ${active?'current':''} ${job.status==='failed'?'failed':''}`} key={job.id} data-job-id={job.id}>
     <button type="button" className="queue-thumb checker" disabled={!done} title={done?'Open the result':undefined} aria-label={done?`Open the result: ${prompt}`:`${jobKindLabel(job)} preview`} onClick={()=>{onView(job);onOpen(false);}}>

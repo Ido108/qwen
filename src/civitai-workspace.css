@@ -43,6 +43,7 @@ dialog.civitai-details[open]{display:flex;flex-direction:column;width:min(1100px
 .civitai-file-name{font-size:11px;color:#625874;overflow-wrap:anywhere}
 .civitai-file-state{display:flex;align-items:center;gap:5px;font-size:11px;color:#5b43bc}
 .civitai-file-problem{font-size:11px;color:#a25124!important}
+.civitai-in-app{font-size:11px;color:#2f6b3f!important;overflow-wrap:anywhere}
 .civitai-file>progress{position:absolute;bottom:0;left:0;width:100%;height:3px;margin:0;border:0;accent-color:#7258e8}
 .civitai-progress>b{display:block;font-size:11px;font-weight:500;overflow-wrap:anywhere;margin-bottom:4px}
 .civitai-details-footer{flex:none;padding:12px 18px;border-top:1px solid var(--line);background:#fff;display:grid;gap:8px}

@@ -1,0 +1,92 @@
+.upscale-dialog{width:min(720px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:0;border:1px solid var(--line);border-radius:12px;background:#fff;color:#171a30;box-shadow:0 18px 50px #1a14402e;overflow:auto}
+.upscale-dialog::backdrop{background:#120f2a8c}
+.upscale-dialog>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.upscale-dialog h2{margin:0;font-size:17px;font-weight:600}
+.upscale-close{width:36px;height:36px;border:0;border-radius:8px;background:transparent;color:#3d3a55;font-size:24px;line-height:1;cursor:pointer}
+.upscale-close:hover{background:#f1effa}
+.upscale-dialog-body{display:grid;grid-template-columns:minmax(0,240px) minmax(0,1fr);gap:20px;padding:18px}
+.upscale-dialog-preview{margin:0;display:flex;flex-direction:column;gap:0;border-radius:9px;overflow:hidden;align-self:start}
+.upscale-dialog-preview img{display:block;width:100%;max-height:260px;object-fit:contain}
+.upscale-dialog-preview figcaption{padding:4px 8px 6px;background:#fff;font-size:12px;color:#4f5670}
+.upscale-dialog-form{display:flex;flex-direction:column;gap:14px;min-width:0}
+.upscale-choice{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.upscale-choice button{min-height:40px;border:0;border-left:1px solid var(--line);background:#fff;color:#2c2946;font:inherit;font-size:14px;font-weight:550;cursor:pointer}
+.upscale-choice button:first-child{border-left:0}
+.upscale-choice button[aria-pressed=true]{background:var(--accent);color:#fff}
+.upscale-choice button:disabled{cursor:default}
+.upscale-choice button:disabled:not([aria-pressed=true]){color:#8b8aa0}
+.upscale-long,.upscale-field{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:550;color:#2c2946}
+.upscale-long input,.upscale-field select{min-height:38px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#171a30;padding:6px 10px;font:inherit;font-weight:400}
+.upscale-long input[aria-invalid=true]{border-color:#bb445a}
+.upscale-long small,.upscale-field small{font-size:12px;font-weight:400;color:#5d6479}
+.upscale-plan{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px;margin:0;padding:12px 14px;border-radius:9px;background:#f4f2fc}
+.upscale-plan dt{font-size:12px;color:#5d6479}
+.upscale-plan dd{margin:2px 0 0;font-size:17px;font-weight:600;color:#171a30;font-variant-numeric:tabular-nums}
+.upscale-plan-arrow{font-size:18px;color:var(--accent)}
+.upscale-problem{margin:0;padding:8px 10px;border-radius:8px;background:#fdf0f2;color:#9d2638;font-size:13px}
+.upscale-queued{margin:0;font-size:13px;color:#2c2946;flex:1}
+.upscale-dialog>footer{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;padding:14px 18px;border-top:1px solid var(--line)}
+.upscale-dialog>footer .upscale-problem{flex-basis:100%}
+.thumb-upscale{display:block;width:100%;min-height:28px;margin-top:4px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--accent);font:inherit;font-size:12px;font-weight:550;cursor:pointer}
+.thumb-upscale:hover:not(:disabled){background:#f4f2fc}
+.thumb-upscale:disabled{color:#8b8aa0;cursor:default}
+.gallery-item-copy>div:has(.gallery-upscale){flex-wrap:wrap;row-gap:2px}
+.gallery-item-copy>div:has(.gallery-upscale)>span,.gallery-item-copy>div>.text-button{white-space:nowrap}
+.input-upscale-status{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#faf9fe;font-size:13px;color:#171a30}
+.input-upscale-status.ready{border-color:#b9acf0;background:#f4f2fc}
+.input-upscale-status img{width:44px;height:44px;object-fit:cover;border-radius:6px}
+.input-upscale-status>div:not(.input-upscale-actions){display:flex;flex-direction:column;gap:2px;flex:1;min-width:150px}
+.input-upscale-status span{color:#4f5670;font-size:12px}
+.input-upscale-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.input-upscale-actions .button{min-height:34px;padding:6px 12px;font-size:12px}
+.input-upscale-status .upscale-problem{flex-basis:100%}
+@media(max-width:640px){
+  .upscale-dialog{width:calc(100vw - 32px);max-height:calc(100dvh - 24px)}
+  .upscale-dialog-body{grid-template-columns:1fr;gap:14px;padding:14px 16px}
+  .upscale-dialog>header{padding:10px 16px}
+  .upscale-dialog-preview img{max-height:180px}
+  .upscale-choice button{min-height:44px}
+  .upscale-long input,.upscale-field select{min-height:44px}
+  .upscale-dialog>footer{padding:12px 16px}
+  .upscale-dialog>footer .button{flex:1;min-height:44px}
+  .thumb-upscale{min-height:36px}
+  .input-upscale-actions{width:100%}
+  .input-upscale-actions .button{flex:1;min-height:44px}
+}
+/* Phone viewer: with Upscale the action row can be wider than the screen; it scrolls from its first button. */
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){dialog.lightbox .preview-topbar .preview-actions{justify-content:safe center}}
+.upscale-field>label{font-weight:550}
+.upscale-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.upscale-field-head label{font-size:13px;font-weight:550;color:#2c2946}
+.upscale-field input[type=number]{min-height:38px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#171a30;padding:6px 10px;font:inherit;font-weight:400}
+.upscale-field input[type=range]{width:100%;accent-color:var(--accent)}
+.upscale-default{min-height:26px;padding:2px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--accent);font:inherit;font-size:11px;font-weight:550;cursor:pointer}
+.upscale-default:disabled{color:#8b8aa0;background:#f6f5fa;cursor:default}
+.upscale-advanced{border:1px solid var(--line);border-radius:9px;background:#fff}
+.upscale-advanced>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:600;color:#2c2946}
+.upscale-advanced>summary span{font-size:12px;font-weight:400;color:#5d6479}
+.upscale-advanced[open]>summary{border-bottom:1px solid var(--line)}
+.upscale-advanced>:not(summary){margin:12px}
+.upscale-advanced .upscale-field+.upscale-field{margin-top:14px}
+.upscale-advanced-note{font-size:12px;color:#4f5670}
+.upscale-progress{display:flex;flex-direction:column;gap:4px;min-width:0}
+.upscale-progress-line{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 10px}
+.upscale-progress-line strong{font-size:13px;font-weight:600;color:#171a30}
+.upscale-progress-line span,.upscale-progress small{font-size:12px;color:#4f5670;font-variant-numeric:tabular-nums}
+.upscale-progress progress{width:100%;height:8px;accent-color:var(--accent)}
+.upscale-footer-progress{flex:1 1 260px;min-width:0}
+.input-upscale-running{display:flex;flex-direction:column;gap:6px;flex:1;min-width:180px}
+.result-upscales{display:flex;flex-direction:column;gap:8px;margin:0 0 10px}
+.result-upscale{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid #b9acf0;border-radius:9px;background:#f4f2fc;color:#171a30}
+.result-upscale img{width:48px;height:48px;object-fit:cover;border-radius:6px;flex:none}
+.result-upscale>div{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.result-upscale>div>strong{font-size:13px}
+@media(max-width:640px){.upscale-default{min-height:36px;padding:4px 10px}.upscale-field input[type=number]{min-height:44px}.upscale-advanced>summary{min-height:44px}}
+.upscale-dialog select:disabled,.upscale-dialog input:disabled{color:#3f4560;background:#f6f5fa;opacity:1;-webkit-text-fill-color:#3f4560}
+.upscale-default:disabled{color:#6b6a80}
+/* The actions and the progress stay visible while the form scrolls (phone, Advanced open). */
+.upscale-dialog>footer{position:sticky;bottom:0;z-index:2;background:#fff}
+.upscale-dialog>header{position:sticky;top:0;z-index:2;background:#fff}
+.upscale-choice button:disabled{opacity:1}
+.upscale-choice button:disabled:not([aria-pressed=true]){color:#5d6479;background:#f6f5fa}
+@media(max-width:640px){.upscale-dialog>footer .upscale-queued{flex-basis:100%}}

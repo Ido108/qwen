@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from .prompt_mentions import ImageLabels
 
 APP_DIR = Path(__file__).resolve().parent.parent
+# NVIDIA's GPU code cache (%APPDATA%/NVIDIA/ComputeCache) was full at its default limit, so every new worker
+# process compiled its GPU code again: 6 to 16 s on the first model call (measured 2026-10-22). Every worker and the
+# prompt rewriter inherit this from the server process.
+os.environ.setdefault('CUDA_CACHE_MAXSIZE', str(4 * 1024**3))
 DATA_DIR = Path(os.environ.get('QWEN_DATA_DIR', str(Path(os.environ.get('SystemDrive', 'C:') + '/AI/qwen-image-studio')) if os.name == 'nt' else str(Path.home() / 'Library/Application Support/Qwen'))).resolve()
 MODELS_DIR = DATA_DIR / 'models'
 # The shared ComfyUI model folder (for example D:\models). scripts/paths.ps1 sets QWEN_MODELS_LIBRARY from local-settings.json

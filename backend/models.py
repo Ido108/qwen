@@ -128,7 +128,8 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0,k
         if images>10:raise ValueError('FLUX.3 supports up to 10 reference images.')
         ids=[model_id,item.get('text_encoder',FLUX3_ENCODERS[0]),vae,'flux3-prompt']
     elif is_krea(item):
-        if tool_id:
+        # Krea 2 tools are edit LoRAs on the Krea 2 edit nodes (krea_edit); Qwen-Image-2.1 tool LoRAs do not load on Krea 2.
+        if tool_id and not image_tool(tool_id).get('krea_edit'):
             raise ValueError(f"{image_tool(tool_id)['title']} is a Qwen-Image-2.1 tool. Krea 2 models cannot use it: choose a Qwen-Image-2.1 model or remove the tool.")
         if images>3:
             raise ValueError('Krea 2 uses input images as style references: add at most 3 images.')
@@ -148,6 +149,8 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0,k
     if tool_id:
         tool=image_tool(tool_id)
         if item.get('family','qwen-image-2.1') not in tool['families']:
+            if tool.get('krea_edit'):
+                raise ValueError(f"{tool['title']} needs a {' or '.join('Krea 2 Turbo' if f.endswith('turbo') else 'Krea 2 Raw' for f in tool['families'])} model.")
             raise ValueError(f"{tool['title']} needs a {' or '.join('Turbo' if f.endswith('turbo') else 'standard' for f in tool['families'])} Qwen-Image-2.1 model.")
         ids.append(tool['lora'])
     for lora_id in loras:
@@ -158,7 +161,7 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0,k
         if item.get('family','qwen-image-2.1') not in lora.get('families',[] if own_architecture(item) else [item.get('family')]):
             raise ValueError(f"{lora['title']} does not work with {item['title']}.")
         ids.append(lora_id)
-    if is_krea(item) and images:
+    if is_krea(item) and images and not tool_id:
         if krea_reference_mode not in KREA_REFERENCE_MODES:
             raise ValueError('Choose identity or style for Krea 2 input images.')
         # identity: conradlocke/krea2-identity-edit keeps the person; style: the official style reference workflow.

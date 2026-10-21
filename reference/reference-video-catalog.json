@@ -2663,5 +2663,27 @@
     "model_group": "FlashVSR 1.1",
     "note": "Streaming restoration with a lightweight decoder. One-step model.",
     "quantization": "FP16"
+  },
+  {
+    "id": "nomos2-hq-mosr",
+    "title": "4xNomos2 HQ MoSR",
+    "kind": "image-upscale",
+    "family": "spandrel",
+    "format": "FP16",
+    "repo": "Phips/4xNomos2_hq_mosr",
+    "revision": "f547232980f4a67ffb08bbf71d47f5d355c72a23",
+    "directory": "upscale/Nomos2",
+    "files": [
+      {
+        "path": "4xNomos2_hq_mosr.safetensors",
+        "bytes": 8593400,
+        "sha256": "f2ddd71b9734c20eb86d9fbbed5635f51b5c58497ed076a64c74854547fde3a7"
+      }
+    ],
+    "bytes": 8593400,
+    "dependencies": [],
+    "scale": 4,
+    "license": "CC-BY-4.0",
+    "note": "Fast 4x image upscaler for clean photos and AI images (Philip Hofmann, MoSR architecture). It sharpens what is there and adds no new content."
   }
 ]

@@ -4,7 +4,7 @@ import type {ModelEntry,ModelState} from './ModelSettings';
 
 export type ImageOptions={negative_prompt?:string;custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
 export type ToolField={key:string;label:string;placeholder?:string;default:string;options?:{value:string;label:string;prompt?:string;strength?:number}[]};
-export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;families:string[];tested_on:string[];swap?:boolean;inputs:{min:number;max:number;labels:string[]};
+export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;steps?:number;families:string[];tested_on:string[];swap?:boolean;inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
 export type ToolState={tool_id:string|null;tool_options:Record<string,string>;lora_strength:number|null};
 
@@ -13,7 +13,9 @@ const presets=[[2688,1536,'16:9'],[1536,2688,'9:16'],[2048,2048,'1:1'],[2368,172
  *  LoRA) is listed with that architecture's Turbo models, never under a Base or Standard heading. */
 const TURBO_GROUP:Record<string,string>={'moss-image-base':'moss-image-turbo','moss-image':'moss-image-turbo','qwen-image-2.1':'qwen-image-2.1-turbo','krea-2':'krea-2-turbo','z-image':'z-image-turbo'};
 export function modelGroup(m:{family?:string;generation_defaults?:{speed_lora?:{id:string}}|null}){const family=m.family||'qwen-image-2.1';return m.generation_defaults?.speed_lora?TURBO_GROUP[family]||family:family;}
-const familyLabel=(family?:string)=>family==='qwen-image-2.1-turbo'?'Turbo':'Standard';
+const familyLabel=(family?:string)=>family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':'Standard';
+/** Why a tool is unavailable for the chosen model: Qwen-Image-2.1 tools on another architecture name the architecture. */
+const toolOnly=(families:string[],family:string)=>families.every(f=>f.startsWith('qwen-image'))&&!family.startsWith('qwen-image')?'Qwen-Image-2.1 model only':`${familyLabel(families[0])} model only`;
 const gb=(bytes:number)=>`${(bytes/1e9).toFixed(1)} GB`;
 // Uncensored Q8_0 GGUF files, and the official INT8 files: native INT8 matmul, the fastest Qwen-Image-2.1 on RTX 40 and 50 GPUs.
 const RECOMMENDED=new Set(['uc-int8-convrot','int8-convrot','turbo-int8-convrot']);
@@ -34,7 +36,8 @@ export function toolDefaults(tool:ImageTool){return Object.fromEntries(tool.fiel
 
 export function ImageSettings({part='main',idPrefix='image',value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled}:{value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
   models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'advanced';idPrefix?:string}){
-  const defaults=model?.generation_defaults;const defaultSteps=defaults?.steps;const turbo=!!defaults?.sigmas;
+  const defaults=model?.generation_defaults;const defaultSteps=tool?.steps??defaults?.steps;  // a tool's own steps win, as on the server
+  const turbo=!!defaults?.sigmas;
   const page=typeof defaults?.note==='string'&&defaults.note.startsWith('From the Civitai page')?defaults:null;
   const pageText=page?`Author settings: ${page.steps} steps${page.cfg?`, CFG ${page.cfg}`:''}${page.sampler?`, ${page.sampler}`:''}${page.scheduler?` / ${page.scheduler}`:''}.`:'';
   const validSteps=value.steps===null||(Number.isInteger(value.steps)&&value.steps>=1&&value.steps<=80);
@@ -90,7 +93,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
     <div className="field"><SettingLabel htmlFor="image-tool" label="Tool" value={'None'} onReset={()=>chooseTool('')}>Tool</SettingLabel>
       <select id="image-tool" value={toolState.tool_id||''} onChange={e=>chooseTool(e.target.value)} title={tool?tool.summary:'Optional add-ons for try-on, restoration, expansion and more.'}>
         <option value="">None · free prompt</option>
-        {tools.map(t=>{const ok=t.families.includes(family);return <option key={t.id} value={t.id} disabled={!ok}>{t.title}{ok?'':` · ${familyLabel(t.families[0])} model only`}</option>;})}
+        {tools.map(t=>{const ok=t.families.includes(family);return <option key={t.id} value={t.id} disabled={!ok}>{t.title}{ok?'':` · ${toolOnly(t.families,family)}`}</option>;})}
       </select>
     </div>
     <div className="field"><SettingLabel htmlFor="image-size" label="Output size" value="Auto · 2K" onReset={()=>setSize('auto-2048')}>Output size</SettingLabel>

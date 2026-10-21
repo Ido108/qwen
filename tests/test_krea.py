@@ -61,6 +61,39 @@ class KreaCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'at most 3'):
             models.required('krea2-turbo-fp8', images=4)
 
+    def test_krea_tools_use_their_own_edit_lora(self):
+        """Krea 2 tools (image-tools.json "krea_edit") replace the identity LoRA with their own LoRA on the same edit nodes."""
+        tools = {tool['id']: tool for tool in models.image_tools() if tool.get('krea_edit')}
+        self.assertEqual(set(tools), {'krea-general-edit', 'krea-head-swap', 'krea-body-swap', 'krea-outfit-transfer'})
+        for tool in tools.values():
+            lora = models.entry(tool['lora'])
+            self.assertEqual(lora['families'], ['krea-2', 'krea-2-turbo'], tool['id'])
+            self.assertTrue(lora['id'].startswith('krea2-lora-'), tool['id'])  # kept out of the LoRA list like the identity LoRA
+            needed = models.required('krea2-turbo-fp8', tool_id=tool['id'], images=tool['inputs']['max'])
+            self.assertEqual(needed, ['krea2-turbo-fp8', 'krea2-encoder-bf16', 'krea2-vae', tool['lora']])
+            with self.assertRaisesRegex(ValueError, 'Krea 2 Turbo model'):
+                models.required('krea2-raw-fp8', tool_id=tool['id'], images=1)
+            with self.assertRaisesRegex(ValueError, 'Krea 2 Turbo model'):
+                models.required('gguf-q8_0', tool_id=tool['id'], images=1)
+        # The BFS workflows: base image first, head or person second; body swap 10 steps.
+        self.assertEqual(tools['krea-head-swap']['inputs']['labels'], ['Scene', 'Head'])
+        self.assertEqual((tools['krea-head-swap']['krea_edit']['grounding_px'], tools['krea-body-swap']['krea_edit']['grounding_px']), (512, 0))
+        self.assertEqual(tools['krea-body-swap']['steps'], 10)
+        self.assertEqual(tools['krea-general-edit']['krea_edit']['ref_boost'], 4.0)
+
+    def test_krea_tool_node_settings(self):
+        from backend import krea_edit
+        tool = next(t for t in models.image_tools() if t['id'] == 'krea-general-edit')
+        self.assertEqual(krea_edit.tool_settings(tool, 1), {'ref_boost': 4.0, 'ref_boost_a': 1.0, 'ref_position': krea_edit.ALIGNED, 'ref_position_a': krea_edit.ALIGNED})
+
+    def test_every_tool_lora_is_pinned(self):
+        for tool in models.image_tools():
+            lora = models.entry(tool['lora'])
+            self.assertRegex(lora['revision'], r'^[0-9a-f]{40}$', tool['id'])
+            for file in lora['files']:
+                self.assertRegex(file['sha256'], r'^[0-9a-f]{64}$', tool['id'])
+                self.assertGreater(file['bytes'], 0, tool['id'])
+
     def test_qwen_tools_and_files_are_refused_for_krea(self):
         tool = models.image_tools()[0]
         with self.assertRaisesRegex(ValueError, 'Qwen-Image-2.1 tool'):

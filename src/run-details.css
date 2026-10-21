@@ -4,8 +4,8 @@
 .run-details-summary .run-model{max-width:min(220px,48%);overflow:hidden;text-overflow:ellipsis}
 .run-loras{display:flex;align-items:baseline;gap:4px 9px;margin:4px 0 0;min-width:0;line-height:1.5}.run-loras dt{flex-shrink:0;color:#645572;font-weight:600}.run-loras dd{min-width:0;margin:0;overflow-wrap:anywhere;color:#645572}
 .run-details.run-details-compact{margin:0;display:flex}
-.run-details-button{border:0;background:transparent;color:#7354ad;font:inherit;cursor:pointer;padding:1px 0;margin-left:auto;text-decoration:underline;text-underline-offset:3px}
-.run-details-button:hover{color:#4f3289}.run-details-button:focus-visible{outline:2px solid #9674e7;outline-offset:4px;border-radius:2px}
+.run-details-button{flex:none;border:1px solid #d3cbe6;border-radius:7px;background:#fff;color:#3b2a63;font:inherit;font-weight:600;cursor:pointer;min-height:26px;padding:0 10px}
+.run-details-button:hover{background:#f3effb;color:#2a1d48}.run-details-button:focus-visible{outline:2px solid #9674e7;outline-offset:4px;border-radius:2px}
 .reference-workbench .reference-viewer>.run-details{grid-column:1/-1;margin-top:5px;font-size:10px}
 .msr-viewer>.run-details{margin:0}.result-panel>.run-details{margin-bottom:4px}
 .run-details-dialog{width:min(470px,calc(100vw - 32px));max-height:85dvh;padding:0;border:1px solid #ddd4e9;border-radius:14px;background:#fff;color:#392c48;box-shadow:0 24px 80px #23133430}

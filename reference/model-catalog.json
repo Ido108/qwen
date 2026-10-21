@@ -4369,5 +4369,194 @@
         "class": "woman"
       }
     ]
+  },
+  {
+    "id": "krea2-lora-general-edit",
+    "title": "Krea 2 General Edit V2 LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "conradlocke/krea2-identity-edit",
+    "revision": "f33b26291c640e8ec50b0da420bfee3c9a660daa",
+    "directory": "conradlocke-krea2-identity-edit",
+    "files": [
+      {
+        "path": "krea2_general_edit_v2_r128.safetensors",
+        "bytes": 914188760,
+        "sha256": "fbca6ab74b9bef3db8de1d4a49b93d4fe7a778f5d4ae6995e0769ea8de736f00"
+      }
+    ],
+    "bytes": 914188760,
+    "dependencies": [],
+    "families": [
+      "krea-2",
+      "krea-2-turbo"
+    ],
+    "default_strength": 1.0,
+    "source": "https://huggingface.co/conradlocke/krea2-identity-edit",
+    "license": "Non-commercial; commercial use needs the author's license (Krea 2 Community License also applies).",
+    "note": "Used by the Krea 2 tool \"Edit with instructions\" with the comfyui-krea2edit node pack. Card settings (General Edit V2): Turbo, 8 steps, CFG 1, ref_boost 4, grounding 768 px. Rank-reduced r128 file: near-identical quality per the card."
+  },
+  {
+    "id": "krea2-lora-bfs-head",
+    "title": "BFS Head Swap V1.1 for Krea 2 LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "Alissonerdx/BFS-Best-Face-Swap",
+    "revision": "0ca3913ade4b4ada458d60c232354e8586c4c181",
+    "directory": "loras/bfs",
+    "files": [
+      {
+        "path": "bfs_head_swap_v1.1_krea2.safetensors",
+        "bytes": 914159816,
+        "sha256": "abc6c468c578b36e6bd960106ad5886afd3f5321e4fe2de26c05bb5c6585b836"
+      }
+    ],
+    "bytes": 914159816,
+    "dependencies": [],
+    "families": [
+      "krea-2",
+      "krea-2-turbo"
+    ],
+    "default_strength": 1.0,
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md",
+    "license": "MIT",
+    "note": "Used by the Krea 2 tool \"Head swap (Krea 2)\". Author workflow (Head Swap Krea 2 - V1 Simple Workflow.json): Turbo, 8 steps, CFG 1, euler / simple, LoRA 1.0, Krea2EditModelPatch ref_boost 1, fit; grounded encode 512 px; base image first, head second."
+  },
+  {
+    "id": "krea2-lora-bfs-body",
+    "title": "BFS Body Swap V1 for Krea 2 LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "Alissonerdx/BFS-Best-Face-Swap",
+    "revision": "0ca3913ade4b4ada458d60c232354e8586c4c181",
+    "directory": "loras/bfs",
+    "files": [
+      {
+        "path": "bfs_body_swap_v1_krea2.safetensors",
+        "bytes": 914160176,
+        "sha256": "0b3d043714c912c55c525ac68a53f50dbfaa6a024d735c28dfed12cd214a0d79"
+      }
+    ],
+    "bytes": 914160176,
+    "dependencies": [],
+    "families": [
+      "krea-2",
+      "krea-2-turbo"
+    ],
+    "default_strength": 1.0,
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md",
+    "license": "MIT",
+    "note": "Used by the Krea 2 tool \"Body swap (Krea 2)\". Experimental per the author. The guide says start around strength 0.5; the author workflow uses 1.0, which gave a clean swap in our test where 0.5 mixed the two people. Author workflow: Turbo, 10 steps, CFG 1, euler / simple, grounded encode at native size (0), base image first, person second."
+  },
+  {
+    "id": "krea2-lora-outfit-transfer",
+    "title": "Krea 2 Edit Outfit Transfer LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "AliveAi/Krea-2-Edit-Outfit-Transfer",
+    "revision": "827dab8588b6cb261cf9ae580c417bc068740b7f",
+    "directory": "loras/AliveAi",
+    "files": [
+      {
+        "path": "krea_outfittransfer.safetensors",
+        "bytes": 1142684152,
+        "sha256": "4d1033032a1a24bb9b09c44b44514c6791241ebc7b91ffe4f5edd70830a8804d"
+      }
+    ],
+    "bytes": 1142684152,
+    "dependencies": [],
+    "families": [
+      "krea-2",
+      "krea-2-turbo"
+    ],
+    "default_strength": 1.0,
+    "source": "https://huggingface.co/AliveAi/Krea-2-Edit-Outfit-Transfer",
+    "license": "Not stated on the repo.",
+    "note": "Used by the Krea 2 tool \"Outfit from a photo (Krea 2)\". Trigger \"transfer the outfit\". Author workflow t2i_outfit_reference_demo.json: comfyui-krea2edit, Turbo, 8 steps, CFG 1, euler / simple, LoRA 1.0, ref_boost 1, fit, grounding 768 px."
+  },
+  {
+    "id": "lora-qma-angles",
+    "title": "QMA Camera Angles LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "gribbliest/qwen-image-2.1-qma-camera-angles",
+    "revision": "13007eec2648c09529e930164c2ccc9c8c12428c",
+    "directory": "loras/gribbliest",
+    "files": [
+      {
+        "path": "qwen-image-2.1-qma-camera-angles.safetensors",
+        "bytes": 318820224,
+        "sha256": "ad2c20e0e103b6ad3ffffc56ab4e89c0822263c488aa4dd70e7e03091ff37b8d"
+      }
+    ],
+    "bytes": 318820224,
+    "dependencies": [],
+    "default_strength": 1.0,
+    "source": "https://huggingface.co/gribbliest/qwen-image-2.1-qma-camera-angles",
+    "license": "Apache-2.0"
+  },
+  {
+    "id": "lora-object-mover",
+    "title": "Object Mover LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "prithivMLmods/Qwen-Image-2.1-Object-Mover-Bbox-turbo",
+    "revision": "183eb9034853c03e6ec273d81c324edb3d033f34",
+    "directory": "loras/prithivMLmods",
+    "files": [
+      {
+        "path": "Qwen-Image-2.1-Object-Mover-Bbox-turbo-4000.safetensors",
+        "bytes": 83944008,
+        "sha256": "fe7a3cd463728e2504d43b185dc0c6e1be7860f60cdaa4ebeaf8357e421bd9c2"
+      }
+    ],
+    "bytes": 83944008,
+    "dependencies": [],
+    "default_strength": 1.0,
+    "source": "https://huggingface.co/prithivMLmods/Qwen-Image-2.1-Object-Mover-Bbox-turbo",
+    "license": "Qwen Research License (qwen-research)."
+  },
+  {
+    "id": "lora-illustration-swap",
+    "title": "Swap Illustration LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "Kohei-Yamashita/swap-illustration-lora",
+    "revision": "acf7c74c36237c367c822d7ea2b13e7b855fc0de",
+    "directory": "loras/Kohei-Yamashita",
+    "files": [
+      {
+        "path": "anime-swap.safetensors",
+        "bytes": 167830056,
+        "sha256": "0e51ca1e452bce7b8406d1be4808a15cc1feb237c86ed39f70d2e6b1379d63b0"
+      }
+    ],
+    "bytes": 167830056,
+    "dependencies": [],
+    "default_strength": 0.8,
+    "source": "https://huggingface.co/Kohei-Yamashita/swap-illustration-lora",
+    "license": "Qwen Research License: non-commercial (research or evaluation) use only."
+  },
+  {
+    "id": "lora-next-scene",
+    "title": "Next Scene LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "akhaliq/Qwen-Image-2.1-Next-Scene-LoRA",
+    "revision": "67ce88cd413fe177758af5d91e25eb3a334aa06f",
+    "directory": "loras/akhaliq",
+    "files": [
+      {
+        "path": "checkpoints/qwen21_next_scene_v1.safetensors",
+        "bytes": 318819832,
+        "sha256": "8a87032dd1d293b64b1c8640c8e6245141f5c9eb6f0568edaeb4a900ca7fb68e"
+      }
+    ],
+    "bytes": 318819832,
+    "dependencies": [],
+    "default_strength": 0.8,
+    "source": "https://huggingface.co/akhaliq/Qwen-Image-2.1-Next-Scene-LoRA",
+    "license": "Apache-2.0",
+    "note": "checkpoints/qwen21_next_scene_v1.safetensors is the step 2500 checkpoint (card: \"qwen21_next_scene_v1.safetensors = step 2500\")."
   }
 ]

@@ -2,17 +2,19 @@ import {useEffect,useRef,useState} from 'react';
 import {Check,Clock,Loader2,ListOrdered,Pause,X,AlertCircle} from 'lucide-react';
 import {jobKindLabel,type QueueState,type SavedJob} from './JobQueue';
 import {formatDuration} from './duration';
+import {upscaleFraction,upscaleStageLabel} from './upscaleProgress';
 import './queue-activity.css';
 
 export function stageLabel(job:SavedJob){
   if(job.status==='queued')return 'Waiting';
   // Upscale stages (encode, upscale, decode frames) have their own progress text from the worker.
-  if(job.kind==='upscale'&&job.message&&job.status==='running')return job.message;
+  if((job.kind==='upscale'||job.kind==='image-upscale')&&job.message&&job.status==='running')return job.message;
   if(job.stage==='encoding')return job.conditioning_reused?'Reusing prompt and inputs':job.request.images?.length?'Processing prompt and images':'Processing prompt';
   const labels:Record<string,string>={downloading_models:'Downloading model',waiting_for_download:'Waiting for download',loading:'Loading model',loading_model:'Loading model',rewriting:'Preparing prompt',encoding:'Preparing images',generating:'Generating',upscaling:'Upscaling',training:'Training',captioning:'Writing captions',loading_caption_model:'Loading caption model',downloading_caption_model:'Downloading caption model',saving:'Saving result',muxing_audio:'Adding audio',downloading:'Saving result',uploading:'Sending files',waiting:'Waiting for processing',processing:'Processing',complete:'Finishing',decoding:'Decoding'};
   return labels[job.stage]||job.message||'Preparing';
 }
 export function stepLabel(job:SavedJob){
+  if(job.kind==='image-upscale')return upscaleStageLabel(job);
   return ['generating','upscaling','training','captioning'].includes(job.stage)&&job.total_steps>0
     ?`${job.kind==='upscale'?'Batch':job.stage==='captioning'?'Image':'Step'} ${job.step||0} of ${job.total_steps}`:'';
 }
@@ -35,8 +37,10 @@ export function QueueActivity({state,error,onOpen,onView,onResume}:{state:QueueS
   const stage=active?stageLabel(active):state.paused?'Queue paused':waiting?'Starting next job':error?'Connection lost':'';
   const steps=active?stepLabel(active):'';
   const download=active?.stage==='downloading_models';
-  const maximum=active?(download?active.download_total_bytes:steps?active.total_steps:0):0;
-  const value=active?(download?active.download_completed_bytes:active.step):0;
+  // An image upscale moves its bar by stage and by time inside the stage (upscaleProgress.ts).
+  const upscale=active?.kind==='image-upscale'&&active.status==='running'&&!download&&active.progress!==undefined;
+  const maximum=active?(download?active.download_total_bytes:upscale?100:steps?active.total_steps:0):0;
+  const value=active?(download?active.download_completed_bytes:upscale?Math.round(upscaleFraction(active,now)*100):active.step):0;
   const elapsed=active?.started_at?Math.max(0,Math.floor(now/1000-active.started_at)):0;
   return <section className="queue-activity" aria-label="Generation status">
     {active||waiting||state.paused||error?<div className="queue-activity-main">
