@@ -18,27 +18,27 @@ class LocalEnhancerTests(unittest.TestCase):
         self.assertFalse(GenerationRequest(prompt='a cat').enhance)
 
     def test_each_architecture_uses_its_own_official_prompt(self):
-        self.assertEqual(prompt_enhancer.local_model([]), 'pe-t2i-heretic-q8')
-        self.assertEqual(prompt_enhancer.local_model([object()]), 'pe-i2i-heretic-q8')
+        self.assertEqual(prompt_enhancer.local_model([]), 'pe-t2i-heretic-q6')
+        self.assertEqual(prompt_enhancer.local_model([object()]), 'pe-i2i-heretic-q6')
         self.assertEqual(prompt_enhancer.spec_key('z-image-turbo', [object()], redraw=True), 'z-image')
         self.assertEqual(prompt_enhancer.spec_key('krea-2-turbo', []), 'krea-2')
         self.assertEqual(prompt_enhancer.spec_key('krea-2-turbo', [object()]), 'krea-2-identity')
         self.assertEqual(prompt_enhancer.spec_key('moss-image-turbo', []), 'moss-image')
         # Krea 2 defaults to the fast Qwen PE rewriter with its Krea template; its own encoder stays selectable.
-        self.assertEqual(prompt_enhancer.local_model([], 'krea-2-turbo'), 'pe-t2i-heretic-q8')
+        self.assertEqual(prompt_enhancer.local_model([], 'krea-2-turbo'), 'pe-t2i-heretic-q6')
         for key, spec in prompt_enhancer.prompts().items():
             if isinstance(spec, dict):
                 self.assertTrue(spec['text'] and spec['source'], key)
         for model_id in prompt_enhancer.LOCAL_MODELS.values():
             item = models.entry(model_id)
-            self.assertEqual((item['kind'], item['format']), ('image-support', 'GGUF Q8_0'))
+            self.assertEqual((item['kind'], item['format']), ('image-support', 'GGUF Q6_K'))
             self.assertTrue(all(len(file['sha256']) == 64 for file in item['files']))
 
     def test_the_rewriter_downloads_with_the_job_only_when_enhancement_is_on(self):
         request = {'model_id': 'uc-int8-convrot', 'enhance': True, 'images': ['a.png']}
-        rewriters = {'pe-t2i-heretic-q8', 'pe-i2i-heretic-q8'}
-        self.assertIn('pe-i2i-heretic-q8', models.required_image(request))
-        self.assertIn('pe-t2i-heretic-q8', models.required_image({**request, 'images': []}))
+        rewriters = {'pe-t2i-heretic-q6', 'pe-i2i-heretic-q6'}
+        self.assertIn('pe-i2i-heretic-q6', models.required_image(request))
+        self.assertIn('pe-t2i-heretic-q6', models.required_image({**request, 'images': []}))
         self.assertFalse(rewriters & set(models.required_image({**request, 'enhance': False})))
         self.assertTrue(rewriters & set(models.required_image({**request, 'model_id': 'krea2-turbo-nvfp4', 'images': []})))
 
@@ -176,4 +176,21 @@ class WorkerRouteTests(unittest.TestCase):
             with patch.object(prompt_enhancer, '_free_vram', lambda: 3 * 1024**3):
                 run()
             self.assertEqual((len(started), closed), (1, [True]))  # too little room left: it closes after writing
+        llama_runtime.release()
+
+    def test_a_chinese_answer_to_a_hebrew_request_is_asked_again_in_english(self):
+        from backend import llama_runtime
+        asked = []
+        class Server:
+            process = type('Process', (), {'poll': lambda self: None})()
+            def __init__(self, *files): pass
+            def close(self): pass
+            def chat(self, body):
+                asked.append(body['messages'][1]['content'])
+                text = '将输入图片中的男子的T恤替换为棕色皮夹克' if len(asked) == 1 else 'Replace his T-shirt with a brown leather jacket'
+                return {'choices': [{'message': {'content': '{"rewritten_prompt": "' + text + '", "wh_ratio": ""}'}}], 'usage': {}}
+        with patch.object(llama_runtime, 'Server', Server), patch.object(prompt_enhancer, '_free_comfy_gpu', lambda: None),                 patch.object(models, 'local_path', lambda item, file: 'x.gguf'):
+            result = prompt_enhancer.enhance_local('תלביש אותו מעיל עור חום', [], spec='qwen-image-2.1-t2i', runner='llama', fast=True)
+        self.assertEqual(result['positive_prompt'], 'Replace his T-shirt with a brown leather jacket')
+        self.assertTrue(asked[1].endswith('(Write the rewritten prompt in English.)'))
         llama_runtime.release()

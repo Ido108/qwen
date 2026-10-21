@@ -39,6 +39,7 @@ class ImageWorker:
     def __init__(self):
         self.process = None
         self.key = None
+        self.weights = None  # the INT8 copy the worker loaded for key[0] (int8_copies), or None
         self.warming = False
         self.warm_log = None
 
@@ -66,7 +67,7 @@ class ImageWorker:
             process.stdin.close()
         except OSError:
             pass
-        self.process = self.key = None
+        self.process = self.key = self.weights = None
         self.warming = False
 
     def _spawn(self, log_path, key):
@@ -78,6 +79,8 @@ class ImageWorker:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
             )
         self.key = key
+        from .int8_copies import active_for_id
+        self.weights = active_for_id(key[0])
 
     def warm(self, request, folder):
         """Idle only: load this image model in the background. A job sent later waits for it in the worker."""
@@ -99,7 +102,10 @@ class ImageWorker:
     def start(self, directory, request):
         # The worker keeps model, encoder and VAE loaded; tool LoRAs are applied per job.
         key = tuple(required_image(request)[:3])
-        if self.process is not None and ((self.key != key and not swaps_model_only(self.key, key)) or self.process.poll() is not None):
+        from .int8_copies import active_for_id
+        # A new INT8 copy (or the choice of the original file) for the loaded model needs a fresh load.
+        changed = self.key == key and self.weights != active_for_id(key[0])
+        if self.process is not None and ((self.key != key and not swaps_model_only(self.key, key)) or changed or self.process.poll() is not None):
             self.close()
         if self.process is None:
             self._spawn(directory / 'worker.log', key)

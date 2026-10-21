@@ -178,6 +178,23 @@ class AppTests(unittest.TestCase):
         self.assertEqual(thumb.headers['content-type'], 'image/webp')
         self.assertEqual(self.client.get('/api/uploads/../../x.png/thumb').status_code, 404)
 
+    def test_uploads_delete_removes_every_copy_and_keeps_people_and_busy_pictures(self):
+        from backend import server
+        def image(color):
+            stream = io.BytesIO(); Image.new('RGB', (41, 31), color).save(stream, 'PNG'); return stream.getvalue()
+        post = lambda name, color: self.client.post('/api/uploads', files=[('files', (name, image(color), 'image/png'))], headers=self.headers).json()[0]['id']
+        gone, person_photo, busy_photo = post('red.png', 'red'), post('teal.png', 'teal'), post('navy.png', 'navy')
+        copy = server.UPLOADS_DIR / ('copy-' + gone)  # an older copy saved under another name
+        copy.write_bytes((server.UPLOADS_DIR / gone).read_bytes())
+        busy_job = 'f' * 32
+        (server.JOBS_DIR / busy_job).mkdir(parents=True, exist_ok=True)
+        write_json(server.JOBS_DIR / busy_job / 'status.json', {'id': busy_job, 'status': 'running', 'request': {'images': [busy_photo]}})
+        with patch.object(server.people, 'load', return_value=[{'image_ids': [person_photo]}]), patch.object(server, 'active_job', busy_job):
+            result = self.client.post('/api/uploads/delete', json={'ids': [gone, person_photo, busy_photo]}, headers=self.headers).json()
+        self.assertEqual(result['deleted'], 2)
+        self.assertFalse((server.UPLOADS_DIR / gone).exists() or copy.exists())
+        self.assertTrue((server.UPLOADS_DIR / person_photo).exists() and (server.UPLOADS_DIR / busy_photo).exists())
+
     def test_image_upload_preserves_alpha(self):
         response = self.client.post('/api/uploads', files=[('files', ('alpha.png', png(), 'image/png'))], headers=self.headers)
         self.assertEqual(response.status_code, 200, response.text)

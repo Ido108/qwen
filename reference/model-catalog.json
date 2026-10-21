@@ -2133,6 +2133,25 @@
     "note": "Qwen's official Qwen-Image-2.1 text-to-image prompt rewriter (fine-tuned Qwen3.5-VL 9B) with refusals removed by Heretic (98 of 100 refusals to 3, KL 0.036). Runs on this computer in llama.cpp: about 120 tokens per second on an RTX 5090."
   },
   {
+    "id": "pe-t2i-heretic-q6",
+    "title": "Prompt enhancer · Text to image (Qwen PE Heretic, Q6_K)",
+    "kind": "image-support",
+    "format": "GGUF Q6_K",
+    "repo": "pottokao/Qwen-Image-2.1-PE-T2I-Heretic-GGUF",
+    "revision": "143825976126abcfa68722d3e48819c5647f9cd8",
+    "directory": "text_encoders/qwen-image-pe",
+    "files": [
+      {
+        "path": "pe_t2i_heretic-Q6_K.gguf",
+        "bytes": 7605592384,
+        "sha256": "71b83f20284c8b55b042221a779c2484492d33279a7ffc421b0eec35c0f59595"
+      }
+    ],
+    "bytes": 7605592384,
+    "dependencies": [],
+    "note": "Qwen's official Qwen-Image-2.1 text-to-image prompt rewriter (fine-tuned Qwen3.5-VL 9B) with refusals removed by Heretic (98 of 100 refusals to 3, KL 0.036). Runs on this computer in llama.cpp: about 120 tokens per second on an RTX 5090."
+  },
+  {
     "id": "pe-i2i-heretic-q8",
     "title": "Prompt enhancer · Image editing (Qwen PE Heretic, Q8_0)",
     "kind": "image-support",
@@ -2153,6 +2172,30 @@
       }
     ],
     "bytes": 10449205984,
+    "dependencies": [],
+    "note": "Qwen's official Qwen-Image-2.1 image-editing prompt rewriter with its untouched vision encoder, Heretic build without refusals. Sees the input images. Runs on this computer in llama.cpp."
+  },
+  {
+    "id": "pe-i2i-heretic-q6",
+    "title": "Prompt enhancer · Image editing (Qwen PE Heretic, Q6_K)",
+    "kind": "image-support",
+    "format": "GGUF Q6_K",
+    "repo": "pottokao/Qwen-Image-2.1-PE-I2I-Heretic-GGUF",
+    "revision": "564f783ebea6c244c7dae8460ece65eb174479a6",
+    "directory": "text_encoders/qwen-image-pe",
+    "files": [
+      {
+        "path": "pe_i2i_heretic-Q6_K.gguf",
+        "bytes": 7605592640,
+        "sha256": "d99c1c8558c766f1606f128492b7eb0c3827a51c4935135cd4181c601466f103"
+      },
+      {
+        "path": "pe_i2i_heretic.mmproj-bf16.gguf",
+        "bytes": 921704608,
+        "sha256": "171a59a76e498252fb0ee5c145633c6f3a2eaaad03a171e3d5828de230369807"
+      }
+    ],
+    "bytes": 8527297248,
     "dependencies": [],
     "note": "Qwen's official Qwen-Image-2.1 image-editing prompt rewriter with its untouched vision encoder, Heretic build without refusals. Sees the input images. Runs on this computer in llama.cpp."
   },

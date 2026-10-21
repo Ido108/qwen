@@ -549,6 +549,9 @@ async def lifespan(app):
     idle_thread = threading.Thread(target=watch_idle_image_worker, args=(idle_stop,),
                                    name='image-idle-release', daemon=True)
     idle_thread.start()
+    # BF16, FP16 and FP32 Qwen-Image-2.1 models get an INT8 ConvRot copy, made one at a time while the queue is idle.
+    from . import int8_copies
+    int8_copies.start(lambda: bool(shutting_down or active_job or pending_jobs or active_process is not None or models.transfer.get('status') == 'running'), idle_stop)
     try:
         yield
     finally:
@@ -1080,6 +1083,19 @@ def download_model(model_id: str):
     except ValueError as exc:
         raise HTTPException(409, str(exc))
 
+class Int8Choice(BaseModel):
+    use: str = Field(pattern='^(int8|original)$')
+
+
+@app.put('/api/models/{model_id}/int8')
+def choose_int8(model_id: str, body: Int8Choice):
+    """Run this model from its INT8 ConvRot copy (the default) or from its own file."""
+    from . import int8_copies
+    try:
+        return int8_copies.set_choice(model_id, body.use)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+
 @app.post('/api/models/download/cancel')
 def cancel_download():
     models.cancel_event.set()
@@ -1181,6 +1197,36 @@ def recent_uploads(offset: int = Query(0, ge=0), limit: int = Query(60, ge=1, le
     return {'total': len(unique), 'items': [{'id': path.name, 'name': path.name, 'url': f'/api/uploads/{path.name}',
                                              'thumb_url': f'/api/uploads/{path.name}/thumb', 'modified': path.stat().st_mtime}
                                             for path in unique[offset:offset + limit]]}
+
+
+class UploadDelete(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=5000)
+
+
+@app.post('/api/uploads/delete')
+def delete_uploads(body: UploadDelete):
+    """Delete uploaded pictures from this computer, every saved copy of each (the list shows one per picture).
+    People photos and pictures that a waiting or running job uses stay."""
+    files = [path for path in UPLOADS_DIR.iterdir() if path.is_file() and path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'}]
+    fingerprints = upload_fingerprints(files)
+    people_photos = {image_id for person in people.load() for image_id in person['image_ids']}
+    with active_lock:
+        busy = json.dumps([read_job(job_id).get('request') for job_id in [active_job, *pending_jobs] if job_id], default=str)
+    wanted = {fingerprints[name] for name in body.ids if name in fingerprints}
+    deleted, kept = [], []
+    for path in files:
+        if fingerprints[path.name] not in wanted:
+            continue
+        if path.name in people_photos or path.name in busy:
+            kept.append(path.name)
+            continue
+        try:
+            path.unlink()
+            (UPLOADS_DIR / '.thumbs' / (path.stem + '.webp')).unlink(missing_ok=True)
+            deleted.append(path.name)
+        except OSError:
+            kept.append(path.name)
+    return {'deleted': len(deleted), 'kept': len(kept), 'deleted_ids': deleted}
 
 
 @app.get('/api/uploads/{image_id}')

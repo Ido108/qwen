@@ -315,6 +315,9 @@ def scan(reused=()):
     own = {str(Path(saved['path']).resolve()).lower() for saved in recorded().values()} | {str(Path(p).resolve()).lower() for p in reused}
     # The app's own copies (move_models_to_library.py) sit at library_path() and are not recorded; they are not user files.
     own |= catalog_paths()
+    # INT8 ConvRot copies the app made of a model (int8_copies) belong to that model, not to the list of user files.
+    from . import int8_copies
+    own |= {str(Path(p).resolve()).lower() for p in int8_copies.paths()}
     entries, skipped = [], []
     for folder in SCAN_FOLDERS:
         root = LIBRARY_DIR / folder

@@ -18,3 +18,18 @@
 .lora-strength-row>.setting-reset>span{display:none}
 @media(pointer:coarse){.setting-reset{min-height:34px;min-width:40px}}
 @media(max-width:480px){.setting-reset>span{display:none}.setting-reset{min-width:34px}}
+/* Lighter per-field controls: plain small text on the label's line, not a boxed button with an icon. */
+.setting-save{border:0;background:transparent;padding:2px 4px;min-height:26px;color:#5b47a8;font-weight:500}
+.setting-save:hover:not(:disabled){background:rgba(110,78,230,.09)}
+.setting-save>svg{display:none}
+.setting-save.saved{background:transparent;color:#2f7a58}
+.setting-default-menu>summary{border:0;min-width:22px}
+@media(pointer:coarse){.setting-save{min-height:34px}}
+.setting-reset>span{display:none}.setting-reset{min-width:28px;padding:2px 4px}
+/* One line per field header, also in narrow two-column rows: a long label is cut with an ellipsis instead of wrapping. */
+.setting-heading{flex-wrap:nowrap}
+.setting-heading>label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setting-actions{flex:none;gap:0}
+.setting-save .save-short{display:none}
+@media(max-width:600px){.setting-save .save-full{display:none}.setting-save .save-short{display:inline}.studio-settings .setting-heading>label{font-size:14px}.setting-save{padding:2px 3px}.setting-reset{min-width:30px;padding:2px}}
+@media(max-width:360px){.setting-heading{flex-wrap:wrap}.setting-heading>label{white-space:normal;overflow:visible}}

@@ -61,7 +61,7 @@ GEMMA_MODEL = 'gemma4-12b-heretic-q6'
 def video_models():
     """(model id, vision model id) for video prompts: Gemma 4 by default, Qwen PE when chosen in Settings > Prompts."""
     from .enhancer_settings import choice
-    return ('pe-t2i-heretic-q8', 'pe-i2i-heretic-q8') if choice('video') == 'qwen-pe' else (GEMMA_MODEL, GEMMA_MODEL)
+    return ('pe-t2i-heretic-q6', 'pe-i2i-heretic-q6') if choice('video') == 'qwen-pe' else (GEMMA_MODEL, GEMMA_MODEL)
 VIDEO_SETTINGS = {'temperature': 0.7, 'top_k': 64, 'top_p': 0.95, 'min_p': 0.05, 'repeat_penalty': 1.05, 'max_tokens': 1024}
 
 
@@ -101,10 +101,11 @@ def _parts_text(parts):
 
 LOCAL = 'local'
 FAST_OPENING = '{"rewritten_prompt": "'
+CJK = re.compile(r'[一-鿿]')
 # Every system prompt with its official source and generation settings (a Settings editor can change this file).
 PROMPTS_PATH = APP_DIR / 'reference' / 'prompt-enhancer-prompts.json'
 # Qwen's official Qwen-Image-2.1 prompt rewriters (fine-tuned Qwen3.5-VL 9B), Heretic builds without refusals, run in llama.cpp.
-LOCAL_MODELS = {'t2i': 'pe-t2i-heretic-q8', 'edit': 'pe-i2i-heretic-q8'}
+LOCAL_MODELS = {'t2i': 'pe-t2i-heretic-q6', 'edit': 'pe-i2i-heretic-q6'}
 
 
 def prompts():
@@ -321,7 +322,8 @@ def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.
         pictures = images if key == 'qwen-image-2.1-edit' else []
         files = (paths[0], paths[1] if len(paths) > 1 and pictures else None)
         warm = is_resident(*files)
-        needed = sum(f.get('bytes') or 0 for f in item['files'][:2 if files[1] else 1]) + 2 * 1024**3
+        # Files plus about 5 GB for its context and vision buffers: with 2 GB next to a loaded image model the start took 20 s.
+        needed = sum(f.get('bytes') or 0 for f in item['files'][:2 if files[1] else 1]) + 5 * 1024**3
         free_before, loaded_before = _free_vram(), _image_model_loaded()
         if not warm and free_before < needed:
             _free_comfy_gpu()
@@ -346,6 +348,12 @@ def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.
             # 512 tokens, so a longer answer only costs time. It is cut at its last full sentence below.
             body.update(dry_multiplier=0.8, dry_base=1.75, dry_allowed_length=2, max_tokens=min(settings['max_tokens'], 800))
         reply = server.chat(body)
+        if key.startswith('qwen-image-2.1') and not CJK.search(prompt) and len(CJK.findall(reply['choices'][0]['message'].get('content') or '')) > 10:
+            # Qwen PE answered some Hebrew edit requests in Chinese (4 of 12, Q6 and Q8 alike, by request, not seed);
+            # asking again with this note gave English in 4 of 4 (2026-10-22).
+            retry = messages(spec, prompt + ' (Write the rewritten prompt in English.)', pictures) + chat[len(chat) - (1 if opening else 0):]
+            reply = server.chat({**body, 'messages': retry})
+            update(sent_prompt={'label': 'Enhance: asked again for English (the first answer was in Chinese)', 'text': prompt + ' (Write the rewritten prompt in English.)'})
         marks.append(time.perf_counter())
         # Stay loaded only beside an image model that is already in the GPU, with room for its next encode and steps.
         kept = _image_model_loaded() and _free_vram() >= KEEP_FREE

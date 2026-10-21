@@ -71,13 +71,17 @@ def rewrite_prompt(images):
     key = enhance_cache.key(request['prompt'], chosen['label'], chosen['spec'], prompts().get(chosen['spec']) if chosen['spec'] else None,
                             request.get('text_encoder'), images=images)
     saved = enhance_cache.get(key)
+    from .prompt_enhancer import CJK
+    wrong_language = lambda result: bool(result) and not CJK.search(request['prompt']) and len(CJK.findall(result.get('positive_prompt') or '')) > 10
+    if wrong_language(saved):
+        saved = None  # an answer saved before the English retry existed
     if saved:
         update(stage='rewriting', message='Using the saved enhanced prompt (same prompt, images and enhancer)…', enhance_cached=True,
                rewrite_seconds=0, rewritten_prompt=saved['positive_prompt'],
                sent_prompt={'label': 'Enhance: rewritten prompt (saved from an earlier job)', 'text': saved['positive_prompt']})
         return saved
     result = run_enhancer(chosen, images, item, family)
-    if result and result.get('positive_prompt'):
+    if result and result.get('positive_prompt') and not wrong_language(result):
         enhance_cache.put(key, result)
     return result
 

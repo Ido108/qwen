@@ -74,11 +74,15 @@ def generate(request,prompt,images,width,height,progress):
         gc.collect();memory.soft_empty_cache()
     reused=bool(_components)
     if not reused:_components['key']=key
+    # A BF16 model runs from its INT8 ConvRot copy when there is one (int8_copies); a loaded model keeps what it loaded.
+    from .int8_copies import active as int8_copy
+    copy=_components.get('int8_copy') if 'model' in _components else int8_copy(selected)
+    if copy:progress(int8_copy=str(copy))
     progress(model_reused=reused,engine='ComfyUI MOSS Image',selected_model=selected['title'],text_encoder_id=encoder_id,vae_id=vae_id,attention=attention)
 
-    def weights(item_id):
+    def weights(item_id,path=None):
         item=entry(item_id)
-        values,metadata=comfy.utils.load_safetensors(str(local_path(item,item['files'][0])))
+        values,metadata=comfy.utils.load_safetensors(str(path or local_path(item,item['files'][0])))
         for tensor in values.values():
             storage=tensor.untyped_storage()
             if hasattr(storage,'_comfy_tensor_file_slice'):delattr(storage,'_comfy_tensor_file_slice')
@@ -94,7 +98,7 @@ def generate(request,prompt,images,width,height,progress):
         progress(stage='loading_encoder',message='Loading the MOSS Image text encoder and decoder…')
         started=time.perf_counter()
         from .file_prefetch import prefetch
-        model_files=[local_path(selected,f) for f in selected['files']] if 'model' not in _components else []
+        model_files=([copy] if copy else [local_path(selected,f) for f in selected['files']]) if 'model' not in _components else []
         prefetch(local_path(entry(encoder_id),entry(encoder_id)['files'][0]),*model_files)
         values,metadata=weights(encoder_id)
         values,_=comfy.utils.convert_old_quants(values,model_prefix='',metadata=metadata)
@@ -148,7 +152,7 @@ def generate(request,prompt,images,width,height,progress):
                 if len(value.shape)==1 and is_quantized(value):values[name]=dequantize_tensor(value,dtype=torch.float32)
             operations=GGMLOps();operations.Linear.dequant_dtype='target'
             options={'custom_operations':operations,'dtype':torch.bfloat16}
-        else:values,metadata=weights(model_id)
+        else:values,metadata=weights(model_id,copy)
         model=comfy.sd.load_diffusion_model_state_dict(values,model_options=options,metadata=metadata,disable_dynamic=True)
         if selected['format']=='GGUF' and model is not None:model=GGUFModelPatcher.clone(model)
         del values
@@ -156,6 +160,7 @@ def generate(request,prompt,images,width,height,progress):
             raise RuntimeError('This file is not a supported MOSS Image model.')
         retain_cpu_weights(model)
         _components['model']=model
+        _components['int8_copy']=copy
         gc.collect()
     progress(diffusion_load_seconds=round(time.perf_counter()-started,3))
     model=_components['model']
@@ -168,7 +173,7 @@ def generate(request,prompt,images,width,height,progress):
         from .lora_loading import read_lora_weights, load_model_lora
         lora=read_lora_weights(local_path(item,item['files'][0]))
         # Quantized bases keep their weights: a merged LoRA would be requantized and mostly lost.
-        model,check=load_model_lora(model,lora,strength,item['title'],runtime=selected['format'] not in ('BF16','FP16','FP32','GGUF'))
+        model,check=load_model_lora(model,lora,strength,item['title'],runtime=bool(copy) or selected['format'] not in ('BF16','FP16','FP32','GGUF'))
         lora_checks.append({'id':item['id'],'title':item['title'],**check})
         applied.append(f"{item['title']} ({strength:g})")
     if applied:retain_lora_clone(model,_components['model'])

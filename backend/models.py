@@ -8,7 +8,7 @@ import threading
 import time
 from pathlib import Path
 from .common import APP_DIR, DATA_DIR, MODELS_DIR, write_json
-from . import model_library
+from . import model_library, int8_copies
 
 os.environ['HF_HOME']=str(DATA_DIR/'hf-cache')
 os.environ['HF_XET_CACHE']=str(DATA_DIR/'hf-cache'/'xet')
@@ -339,7 +339,11 @@ def state():
         for item in entries:
             installed=installed_by_id[item['id']]
             disk_bytes=sum(file_size(item,file) or 0 for file in item.get('removal_files',item['files']))
+            # A BF16, FP16 or FP32 Qwen-Image-2.1 model that runs from its INT8 ConvRot copy says so in its title (int8_copies).
+            int8=int8_copies.info(item) if installed else None
             items.append({k:v for k,v in item.items() if k not in ('files','removal_files','directory','revision')}|{
+                'title':f"{item['title']} · runs as {int8['label']}" if int8 and int8['status']=='ready' else item['title'],
+                'int8':int8,
                 'installed':installed,
                 'orbit_profile':orbit_profile(item,orbit_lora) if orbit_lora else None,
                 'disk_bytes':disk_bytes,
@@ -554,4 +558,5 @@ def remove(model_id):
             unregister(model_id)
         if item.get('source')=='library':
             model_library.dismiss(model_id)  # the user's own file stays in the library
+        int8_copies.remove(model_id)  # the INT8 copy the app made from this model
     return {'ok':True}

@@ -136,8 +136,12 @@ function App(){
   const chosenEncoder=flux3?'flux3-encoder-int8':moss?(chosenModel?.text_encoder||'moss-encoder-int8'):krea||zimage?(chosenModel?.text_encoder||(krea?'krea2-encoder-bf16':'zimage-encoder-bf16')):params.text_encoder==='auto'?'encoder-int8':params.text_encoder;
   // Every add-on LoRA, from any source (Civitai, Hugging Face, ModelScope, D:\models, the catalog); tool LoRAs and
   // Krea 2's reference adapters run inside their own modes.
-  const toolLoras=new Set(tools.map(t=>t.lora));
-  const userLoras=(modelState?.models||[]).filter(m=>m.kind==='image-lora'&&!!m.families?.length&&!toolLoras.has(m.id)&&!m.id.startsWith('krea2-lora-'));
+  // Qwen tool LoRAs (swap, angles, outfit and the others) can also be added as plain LoRAs with your own prompt; they take
+  // the families of their tool. The one the active tool already applies is left out. Krea 2 tool LoRAs need Krea's edit
+  // nodes, so they stay in their tools only.
+  const toolFor=new Map(tools.filter(t=>!t.lora.startsWith('krea2-lora-')).map(t=>[t.lora,t]));
+  const userLoras=(modelState?.models||[]).filter(m=>m.kind==='image-lora'&&!m.id.startsWith('krea2-lora-')&&m.id!==activeTool?.lora&&(!!m.families?.length||toolFor.has(m.id)))
+    .map(m=>{const tool=toolFor.get(m.id);return tool&&!m.families?.length?{...m,families:tool.families,title:`${m.title} (${tool.title} tool)`}:m;});
   const activeLoras=enabledLoras(params.loras,userLoras,family);
   // People the model (or an active LoRA) knows by trigger, offered in the @ menu (MOSS Serenity).
   const knownFrom=chosenModel?.known_people?.length?chosenModel:userLoras.find(l=>l.known_people?.length&&activeLoras.some(a=>a.id===l.id));
@@ -393,7 +397,7 @@ function App(){
             <ImageSettings part="advanced" {...settingsProps}/>
             <fieldset className="advanced-grid" disabled={locked}>
               <div className="field"><SettingLabel htmlFor="seed" label="Seed" value={'Random'} onReset={()=>setParams(p=>({...p,seed:0,randomize_seed:true}))}>{t('seed')}</SettingLabel><div className="seed-row"><input id="seed" type="number" min="0" max="2147483647" step="1" value={params.seed} disabled={params.randomize_seed} onChange={e=>change('seed',Number(e.target.value))}/><label className="checkbox-label" title={t('randomize')}><input type="checkbox" checked={params.randomize_seed} onChange={e=>change('randomize_seed',e.target.checked)}/>Random</label></div></div>
-              <div className="field"><SettingLabel htmlFor="vae" label="Decoder" value={'Auto'} onReset={()=>setParams(p=>({...p,vae_id:"auto",vae_choice:false}))}>Decoder (VAE)</SettingLabel><select id="vae" value={params.vae_id} title="Auto uses the VAE the model page names. Otherwise Texture fix: the same decoder with fewer checkerboard artifacts." onChange={e=>setParams(p=>({...p,vae_id:e.target.value,vae_choice:true}))}><option value="auto">Auto · {vaeTitle(autoVae)}</option>{vaes.map(v=><option key={v.id} value={v.id}>{vaeTitle(v.id)}{v.ready?'':` · ${(v.bytes/1e9).toFixed(1)} GB download`}</option>)}</select></div>
+              <div className="field"><SettingLabel htmlFor="vae" label="Decoder" value={'Auto'} onReset={()=>setParams(p=>({...p,vae_id:"auto",vae_choice:false}))}><span title="Decoder (VAE)">Decoder</span></SettingLabel><select id="vae" value={params.vae_id} title="Auto uses the VAE the model page names. Otherwise Texture fix: the same decoder with fewer checkerboard artifacts." onChange={e=>setParams(p=>({...p,vae_id:e.target.value,vae_choice:true}))}><option value="auto">Auto · {vaeTitle(autoVae)}</option>{vaes.map(v=><option key={v.id} value={v.id}>{vaeTitle(v.id)}{v.ready?'':` · ${(v.bytes/1e9).toFixed(1)} GB download`}</option>)}</select></div>
               <div className="field span-2"><SettingLabel htmlFor="negative" label="Negative prompt" value={'Empty'} onReset={()=>change('negative_prompt','')}>{t('negative')}</SettingLabel><PromptInput id="negative" dir="auto" rows={2} placeholder="What to exclude (adds a guidance pass, slower)" title={t('negativeHelp')} value={displayImageMentions(params.negative_prompt)} onValueChange={text=>change('negative_prompt',text)} mentions={imageMentionOptions(inputs,people)}/></div>
               <div className="field span-2"><SettingLabel htmlFor="folder" label="Output folder" onReset={()=>change('output_dir',config?.output_dir||'')}>{t('folder')}</SettingLabel><input id="folder" dir="ltr" value={params.output_dir} title={params.output_dir} onChange={e=>change('output_dir',e.target.value)}/></div>
             </fieldset>

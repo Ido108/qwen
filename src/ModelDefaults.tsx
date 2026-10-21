@@ -60,6 +60,6 @@ export function SaveDefaultButton({label,disabled=false,onRecommended}:{label:st
   const same=!!saved&&JSON.stringify(saved)===JSON.stringify(binding.value);
   return <span className="setting-save-wrap"><span className="setting-save-buttons"><button type="button" className={`setting-save ${same?'saved':''}`} disabled={disabled||busy||!ready}
     aria-label={`Set ${label} as model default`} title="Set as model default" onClick={async event=>{event.preventDefault();event.stopPropagation();setBusy(true);setError('');try{await save(binding.value);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>
-    {same?<Check size={13}/>:<Save size={13}/>}<span>{busy?'Saving…':same?'Saved default':'Set as default'}</span>
+    {same?<Check size={13}/>:<Save size={13}/>}{busy?<span>Saving…</span>:same?<span>Saved</span>:<><span className="save-full">Set default</span><span className="save-short">Save</span></>}
   </button>{saved?<details className="setting-default-menu"><summary aria-label={`More defaults for ${label}`}><ChevronDown size={13}/></summary><button type="button" disabled={disabled||busy} onClick={async event=>{const menu=event.currentTarget.closest('details');setBusy(true);setError('');try{await save(null);onRecommended();menu?.removeAttribute('open');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>Use recommended default</button></details>:null}</span>{error?<small role="alert">{error}</small>:null}</span>;
 }

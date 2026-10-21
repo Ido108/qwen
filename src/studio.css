@@ -531,14 +531,15 @@ body:has(.studio-main:not([hidden])){--controls-w:min(440px,50vw)}
 .swap-slot-head b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--accent);color:#fff;font-size:12px}
 .swap-slot small{font-size:11.5px;color:#8a85a0;line-height:1.35;min-height:31px}
 .swap-image{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;height:190px;display:grid;place-items:center}
-.swap-image img{max-width:100%;max-height:100%;object-fit:contain}
+.swap-image img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .swap-remove{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:#fff;font-size:16px;line-height:1;cursor:pointer}
 .swap-empty{height:190px;border:1.5px dashed var(--line);border-radius:10px;background:#fbfaff;color:#5f5978;font-size:13px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;padding:10px}.swap-empty>span::before{content:'+';display:block;font-size:26px;line-height:1;margin-bottom:6px;color:var(--accent)}
 .swap-empty:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
 .swap-slot-actions{display:flex;gap:10px;flex-wrap:wrap}
 .swap-strength input{width:100%}
 .swap-panel .field small{font-size:11.5px;color:#8a85a0}
-@media (max-width:520px){.swap-slots{grid-template-columns:1fr}.swap-image,.swap-empty{height:160px}}
+/* Phones: the two pictures sit side by side in compact slots (one full-width block per picture took a whole screen). */
+@media (max-width:520px){.swap-slots{grid-template-columns:1fr 1fr;gap:8px}.swap-image,.swap-empty{height:150px}.swap-slot{gap:5px}.swap-slot small{min-height:0;font-size:11px;line-height:1.3}.swap-slot .image-label select,.swap-slot .image-label input{height:36px;padding:2px 6px}.swap-slot .person-photo-cycle{margin:0}.swap-slot .person-photo-cycle button{min-height:32px}.swap-slot-actions{gap:2px 12px}.swap-slot-actions .text-button{font-size:13px;min-height:32px;padding:0}.swap-remove{width:30px;height:30px}}
 
 /* iPhone Safari zooms the whole page in when a field under 16px gets focus, and the page then slides sideways.
    On touch screens every text field, menu and prompt box is 16px. */
@@ -554,3 +555,23 @@ body:has(.studio-main:not([hidden])){--controls-w:min(440px,50vw)}
 .train-warnings strong{display:block;margin-bottom:4px}
 .train-warnings ul{margin:0;padding-left:18px;display:grid;gap:3px;font-size:13px}
 dialog.settings-dialog{width:min(960px,calc(100vw - 24px));max-width:calc(100vw - 24px)}
+
+/* Steps and CFG sliders: each on its own full row, like Effect strength. */
+.field.slider-field input[type=range]{width:100%;min-width:0;margin:2px 0;accent-color:var(--accent);touch-action:pan-y}
+@media (pointer:coarse),(max-width:760px){.field.slider-field input[type=range]{min-height:36px}}
+
+/* Library: select uploaded pictures and delete them. */
+.library-select-bar{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;margin:0 0 6px;font-size:12px;color:#5d5675}
+.library-select-bar>span{font-weight:600;color:#2a2238}
+.library-select-bar .text-button{min-height:30px;padding:0;font-size:12.5px}
+.library-select-bar .library-delete:not(:disabled){color:#b42318}
+.library-confirm{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:0 0 8px;padding:8px 10px;border:1px solid #f1c4bd;border-radius:8px;background:#fff5f3;color:#5c1d14;font-size:12.5px}
+.library-confirm span{flex:1 1 220px}
+.library-confirm .button{min-height:32px;padding:0 14px;font-size:12.5px}
+.library-tile.picking .library-check{background:#ffffffe6;border:1.5px solid #9a93b3;color:#fff}
+.library-tile.picked{border-color:#b42318;outline:2px solid #b42318;outline-offset:-2px}
+.library-tile.picked .library-check{background:#b42318;border-color:#b42318;color:#fff}
+.library-tile.picked img{opacity:.75}
+@media (pointer:coarse),(max-width:760px){.library-select-bar .text-button{min-height:40px;font-size:14px}.library-confirm .button{min-height:40px}}
+.library-confirm .button.danger{border:0;background:#c62f3b;color:#fff;font-weight:600}.library-confirm .button.danger:disabled{opacity:.6}
+

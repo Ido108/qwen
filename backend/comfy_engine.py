@@ -113,10 +113,16 @@ def generate(request, prompt, images, width, height, progress):
     if _components and _components['key'] != cache_key:
         raise RuntimeError('Start a new image worker when changing model or encoder.')
     reused=bool(_components)
+    # A BF16, FP16 or FP32 model runs from its INT8 ConvRot copy when there is one (int8_copies). A worker that already
+    # holds this model keeps what it loaded; the resident worker restarts when the choice changes.
+    from .int8_copies import active as int8_copy
+    copy=_components.get('int8_copy') if reused else int8_copy(selected)
+    if copy:
+        progress(int8_copy=str(copy))
     if not reused:
         # Large sequential reads ahead of the mapped loads, in load order (see file_prefetch).
         from .file_prefetch import prefetch
-        prefetch(local_path(encoder,encoder['files'][0]),*(local_path(selected,f) for f in selected['files'] if f['path'].endswith(('.safetensors','.gguf'))))
+        prefetch(local_path(encoder,encoder['files'][0]),*([copy] if copy else (local_path(selected,f) for f in selected['files'] if f['path'].endswith(('.safetensors','.gguf')))))
     started=time.perf_counter()
     progress(stage='loading_model',message='Using loaded image models.' if reused else 'Loading text encoder and VAE…',
              model_reused=reused,
@@ -193,9 +199,9 @@ def generate(request, prompt, images, width, height, progress):
             raise RuntimeError('This GGUF file is not a compatible Qwen-Image-2.1 checkpoint.')
         model=GGUFModelPatcher.clone(model)
         progress(gguf_norm_vectors_decoded=len(fixed),gguf_quantization=selected['title'].split(' · ')[-1])
-    elif selected.get('layout')=='comfy':
-        # Single-file ComfyUI checkpoint (Comfy-Org BF16 or INT8, Civitai FP8 and NVFP4).
-        weights,metadata=read_weights(local_path(selected,selected['files'][0]))
+    elif copy or selected.get('layout')=='comfy':
+        # Single-file ComfyUI checkpoint (Comfy-Org BF16 or INT8, Civitai FP8 and NVFP4), or the model's INT8 ConvRot copy.
+        weights,metadata=read_weights(copy or local_path(selected,selected['files'][0]))
         options={'dtype':torch.bfloat16}
         if plain_fp8(weights,metadata):
             # FP8 weights without scales or quantization metadata: keep them FP8 and use the GPU's FP8 matmul
@@ -221,7 +227,7 @@ def generate(request, prompt, images, width, height, progress):
     if not reused:
         del weights
         retain_cpu_weights(model)
-        _components.update(key=cache_key,clip=clip,vae=vae,model=model)
+        _components.update(key=cache_key,clip=clip,vae=vae,model=model,int8_copy=copy)
         gc.collect()
     progress(diffusion_load_seconds=round(time.perf_counter()-started,3))
     # Tool LoRA first, then the user's LoRAs; each one is patched onto a clone.

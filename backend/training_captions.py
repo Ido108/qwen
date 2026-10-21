@@ -10,9 +10,9 @@ import os
 from pathlib import Path
 from .common import DATA_DIR, APP_DIR, read_json, write_json, resolve_image
 
-# Qwen-Image PE I2I (Qwen3.5-VL 9B, Heretic, Q8_0) through llama.cpp: on an RTX 5090 it captioned the user's photos in
+# Qwen-Image PE I2I (Qwen3.5-VL 9B, Heretic, Q6_K since 2026-10-22: faster than Q8_0 and as accurate) through llama.cpp: on an RTX 5090 it captioned the user's photos in
 # about 2 s each against about 10 s with the FLUX.3 prompt model in ComfyUI, followed the instructions, and refuses nothing.
-MODEL_ID = 'pe-i2i-heretic-q8'
+MODEL_ID = 'pe-i2i-heretic-q6'
 VERSION = 'dataset-caption-v3'
 CACHE = DATA_DIR / 'training-caption-cache'
 
