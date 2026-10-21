@@ -130,6 +130,10 @@ def run():
         # Z-Image redraws image 1, so the output keeps its shape.
         follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith(('z-image','flux3-klein')))
         width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if follow_first else rewrite)
+    if images and entry(request['model_id']).get('family', '').startswith('krea-2') and (request.get('krea_reference_mode') or 'identity') == 'identity':
+        # Krea 2 identity edit: the card says generate at 2 MP or less; the photo tokens double the sequence.
+        from .krea_edit import identity_size
+        width, height = identity_size(width, height)
     render_width = math.ceil(width / 32) * 32
     render_height = math.ceil(height / 32) * 32
     update(stage='loading_model', message=f"Loading {entry(request.get('model_id','official-bf16'))['title']}…", width=width, height=height)

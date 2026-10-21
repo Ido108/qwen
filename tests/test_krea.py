@@ -45,15 +45,19 @@ class KreaCatalogTests(unittest.TestCase):
                 # README: --steps 52 --cfg 3.5; Krea's cond + 3.5 (cond - uncond) is ComfyUI CFG 4.5.
                 self.assertEqual((defaults['steps'], defaults['cfg']), (52, 4.5), item['id'])
                 self.assertNotIn('mu', defaults)
-        for support in ('krea2-encoder-bf16', 'krea2-vae', models.KREA_STYLE_LORA):
+        for support in ('krea2-encoder-bf16', 'krea2-vae', models.KREA_STYLE_LORA, models.KREA_IDENTITY_LORA):
             self.assertEqual(models.entry(support)['families'], ['krea-2', 'krea-2-turbo'])
 
     def test_krea_uses_its_own_encoder_and_vae(self):
         self.assertEqual(models.required('krea2-turbo-fp8'), ['krea2-turbo-fp8', 'krea2-encoder-bf16', 'krea2-vae'])
         # Qwen encoder and VAE choices made for Qwen models do not apply to Krea 2.
         self.assertEqual(models.required('krea2-raw-fp8', 'encoder-int8', vae='vae-texture-fix'), ['krea2-raw-fp8', 'krea2-encoder-bf16', 'krea2-vae'])
+        # Input images keep the person by default (identity edit LoRA); style is the official style reference workflow.
         self.assertEqual(models.required_image({'model_id': 'krea2-turbo-nvfp4', 'vae_id': 'vae', 'images': ['a', 'b']}),
-                         ['krea2-turbo-nvfp4', 'krea2-encoder-bf16', 'krea2-vae', models.KREA_STYLE_LORA])
+                         ['krea2-turbo-nvfp4', 'krea2-encoder-bf16', 'krea2-vae', models.KREA_IDENTITY_LORA])
+        self.assertEqual(models.required_image({'model_id': 'krea2-turbo-nvfp4', 'images': ['a'], 'krea_reference_mode': 'style'})[-1], models.KREA_STYLE_LORA)
+        with self.assertRaisesRegex(ValueError, 'identity or style'):
+            models.required('krea2-turbo-nvfp4', images=1, krea_reference_mode='face')
         with self.assertRaisesRegex(ValueError, 'at most 3'):
             models.required('krea2-turbo-fp8', images=4)
 
@@ -199,3 +203,32 @@ class KreaCivitaiTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class KreaIdentityTests(unittest.TestCase):
+    def test_card_settings_and_catalog_entry(self):
+        from backend import krea_edit
+        # Identity Edit V2 card: one photo ref_boost 2 beside; scene and person: person 2.5 beside, scene 1 aligned.
+        self.assertEqual(krea_edit.reference_settings(1), {'ref_boost': 2.0, 'ref_boost_a': 1.0, 'ref_position': krea_edit.BESIDE, 'ref_position_a': krea_edit.ALIGNED})
+        self.assertEqual(krea_edit.reference_settings(2)['ref_boost'], 2.5)
+        self.assertEqual(krea_edit.GROUNDING_PX, 768)
+        # The card: generate at 2 MP or less; the 4 MP auto size of a portrait becomes 1168 x 1760.
+        self.assertEqual(krea_edit.identity_size(1664, 2496), (1168, 1760))
+        self.assertEqual(krea_edit.identity_size(1024, 1024), (1024, 1024))
+        item = models.entry(models.KREA_IDENTITY_LORA)
+        self.assertEqual((item['repo'], item['files'][0]['path'], item['files'][0]['bytes']),
+                         ('conradlocke/krea2-identity-edit', 'krea2_identity_edit_v2_r128.safetensors', 914188768))
+        self.assertTrue((krea_edit.PACK / '__init__.py').is_file() and (krea_edit.PACK / 'LICENSE').is_file())
+
+    def test_pack_places_the_photo_beside_the_target_on_frame_one(self):
+        import torch
+        from backend import krea_edit
+        sys_path = str(krea_edit.APP_DIR / 'vendor' / 'ComfyUI')
+        import sys
+        if sys_path not in sys.path:
+            sys.path.insert(0, sys_path)
+        pack = krea_edit.pack()
+        ids = pack._imgids(1, 1, 2, 3, 'cpu')
+        placed = pack._place_refs([ids], krea_edit.BESIDE, 2, 3)[0]
+        self.assertTrue(torch.all(placed[..., 0] == 1))      # frame 1: the photo, not the target (frame 0)
+        self.assertEqual(float(placed[..., 2].min()), 3.0)    # to the right of the 3-token-wide target

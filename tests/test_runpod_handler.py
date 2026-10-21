@@ -90,7 +90,7 @@ class RunpodHandlerTests(unittest.TestCase):
         result, saved, started = self.run_job('image', request, [('image', image)])
         self.assertEqual(started, [['image-worker']])
         self.assertTrue(result['output_key'].endswith('result.png'))
-        for needed in ('krea2-turbo-fp8', 'krea2-encoder-bf16', 'krea2-vae', 'krea2-lora-style-reference'):
+        for needed in ('krea2-turbo-fp8', 'krea2-encoder-bf16', 'krea2-vae', 'krea2-lora-identity-edit'):
             self.assertIn(needed, self.needed)
         self.assertNotIn('encoder-bf16', self.needed)
 

@@ -102,6 +102,8 @@ class GenerationRequest(ImageLabels):
     loras: list['LoraChoice'] = Field(default_factory=list)
     # Z-Image image to image: how much of the input image is redrawn (None is the default 0.7).
     denoise: float | None = Field(default=None, ge=0.05, le=1)
+    # Krea 2 input images: keep the person (conradlocke/krea2-identity-edit) or use them as a style reference.
+    krea_reference_mode: Literal['identity', 'style'] = 'identity'
 
     @field_validator('prompt')
     @classmethod

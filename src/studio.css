@@ -480,6 +480,7 @@ body:has(.studio-main:not([hidden])){--controls-w:min(440px,50vw)}
 .gallery-selection .button.danger{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:8px;border:0;background:#c62f3b;color:#fff;font-weight:600}
 .gallery-selection .button.danger:disabled{opacity:.6}
 .input-note{margin:8px 2px 0;font-size:12px;line-height:1.5;color:#7a4d00;background:#fff7e6;border:1px solid #f3dfb5;border-radius:8px;padding:7px 10px}
+.krea-mode{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.krea-mode button{padding:5px 10px;border-radius:7px;border:1px solid #e3c98f;background:#fff;color:#5a3a00;font-size:12px}.krea-mode button[aria-pressed="true"]{background:#7a4d00;border-color:#7a4d00;color:#fff}.krea-mode p{margin:0;flex-basis:100%}
 .zimage-redraw p{margin:0 0 6px}.zimage-redraw label{display:flex;gap:6px;align-items:baseline;font-weight:600}.zimage-redraw input[type=range]{width:100%;margin:2px 0}.zimage-redraw small{display:block;opacity:.85}
 .civitai-type-choice{display:flex;flex-direction:column;gap:8px;margin:10px 0;padding:10px 12px;border:1px solid #f3dfb5;background:#fff7e6;border-radius:10px}
 .civitai-type-choice p{margin:0;font-size:12.5px;line-height:1.5;color:#6b4a0c}

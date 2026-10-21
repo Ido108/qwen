@@ -85,6 +85,8 @@ def is_installed(model_id):
 QWEN_ENCODERS=('encoder-int8','encoder-bf16')
 KREA_ENCODERS=('krea2-encoder-bf16',)
 KREA_STYLE_LORA='krea2-lora-style-reference'
+KREA_IDENTITY_LORA='krea2-lora-identity-edit'
+KREA_REFERENCE_MODES=('identity','style')
 ZIMAGE_ENCODERS=('zimage-encoder-bf16',)
 FLUX3_ENCODERS=('flux3-encoder-int8',)
 MOSS_ENCODERS=('moss-encoder-int8','moss-encoder-w4a8','moss-encoder-bf16')
@@ -108,7 +110,7 @@ def own_architecture(item):
     """Models with their own encoder, VAE and LoRAs (not Qwen-Image-2.1)."""
     return is_krea(item) or is_zimage(item) or is_flux3(item) or is_moss(item)
 
-def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
+def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0,krea_reference_mode='identity'):
     item=entry(model_id)
     if item['kind']!='image':
         raise ValueError('Select an image model.')
@@ -155,7 +157,10 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
             raise ValueError(f"{lora['title']} does not work with {item['title']}.")
         ids.append(lora_id)
     if is_krea(item) and images:
-        ids.append(KREA_STYLE_LORA)  # the official Krea 2 style reference workflow
+        if krea_reference_mode not in KREA_REFERENCE_MODES:
+            raise ValueError('Choose identity or style for Krea 2 input images.')
+        # identity: conradlocke/krea2-identity-edit keeps the person; style: the official style reference workflow.
+        ids.append(KREA_IDENTITY_LORA if krea_reference_mode=='identity' else KREA_STYLE_LORA)
     return list(dict.fromkeys(ids))
 
 def resolve_vae(item,vae='auto'):
@@ -174,7 +179,8 @@ def resolve_vae(item,vae='auto'):
 def required_image(request):
     """All files for an image request dict: model, encoder, VAE and an optional tool LoRA."""
     return required(request['model_id'],request.get('text_encoder','auto'),request.get('tool_id'),request.get('vae_id','auto'),
-                    [lora['id'] for lora in request.get('loras') or []],len(request.get('images') or []))
+                    [lora['id'] for lora in request.get('loras') or []],len(request.get('images') or []),
+                    request.get('krea_reference_mode') or 'identity')
 
 LTX_FAMILIES=('ltx25','ltx25-msr')
 

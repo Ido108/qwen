@@ -1676,6 +1676,32 @@
     "note": "Used automatically when a Krea 2 job has input images: 1 to 3 images guide the style (ostris/krea2_turbo_style_reference)."
   },
   {
+    "id": "krea2-lora-identity-edit",
+    "title": "Krea 2 Identity Edit V2 LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "conradlocke/krea2-identity-edit",
+    "revision": "f33b26291c640e8ec50b0da420bfee3c9a660daa",
+    "directory": "conradlocke-krea2-identity-edit",
+    "files": [
+      {
+        "path": "krea2_identity_edit_v2_r128.safetensors",
+        "bytes": 914188768,
+        "sha256": "2082515f1eb66532f5efb5343eb15048a29e3abe9f356e35e784cc60d00b45f7"
+      }
+    ],
+    "bytes": 914188768,
+    "dependencies": [],
+    "families": [
+      "krea-2",
+      "krea-2-turbo"
+    ],
+    "default_strength": 1.0,
+    "source": "https://huggingface.co/conradlocke/krea2-identity-edit",
+    "license": "Non-commercial; commercial use needs the author's license (Krea 2 Community License also applies).",
+    "note": "Used automatically when a Krea 2 job keeps the person from its input photos, with the comfyui-krea2edit node pack v2.0.0. Card settings: Turbo, 8 steps, CFG 1, ref_boost 2 (one photo, beside) or person 2.5 and scene 1 (two photos), grounding 768 px. Rank-reduced r128 file: near-identical quality per the card."
+  },
+  {
     "id": "zimage-turbo-bf16",
     "title": "Z-Image Turbo · BF16",
     "kind": "image",
@@ -2679,7 +2705,20 @@
     "default_strength": 1.0,
     "accelerator": {
       "steps": 4,
-      "steps_by_size": [[1048576, 4], [2359296, 6], [4194304, 8]],
+      "steps_by_size": [
+        [
+          1048576,
+          4
+        ],
+        [
+          2359296,
+          6
+        ],
+        [
+          4194304,
+          8
+        ]
+      ],
       "source": "https://huggingface.co/akhaliq/MOSS-Image-SFT-4-steps (Resolution and steps table: hazy above 1024 px at 4 steps)"
     },
     "trained_on": {

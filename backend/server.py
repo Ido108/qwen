@@ -1465,7 +1465,7 @@ def generate(body: GenerationRequest):
     try:
         from .image_sampling import validate as validate_sampling
         validate_sampling(body.model_dump(), models.entry(body.model_id))
-        needed = models.required(body.model_id, body.text_encoder, body.tool_id, body.vae_id, [lora.id for lora in body.loras], len(body.images))
+        needed = models.required(body.model_id, body.text_encoder, body.tool_id, body.vae_id, [lora.id for lora in body.loras], len(body.images), body.krea_reference_mode)
         tool = validate_image_tool(body) if body.tool_id else None
         if tool and tool.get('swap'):
             if not body.swap_selection:
