@@ -101,6 +101,8 @@ def generate(request,prompt,images,width,height,progress):
     import comfy_aimdo.control
     if not comfy_aimdo.control.init():raise RuntimeError('Could not initialize the model file reader.')
     import comfy.sd
+    from . import sent_prompts
+    sent_prompts.install(comfy.sd)  # the exact encoder input, for the result details
     import comfy.sample
     import comfy.utils
     import comfy.model_base
@@ -154,7 +156,8 @@ def generate(request,prompt,images,width,height,progress):
     progress(prompt_model=_components['prompt_model'])
     if cached is None:
         progress(stage='rewriting',message='Preparing the image description on this computer…')
-        system=json.loads((APP_DIR/'reference/flux3-system-prompts.json').read_text(encoding='utf-8'))
+        from .prompt_registry import apply_flux3
+        system=apply_flux3(json.loads((APP_DIR/'reference/flux3-system-prompts.json').read_text(encoding='utf-8')))
         caption_request=prompt_without_identifiers(prompt,identifiers)
         text=('Reference images follow in order (the first image, the second image, ...).\nUser request: '+caption_request+'\nOutput the caption.') if images else canvas+caption_request
         references=[torch.from_numpy(np.array(prompt_reference(im,len(images))).astype(np.float32)/255).unsqueeze(0) for im in images]
@@ -169,7 +172,9 @@ def generate(request,prompt,images,width,height,progress):
         from .lora_prompts import internal_prompt
         expanded, _ = internal_prompt(expanded, request)
     else:expanded=cached[2]
-    progress(rewritten_prompt=expanded,expanded_prompt=expanded,conditioning_reused=cached is not None)
+    sent_prompts.flush(progress,'FLUX.3 prompt model (BFL upsampler): full input',key=('flux3-pup',condition_key))
+    progress(rewritten_prompt=expanded,expanded_prompt=expanded,conditioning_reused=cached is not None,
+             sent_prompt={'label':'Description written by the FLUX.3 prompt model','text':expanded})
     if 'clip' not in _components:
         progress(stage='loading_encoder',message='Loading the image text encoder…')
         clip=load_clip(encoder_id)

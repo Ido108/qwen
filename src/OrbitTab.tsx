@@ -3,7 +3,7 @@ import {useImageDestination} from './UseImageAs';
 import {SettingLabel} from './SettingLabel';
 import {VideoImageLibrary} from './VideoImageLibrary';
 import {useEffect,useState} from 'react';
-import {CircleHelp,Images,Loader2,RotateCcw,Sparkles,X} from 'lucide-react';
+import {CircleHelp,Images,RotateCcw,X} from 'lucide-react';
 import type {Api,ModelState} from './ModelSettings';
 import {type InputImage,type Person} from './InputLibrary';
 import type {QueueState,SavedJob} from './JobQueue';
@@ -11,6 +11,7 @@ import {FilePicker} from './FilePicker';
 import {VideoOutput} from './VideoOutput';
 import type {SendVideo} from './SendVideoTo';
 import './orbit.css';
+import {useLastSeed} from './lastSeed';
 
 type Draft={model_id:string;image:InputImage|null;strength:number;seed:number;randomize_seed:boolean};
 const initial:Draft={model_id:'h3-int8',image:null,strength:1,seed:0,randomize_seed:true};
@@ -23,6 +24,7 @@ export function OrbitTab({api,visible,models,queue,onQueued,restoreRequest,peopl
 }){
   const [draft,setDraft]=useState(load),[job,setJob]=useState<SavedJob|null>(null),[result,setResult]=useState<SavedJob|null>(null);
   const [history,setHistory]=useState<SavedJob[]>([]),[pollId,setPollId]=useState<string|null>(null);
+  useLastSeed(history,seed=>setDraft(p=>p.randomize_seed&&p.seed!==seed?{...p,seed}:p));
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[acting,setActing]=useState(false),[clock,setClock]=useState(Date.now());
   useImageDestination('orbit',image=>setDraft(p=>({...p,image})));
   const busy=!!pollId;
@@ -57,7 +59,7 @@ export function OrbitTab({api,visible,models,queue,onQueued,restoreRequest,peopl
       </section>
       <details className="disclosure orbit-settings"><summary>Settings<span className="summary-hint">Strength {draft.strength.toFixed(2)}</span></summary><div className="details-body"><div className="field"><label htmlFor="orbit-model">Model</label><select id="orbit-model" disabled={acting} value={draft.model_id} onChange={e=>setDraft(p=>({...p,model_id:e.target.value as Draft['model_id']}))}>{!selected?<option value={draft.model_id}>Select a compatible model</option>:null}{choices.map(model=><option key={model.id} value={model.id}>{model.title} - {model.orbit_profile?.steps} steps{model.installed?" - Installed":""}</option>)}</select><small>{profile?.steps_source==='model'?"Uses the recommended steps for this model.":"Uses the recommended steps for the Orbit LoRA."} Compatible models you add appear here automatically.</small></div><SettingLabel htmlFor="orbit-strength" label="Orbit strength" value={1} onReset={()=>setDraft(p=>({...p,strength:models?.models.find(m=>m.id==="h3-360-orbit")?.default_strength??1}))}>Orbit strength <strong>{draft.strength.toFixed(2)}</strong></SettingLabel><input id="orbit-strength" type="range" min="0.5" max="1.5" step="0.05" disabled={acting} value={draft.strength} onChange={e=>setDraft(p=>({...p,strength:Number(e.target.value)}))}/><small>1.00 is recommended. A higher value can change the scene more.</small><label className="checkbox-label"><input type="checkbox" checked={draft.randomize_seed} onChange={e=>setDraft(p=>({...p,randomize_seed:e.target.checked}))}/>Randomize seed</label><div className="field"><SettingLabel htmlFor="orbit-seed" label="Seed" value={'Random'} onReset={()=>setDraft(p=>({...p,seed:0,randomize_seed:true}))}>Seed</SettingLabel><input id="orbit-seed" type="number" min="0" max="2147483647" disabled={draft.randomize_seed||acting} value={draft.seed} onChange={e=>setDraft(p=>({...p,seed:Number(e.target.value)}))}/></div><p className="muted">{selected?.title}<br/>360 Orbit LoRA · 73 frames · 24 fps<br/>Guidance 1 · No negative prompt<br/>{profile?.sampler} / {profile?.scheduler} · Video shift {profile?.video_shift}</p><a className="text-button" href="https://huggingface.co/pablodawson/MiniMax-H3-360-Orbit-LoRA" target="_blank" rel="noreferrer"><CircleHelp size={15}/>Model guide</a></div></details>
       {history.length?<details className="disclosure"><summary>History<span className="summary-hint">{history.length}</span></summary><div className="details-body history-grid">{history.map(item=><button className="history-item" key={item.id} onClick={()=>setResult(item)}><img src={item.poster_url} alt="Orbit result" loading="lazy"/></button>)}</div>{result?<button className="text-button" onClick={()=>restore(result)}><RotateCcw size={15}/>Use these settings</button>:null}</details>:null}
-    </div><div className="vs-action">{error?<div className="message error" role="alert">{error}</div>:null}{notice?<div className="notice" role="status">{notice}</div>:null}{missing.length?<small className="orbit-download">The first run downloads the required models ({downloadGB.toFixed(1)} GB). Progress appears in the queue.</small>:null}<div className="vs-action-row">{busy?<button className="button secondary" onClick={()=>api(`/api/jobs/${pollId}/cancel`,{method:'POST'}).then(onQueued).catch(e=>setError(e.message))}>{job?.status==='queued'?'Remove from queue':'Stop this job'}</button>:null}<button className="button primary vs-submit" disabled={acting||!draft.image||!selected} onClick={generate}>{acting?<Loader2 size={18} className="spin"/>:<Sparkles size={18}/>} {acting?'Adding…':queue.active||queue.pending.length||queue.paused?'Add orbit to queue':'Generate orbit'}</button></div></div></div>
+    </div><div className="vs-action">{error?<div className="message error" role="alert">{error}</div>:null}{notice?<div className="notice" role="status">{notice}</div>:null}{missing.length?<small className="orbit-download">The first run downloads the required models ({downloadGB.toFixed(1)} GB). Progress appears in the queue.</small>:null}<div className="vs-action-row">{busy?<button className="button secondary" onClick={()=>api(`/api/jobs/${pollId}/cancel`,{method:'POST'}).then(onQueued).catch(e=>setError(e.message))}>{job?.status==='queued'?'Remove from queue':'Stop this job'}</button>:null}<button className="button primary vs-submit" disabled={acting||!draft.image||!selected} onClick={generate}>{acting?<span className="train-spinner" aria-hidden="true"/>:null} {acting?'Adding…':queue.active||queue.pending.length||queue.paused?'Add orbit to queue':'Generate orbit'}</button></div></div></div>
     <section className="panel result-panel vs-result"><VideoOutput job={job} result={result} busy={busy} clock={clock} models={models} onSendVideo={onSendVideo}/></section></div>
 
   </main></ModelDefaultsScope>;

@@ -64,7 +64,7 @@ export function ZoomView({src,alt,className,onSwipe,separateControls=false}:{src
     {separateControls?<><ImageLoadState {...image} fullSize={view.scale>1}/>{failed?<p className="viewer-error" role="alert">The image could not load. Close and open it again.</p>:null}</>:null}
   </div>;
   const viewport=<div ref={box} className={`zoom-view ${view.scale>1?'zoomed':''} ${separateControls?'':className||''}`} tabIndex={0} aria-label="Image viewer"
-    onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(['+','=','-','0'].includes(e.key)){e.preventDefault();zoom(e.key==='0'?1:current.current.scale*(e.key==='-'?1/1.5:1.5));}}}
+    onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(['+','=','-','0','f','F'].includes(e.key)){e.preventDefault();zoom(['0','f','F'].includes(e.key)?1:current.current.scale*(e.key==='-'?1/1.5:1.5));}}}
     onPointerDown={e=>{
       if((e.target as Element).closest('button'))return;
       e.currentTarget.setPointerCapture(e.pointerId);pointers.current.set(e.pointerId,{x:e.clientX,y:e.clientY});

@@ -42,12 +42,16 @@ def run(request, job, directory, update):
     from .lora_prompts import internal_prompt
     settings.prompt, lora_words = internal_prompt(settings.prompt, settings.model_dump())
     update(lora_prompt_words=lora_words)
+    from . import sent_prompts
+    sent_prompts.clear()
     if is_ref2va(entry(settings.model_id)):
         frames, audio, prompt = run_ref2va(settings, images, voices, update, directory)
     else:
         from .ltx_engine import generate
         frames, audio = generate(settings.model_dump(), images, voices, update, directory)
         prompt = settings.prompt
+    update(sent_prompt={'label': 'Prompt sent to the video model (after LoRA words)', 'text': prompt})
+    sent_prompts.flush(update)
     if len(frames) != settings.frames:
         raise RuntimeError(f'The decoder returned {len(frames)} frames; expected {settings.frames}.')
     update(stage='saving', message='Saving MP4...')

@@ -14,7 +14,7 @@ import {PromptHistory,rememberPrompt} from './PromptHistory';
 import {stageLabel,stepLabel} from './QueueActivity';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {UploadCloud, Image as ImageIcon, Download, X, ChevronDown, ChevronLeft, ChevronRight, Sparkles, Expand, Copy, Check, CircleHelp, SquareDashed, Compass, Loader2, Plus, ArrowUpRight, Settings, Images, LayoutGrid, RotateCcw} from 'lucide-react';
+import {UploadCloud, Image as ImageIcon, Download, X, ChevronDown, ChevronLeft, ChevronRight, Expand, Copy, Check, CircleHelp, SquareDashed, Compass, Loader2, Plus, ArrowUpRight, Settings, Images, LayoutGrid, RotateCcw} from 'lucide-react';
 import {ModelSettings,type ModelState} from './ModelSettings';
 import {OrbitTab} from './OrbitTab';
 import {VideoTab} from './VideoTab';
@@ -32,8 +32,9 @@ import {TrainPage} from './TrainPage';
 import {SwapPanel,swapDefaults,swapNegative,type SwapState} from './SwapPanel';
 import {PromptInput} from './PromptInput';
 import {displayImageMentions,imageMentionOptions} from './promptMentions';
+import {KnownPeoplePicker} from './KnownPeoplePicker';
 import {LoraStack,enabledLoras,type LoraChoice} from './LoraStack';
-import {compatibleLoras,type AuthorSettings,type LoraMeta} from './loraChoices';
+import {compatibleLoras,loraSampling,type AuthorSettings,type LoraMeta} from './loraChoices';
 import {LibraryPopover} from './LibraryPopover';
 import {ResultsRail} from './ResultsRail';
 import {JobQueue,useQueue,type SavedJob} from './JobQueue';
@@ -53,17 +54,22 @@ import './photo-workspace.css';
 import './civitai-workspace.css';
 import './lora-controls.css';
 import './image-preview.css';
+import './viewer.css';
 import {apiRequest} from './session';
+import {useLastSeed} from './lastSeed';
 
-type Params = ImageOptions & ToolState & {loras:LoraChoice[];vae_id:string;vae_choice?:boolean;model_id:string;text_encoder:string;prompt:string; images:string[];image_labels?:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string; denoise?:number|null; krea_reference_mode?:'identity'|'style'};
+type Params = ImageOptions & ToolState & {loras:LoraChoice[];vae_id:string;vae_choice?:boolean;model_id:string;text_encoder:string;prompt:string; images:string[];image_labels?:string[]; enhance:boolean; seed:number; randomize_seed:boolean; negative_prompt:string; output_dir:string; denoise?:number|null; krea_reference_mode?:'identity'|'style'; krea_person?:number; krea_scene?:number|null};
 type Job = Timing & {download_completed_bytes?:number;download_total_bytes?:number;id:string; status:string; stage:TextKey; message:string; seed:number; step:number; total_steps:number; request:Params; rewritten_prompt:string; created_at:number; started_at?:number; stage_started_at?:number; finished_at?:number; elapsed_seconds?:number; image_url?:string; width?:number; height?:number; tokens?:number; has_transparency?:boolean};
 type Example = {id:string; title:string; title_en:string; prompt:string; prompt_extend:boolean; inputs:string[]; outputs:string[]; category:string};
 type Config = {token:string; models:Record<string,boolean>; output_dir:string; active_job:string|null; device:string};
 type VideoSection = 'orbit'|'create'|'reference'|'multi-reference'|'upscale';
 const defaults:Params = {loras:[],tool_id:null,tool_options:{},lora_strength:null,vae_id:'auto',model_id:'uc-int8-convrot',text_encoder:'auto',prompt:'',images:[],enhance:false,custom_size:false,auto_resolution:2048,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:null};
 // The same weights as INT8 ConvRot: native INT8 matmul, about 3x faster per step than Q8_0 GGUF on an RTX 5090. Saved drafts move once.
+const SAMPLING_KEYS=['steps','cfg','sampler','scheduler'] as const;
+// A People name or a real file name; stored upload names (a 32-character hash) say nothing to the user.
+const photoName=(input:{name?:string},i:number)=>`Photo ${i+1}${input.name&&!/^[0-9a-f]{32}\.\w+$/i.test(input.name)?`: ${input.name}`:''}`;
 const FAST_FORMAT:Record<string,string>={'gguf-q8_0':'uc-int8-convrot','turbo-gguf-q8_0':'turbo-int8-convrot'};
-function loadDraft():Params {try {const saved=JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}');if(!localStorage.getItem('qwen-image-defaults-v2')){localStorage.setItem('qwen-image-defaults-v2','1');if(FAST_FORMAT[saved.model_id])saved.model_id=FAST_FORMAT[saved.model_id];}return {...defaults,...saved,randomize_seed:saved.randomize_seed!==false,vae_id:saved.vae_choice?saved.vae_id:'auto',steps:saved.auto_resolution===undefined&&saved.steps===40?null:(saved.steps??null)};} catch {return defaults;}}
+function loadDraft():Params {try {const saved=JSON.parse(localStorage.getItem('image-studio-draft-v1')||'{}');if(!localStorage.getItem('qwen-image-defaults-v2')){localStorage.setItem('qwen-image-defaults-v2','1');if(FAST_FORMAT[saved.model_id])saved.model_id=FAST_FORMAT[saved.model_id];}if(!localStorage.getItem('qwen-enhance-off-v1')){localStorage.setItem('qwen-enhance-off-v1','1');saved.enhance=false;}return {...defaults,...saved,randomize_seed:saved.randomize_seed!==false,vae_id:saved.vae_choice?saved.vae_id:'auto',steps:saved.auto_resolution===undefined&&saved.steps===40?null:(saved.steps??null)};} catch {return defaults;}}
 function loadInputs():InputImage[]{
   const images=loadDraft().images.map(inputImage);
   try{const saved:InputImage[]=JSON.parse(localStorage.getItem('qwen-input-people')||'[]');return images.map((image,i)=>saved[i]?.id===image.id?{...image,personId:saved[i].personId,name:saved[i].name,subjectLabel:saved[i].subjectLabel}:image);}catch{return images;}
@@ -94,6 +100,7 @@ function App(){
   const [enhancement,setEnhancement]=useState<EnhancementState|null>(null);
   const [examples,setExamples]=useState<Example[]>([]);
   const [history,setHistory]=useState<Job[]>([]);
+  useLastSeed(history,seed=>setParams(p=>p.randomize_seed&&p.seed!==seed?{...p,seed}:p));
   const [job,setJob]=useState<Job|null>(null);
   const [result,setResult]=useState<Job|null>(null);
   const [pollId,setPollId]=useState<string|null>(null);
@@ -123,19 +130,38 @@ function App(){
   const family=chosenModel?.family||'qwen-image-2.1';const krea=family.startsWith('krea-2');const zimage=family.startsWith('z-image');const flux3=family.startsWith('flux3-klein');const moss=family.startsWith('moss-image');
   // Krea 2 and Z-Image have their own text encoders; Qwen models pick INT8 or BF16 by the model format.
   const chosenEncoder=flux3?'flux3-encoder-int8':moss?(chosenModel?.text_encoder||'moss-encoder-int8'):krea||zimage?(chosenModel?.text_encoder||(krea?'krea2-encoder-bf16':'zimage-encoder-bf16')):params.text_encoder==='auto'?'encoder-int8':params.text_encoder;
-  const userLoras=(modelState?.models||[]).filter(m=>m.kind==='image-lora'&&(m.source==='civitai'||m.source==='trained'));
+  // Every add-on LoRA, from any source (Civitai, Hugging Face, ModelScope, D:\models, the catalog); tool LoRAs and
+  // Krea 2's reference adapters run inside their own modes.
+  const toolLoras=new Set(tools.map(t=>t.lora));
+  const userLoras=(modelState?.models||[]).filter(m=>m.kind==='image-lora'&&!!m.families?.length&&!toolLoras.has(m.id)&&!m.id.startsWith('krea2-lora-'));
   const activeLoras=enabledLoras(params.loras,userLoras,family);
+  // People the model (or an active LoRA) knows by trigger, offered in the @ menu (MOSS Serenity).
+  const knownFrom=chosenModel?.known_people?.length?chosenModel:userLoras.find(l=>l.known_people?.length&&activeLoras.some(a=>a.id===l.id));
+  // Recommended sampling follows the model, the LoRAs and the size. A value the user typed stays until the next model change.
+  const pixels=params.custom_size?params.width*params.height:params.auto_resolution**2;
+  const loraAdvice=loraSampling(activeLoras,userLoras as (LoraMeta&{title?:string})[],family,pixels);
+  const manualSampling=useRef(new Set<string>()),autoSampling=useRef<string[]>([]);
+  const adviceKey=JSON.stringify(loraAdvice?.values||null);
+  useEffect(()=>{setParams(p=>{const next:Record<string,unknown>={...p};const applied:string[]=[];
+    for(const key of SAMPLING_KEYS){if(manualSampling.current.has(key))continue;const value=(loraAdvice?.values as Record<string,unknown>|undefined)?.[key];
+      if(value!==undefined&&value!==null){next[key]=value;applied.push(key);}else if(autoSampling.current.includes(key))next[key]=null;}
+    autoSampling.current=applied;return SAMPLING_KEYS.some(key=>next[key]!==p[key])?next as Params:p;});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[adviceKey,params.model_id]);
+  const adviceShown=!!loraAdvice&&Object.keys(loraAdvice.values).some(key=>!manualSampling.current.has(key));
   const vaes=(modelState?.models||[]).filter(m=>m.kind==='vae'&&(m.families||['qwen-image-2.1','qwen-image-2.1-turbo']).includes(family));const vaeTitle=(id:string)=>id==='vae'?'Standard':id==='vae-texture-fix'?'Texture fix':vaes.find(v=>v.id===id)?.title||id;
   // A LoRA made for this model whose author decodes with a named VAE (Standard keeps the grain that Texture fix smooths).
   const loraVae=activeLoras.map(l=>(userLoras.find(m=>m.id===l.id) as LoraMeta|undefined)?.trained_on).find(t=>t?.family===family&&t.settings?.vae_id)?.settings?.vae_id;
   const autoVae=(loraVae&&(modelState?.models||[]).some(m=>m.id===loraVae&&m.kind==='vae')?loraVae:null)||chosenModel?.recommended_vae||(krea?'krea2-vae':zimage?'zimage-vae':moss?'moss-vae-small':'vae-texture-fix');
   const authorModel=(target:string)=>target===family?chosenModel:(modelState?.models||[]).filter(m=>m.kind==='image'&&m.family===target&&m.installed).sort((a,b)=>Number(a.source==='civitai')-Number(b.source==='civitai'))[0];
-  const applyAuthorSettings=(s:AuthorSettings&{family:string})=>{const target=authorModel(s.family);if(!target)return;setParams(p=>({...p,model_id:target.id,...(s.steps?{steps:s.steps}:{}),...(s.cfg?{cfg:s.cfg}:{}),...(s.sampler?{sampler:s.sampler}:{}),...(s.scheduler?{scheduler:s.scheduler}:{}),...(s.vae_id?{vae_id:s.vae_id,vae_choice:true}:{})}));setNotice(`Using the LoRA author's settings${target.id!==params.model_id?` with ${target.title}`:''}.`);};const resolvedVae=params.vae_id==='auto'||!vaes.some(v=>v.id===params.vae_id)?autoVae:params.vae_id;
+  const applyAuthorSettings=(s:AuthorSettings&{family:string})=>{const target=authorModel(s.family);if(!target)return;manualSampling.current.clear();markManual(s);setParams(p=>({...p,model_id:target.id,...(s.steps?{steps:s.steps}:{}),...(s.cfg?{cfg:s.cfg}:{}),...(s.sampler?{sampler:s.sampler}:{}),...(s.scheduler?{scheduler:s.scheduler}:{}),...(s.vae_id?{vae_id:s.vae_id,vae_choice:true}:{})}));setNotice(`Using the LoRA author's settings${target.id!==params.model_id?` with ${target.title}`:''}.`);};const resolvedVae=params.vae_id==='auto'||!vaes.some(v=>v.id===params.vae_id)?autoVae:params.vae_id;
   const requiredIds=[params.model_id,chosenEncoder,resolvedVae,...(flux3?['flux3-prompt']:[]),...(krea&&inputs.length?[params.krea_reference_mode==='style'?'krea2-lora-style-reference':'krea2-lora-identity-edit']:[]),...(activeTool?[activeTool.lora]:[]),...activeLoras.map(l=>l.id)];
   const imageReady=modelState?.remote?!!chosenModel?.ready:!!chosenModel;
   const ready=imageReady&&!!chosenModel?.generation_defaults&&validSteps;
   const missingModels=modelState?.remote?[]:requiredIds.map(id=>modelState?.models.find(m=>m.id===id)).filter(m=>m&&!m.installed);
   const change=<K extends keyof Params>(key:K,value:Params[K])=>setParams(p=>({...p,[key]:value}));
+  // A sampling value typed by the user stays; resetting it to the model default lets recommendations apply again.
+  const markManual=(values:Record<string,unknown>)=>{for(const key of SAMPLING_KEYS)if(key in values){if(values[key]===null||values[key]===undefined)manualSampling.current.delete(key);else manualSampling.current.add(key);}};
   const downloading=modelState?.transfer.status==='running'||!!modelState?.downloads?.some(d=>d.status==='running');
   const api=useCallback((path:string,init:RequestInit={})=>apiRequest(path,init),[]);
   const queue=useQueue(api,!!config);
@@ -159,6 +185,8 @@ function App(){
   function restoreJob(saved:SavedJob){
     setImageRestoreKey(key=>key+1);
     const restoredImage={...defaults,...saved.request,seed:saved.seed??saved.request.seed??0,randomize_seed:false,steps:saved.actual_steps??(saved.total_steps>0?saved.total_steps:saved.request.steps??null),cfg:resultCfg({cfg:saved.cfg,true_cfg_scale:saved.true_cfg_scale,guidance:saved.guidance})??saved.request.cfg??null};
+    // A restored run keeps its exact sampling: the automatic LoRA advice does not overwrite it.
+    manualSampling.current=new Set(SAMPLING_KEYS.filter(key=>restoredImage[key]!==null&&restoredImage[key]!==undefined));
     if(['training','captioning'].includes(saved.kind||'')){setTab('train');window.history.replaceState(null,'','#train');return;}
     if(saved.kind==='video'&&saved.request.workflow==='orbit'){setOrbitRestore({job:saved,key:Date.now()});showVideo('orbit');}
     else if(saved.kind==='video'){setVideoRestore({job:saved,key:Date.now()});setVideoModel(saved.request.model_id);showVideo('create');}
@@ -191,8 +219,9 @@ function App(){
       // A LoRA for another architecture also selects a model it works with (the installed one first).
       const lora=item.kind==='image-lora'?modelState?.models.find(m=>m.id===item.id):undefined;const families=lora?.families||[];
       const fitting=lora&&!families.includes(family)?(modelState?.models.filter(m=>m.kind==='image'&&families.includes(m.family||'qwen-image-2.1'))||[]).sort((a,b)=>Number(b.ready)-Number(a.ready))[0]:undefined;
+      if(item.kind==='image-lora'&&fitting)manualSampling.current.clear();
       if(item.kind==='image-lora')setParams(p=>{const selected=compatibleLoras(p.loras,modelState?.models||[],fitting?.family||family);return {...p,...(fitting?{model_id:fitting.id,steps:null,cfg:null,sampler:null,scheduler:null}:{}),loras:selected.some(l=>l.id===item.id)?selected:[...selected,{id:item.id,strength:lora?.default_strength??1}]};});
-      else setParams(p=>({...p,model_id:item.id,steps:null,cfg:null,sampler:null,scheduler:null}));
+      else{manualSampling.current.clear();setParams(p=>({...p,model_id:item.id,steps:null,cfg:null,sampler:null,scheduler:null}));}
       setTab('image');window.history.replaceState(null,'','#images');setNotice(item.kind==='image-lora'?`LoRA added${fitting?`, and the model changed to ${fitting.title}, which the LoRA works with`:''}. Its strength is under LoRAs.`:'Model selected.');}
   function viewJob(saved:SavedJob){if(['training','captioning'].includes(saved.kind||'')){restoreJob(saved);return;}setGalleryView({job:saved,key:Date.now()});setTab('gallery');window.history.replaceState(null,'','#gallery');}
   useEffect(()=>{let alive=true,timer:number; async function connect(){try{
@@ -249,7 +278,7 @@ function App(){
     if(!validSteps){setError('Enter a whole number of steps from 1 to 80.');return;}
     if(locked)return;if(!imageReady){setError('Choose an available model first.');return;}if(activeTool&&(inputs.length<activeTool.inputs.min||inputs.length>activeTool.inputs.max)){setError(`${activeTool.title} needs ${activeTool.inputs.labels.map((l,i)=>`image ${i+1}: ${l}`).join(', ')}.`);return;}if(zimage&&inputs.length>1){setError('Z-Image redraws one input image. Keep only image 1, or choose a Qwen-Image-2.1 model to combine images.');return;}if(!prompt.trim()&&!inputs.length){setError(t('enterPrompt'));promptRef.current?.focus();return;}
     setSubmitting(true);setError('');setNotice('');setJob(null);
-    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,prompt,tool_id:activeTool?.id??null,swap_selection:null,swap_extra:'',lora_strength:activeTool?(params.lora_strength??toolStrength(activeTool,params.tool_options)):null,enhance:false,vae_id:params.vae_id==='auto'&&loraVae?resolvedVae:params.vae_id,loras:activeLoras,images:inputs.map(i=>i.id),image_labels:inputs.map(i=>subjectLabel(i.subjectLabel)),denoise:zimage&&inputs.length?params.denoise??0.7:null})});rememberPrompt('images',prompt);setJob(created);setPollId(created.id);setNotice('Added to queue.');queue.refresh();}
+    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,prompt,tool_id:activeTool?.id??null,swap_selection:null,swap_extra:'',lora_strength:activeTool?(params.lora_strength??toolStrength(activeTool,params.tool_options)):null,enhance:!!params.enhance&&!flux3&&!activeTool,vae_id:params.vae_id==='auto'&&loraVae?resolvedVae:params.vae_id,loras:activeLoras,images:inputs.map(i=>i.id),image_labels:inputs.map(i=>subjectLabel(i.subjectLabel)),denoise:(zimage||moss)&&inputs.length?params.denoise??0.7:null})});rememberPrompt('images',prompt);setJob(created);setPollId(created.id);setNotice('Added to queue.');queue.refresh();}
     catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
   }
   // Images > Swap: the chosen swap tool with picture 1 (scene) and picture 2 (head or person), on a Qwen-Image-2.1 model.
@@ -269,7 +298,7 @@ function App(){
   function showImageSection(next:'create'|'swap'){setImageSection(next);window.history.replaceState(null,'',next==='swap'?'#swap':'#');setError('');
     // Swap runs on Qwen-Image-2.1: switch from Krea 2 or Z-Image to a ready Qwen model, Turbo first (the author's 8-step setup).
     if(next==='swap'&&!(chosenModel?.family||'').startsWith('qwen-image-2.1')){const qwen=(modelState?.models||[]).filter(m=>m.kind==='image'&&(m.family||'').startsWith('qwen-image-2.1'));
-      const pick=qwen.find(m=>m.family==='qwen-image-2.1-turbo'&&m.installed)??qwen.find(m=>m.installed)??qwen[0];if(pick)setParams(p=>({...p,model_id:pick.id,steps:null,cfg:null,sampler:null,scheduler:null}));}}
+      const pick=qwen.find(m=>m.family==='qwen-image-2.1-turbo'&&m.installed)??qwen.find(m=>m.installed)??qwen[0];if(pick){manualSampling.current.clear();}if(pick)setParams(p=>({...p,model_id:pick.id,steps:null,cfg:null,sampler:null,scheduler:null}));}}
   function reorder(index:number,delta:number){setInputs(old=>{const next=[...old];[next[index],next[index+delta]]=[next[index+delta],next[index]];return next;});}
   function applyExample(example:Example){setParams(p=>({...p,prompt:example.prompt,enhance:example.prompt_extend}));setInputs(example.inputs.map((name)=>({id:`example:${name}`,name,url:`/examples/${name}`})));setActiveExample(null);setJob(null);setNotice(t('promptLoaded'));promptRef.current?.focus();}
   // The preview steps through the list it was opened from: results (newest first, like the Recent rail) or the input images.
@@ -286,12 +315,12 @@ function App(){
   function closeModal(){setLightbox(null);setActiveExample(null);setShowExamples(false);setShowHelp(false);setShowSettings(false);}
   async function copyPrompt(text:string){try{await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1600);}catch(e){setError(String(e));}}
   const settingsProps={value:params,model:chosenModel,models:modelState,modelId:params.model_id,tools:tools.filter(t=>!t.swap),tool:activeTool,toolState:{tool_id:activeTool?.id??null,tool_options:params.tool_options,lora_strength:params.lora_strength},disabled:locked,
-    onChange:(values:Partial<ImageOptions>)=>setParams(p=>({...p,...values})),
-    onModel:(id:string)=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');},
+    onChange:(values:Partial<ImageOptions>)=>{markManual(values);setParams(p=>({...p,...values}));},
+    onModel:(id:string)=>{if(id!==params.model_id)manualSampling.current.clear();setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');},
     onTool:(state:ToolState)=>{const next=tools.find(t=>t.id===state.tool_id);setParams(p=>({...p,...state,prompt:next?toolPrompt(next,state.tool_options):(p.tool_id?'':p.prompt)}));setError('');}};
   // The enhanced prompt is shown with the result only when enhancement really changed the prompt.
   const rewrittenPrompt=result?.rewritten_prompt?.trim()&&result.rewritten_prompt.trim()!==(result.request?.prompt||'').trim()?result.rewritten_prompt.trim():'';
-  const imageDefaultBindings=bindSettings({...params,steps:params.steps??chosenModel?.generation_defaults?.steps??40,cfg:params.cfg??chosenModel?.generation_defaults?.cfg??(params.negative_prompt?.trim()?2:1),sampler:params.sampler??chosenModel?.generation_defaults?.sampler??'euler',scheduler:params.scheduler??null},patch=>setParams(p=>({...p,...patch})),{
+  const imageDefaultBindings=bindSettings({...params,steps:params.steps??chosenModel?.generation_defaults?.steps??40,cfg:params.cfg??chosenModel?.generation_defaults?.cfg??(params.negative_prompt?.trim()?2:1),sampler:params.sampler??chosenModel?.generation_defaults?.sampler??'euler',scheduler:params.scheduler??null},patch=>{markManual(patch);setParams(p=>({...p,...patch}));},{
     Steps:'steps',CFG:'cfg',Sampler:'sampler',Schedule:'scheduler','Output size':['custom_size','auto_resolution','width','height'],Width:'width',Height:'height',Seed:['seed','randomize_seed'],Decoder:['vae_id','vae_choice'],'Negative prompt':'negative_prompt','Output folder':'output_dir',Change:'denoise',
   });
   return <>
@@ -300,7 +329,7 @@ function App(){
     </header>
     {inputs.length?<BoxEditor src={inputs[0].url} open={boxOpen} onClose={()=>setBoxOpen(false)} onApply={async png=>{const data=new FormData();data.append('files',new File([png],'marked.png',{type:'image/png'}));const [marked]=await api('/api/uploads',{method:'POST',body:data});setInputs(old=>[marked,...old.slice(1)]);}}/>:null}
     <ConnectionNotice/>
-    <JobQueue api={api} state={queue.state} error={queue.error} refresh={queue.refresh} open={queueOpen} onOpen={setQueueOpen} onRestore={restoreJob} onView={viewJob}/>
+    <JobQueue api={api} state={queue.state} error={queue.error} refresh={queue.refresh} open={queueOpen} onOpen={setQueueOpen} onRestore={restoreJob} onView={viewJob} modelTitle={id=>modelState?.models.find(m=>m.id===id)?.title||id}/>
     {tab==='image'&&swapTools.length?<nav className="video-workflow-nav" role="tablist" aria-label="Image tools">
       <button role="tab" aria-selected={imageSection==='create'} onClick={()=>showImageSection('create')}>Create and edit</button>
       <button role="tab" aria-selected={imageSection==='swap'} onClick={()=>showImageSection('swap')}>Swap</button>
@@ -319,9 +348,10 @@ function App(){
       <div className="controls-scroll">
         <section className="panel model-panel">
           <ImageSettings part="model" {...settingsProps}/>
-          <LoraStack compact value={params.loras} onChange={next=>change('loras',next)} loras={userLoras} family={family} pixels={params.custom_size?params.width*params.height:params.auto_resolution**2} prompt={params.prompt} onPrompt={next=>change('prompt',next)} disabled={locked}
+          <LoraStack compact value={params.loras} onChange={next=>change('loras',next)} loras={userLoras} family={family} pixels={pixels} prompt={params.prompt} onPrompt={next=>change('prompt',next)} disabled={locked}
             model={chosenModel} onAuthorSettings={applyAuthorSettings} hasModel={f=>!!authorModel(f)}
             onBrowse={()=>{setTab('civitai');window.history.replaceState(null,'','#civitai');}}/>
+          {adviceShown?<small className="lora-auto-settings" role="status">{loraAdvice!.note}</small>:null}
           {config&&missingModels.length?<small className="model-missing">Missing model files download automatically when you generate.</small>:null}
         </section>
         {imageSection==='swap'?<SwapPanel modelId={params.model_id} restoreKey={imageRestoreKey} effectiveCfg={params.cfg??chosenModel?.generation_defaults?.cfg??(swapNegative(swap).trim()?2:1)} modelFamily={chosenModel?.family} options={params} onOptions={values=>setParams(p=>({...p,...values}))} advanced={<ImageSettings idPrefix="swap" part="advanced" {...settingsProps} value={{...params,negative_prompt:swapNegative(swap)}}/>} api={api} tools={swapTools} value={swap} onChange={setSwap} disabled={locked} results={history} people={people} onPeople={loadPeople} revision={libraryRevision}/>:null}
@@ -331,9 +361,8 @@ function App(){
             {inputs.length===0?<div className="upload-empty-row"><FilePicker className="upload-empty compact" disabled={locked} multiple onFiles={upload}><UploadCloud size={20} strokeWidth={1.6}/><span><strong>{uploading?t('uploadBusy'):'Upload images'}</strong></span></FilePicker><button type="button" className="upload-library" disabled={locked} onClick={()=>openLibrary(null)}><Images size={18} strokeWidth={1.6}/><span>Pick from library</span></button></div>:<div className="input-grid">{inputs.map((input,index)=><div className={`input-thumb ${libraryOpen&&replaceAt===index?'target':''}`} key={index}><button className="thumb-preview checker" disabled={locked} title="Replace this image" onClick={()=>openLibrary(index)} aria-label={`Replace image ${index+1}`}><img src={input.url} alt={`${index+1}. ${input.name}`}/></button><button className="thumb-zoom" onClick={()=>openInputPreview(input.url)} aria-label={`${t('preview')} ${index+1}`} title={t('preview')}><Expand size={12}/></button><span className="image-number">{index+1}{activeTool?.inputs.labels[index]?` · ${activeTool.inputs.labels[index]}`:''}{inputPerson(input,people)?` · ${inputPerson(input,people)!.name}`:''}</span><button disabled={locked} className="remove-image" onClick={()=>setInputs(old=>old.filter((_,i)=>i!==index))} aria-label={`${t('remove')} ${index+1}`}><X size={13}/></button><PersonPhotoCycle image={input} people={people} disabled={locked} onChange={next=>setInputs(old=>old.map((item,i)=>i===index?next:item))}/><ImageLabel number={index+1} value={input.subjectLabel} disabled={locked} onChange={subjectLabel=>setInputs(old=>old.map((item,i)=>i===index?{...item,subjectLabel}:item))}/><div className="reorder"><button disabled={locked||index===0} onClick={()=>reorder(index,-1)} aria-label={`${t('left')} ${index+1}`}><ChevronLeft size={14}/></button><button disabled={locked||index===inputs.length-1} onClick={()=>reorder(index,1)} aria-label={`${t('right')} ${index+1}`}><ChevronRight size={14}/></button></div></div>)}{inputs.length<10?<button className="add-image" disabled={locked} onClick={()=>openLibrary(null)} aria-label="Add an image" title="Add an image"><Plus size={25}/></button>:null}</div>}
           </div>
           {flux3?<p className="input-note">FLUX.3 uses up to 10 reference images. It prepares a detailed image description locally before generation.</p>:null}
-          {moss&&inputs.length?<p className="input-note">MOSS Image makes images from text only. Remove the input images, or choose Qwen-Image-2.1 or FLUX.3 Klein to use them.</p>:null}
-          {krea&&inputs.length?<div className="input-note krea-mode" role="group" aria-label="Krea 2 input photos">{([['identity','Keep the person (identity edit)'],['style','Use as style reference']] as const).map(([mode,label])=><button key={mode} type="button" aria-pressed={(params.krea_reference_mode??'identity')===mode} disabled={locked} onClick={()=>change('krea_reference_mode',mode)}>{label}</button>)}<p>{(params.krea_reference_mode??'identity')==='identity'?'Puts the person from the photo into the new image (Krea 2 Identity Edit). With two photos: the first is the scene, the second the person.':'Takes colors, light and texture from 1 to 3 photos. It does not keep the person.'}</p></div>:null}
-          {zimage&&inputs.length?<div className="input-note zimage-redraw"><p>Z-Image redraws image 1 using your prompt. Lower change strength keeps more of the original; higher strength changes more. Faces and details can change. For edits that follow instructions about the original photo, choose Qwen-Image-2.1 or FLUX.3 Klein.{inputs.length>1?' Keep one input image for Z-Image.':''}</p>
+          {krea&&inputs.length?<div className="input-note krea-mode" role="group" aria-label="Krea 2 input photos">{([['identity','Keep the person (identity edit)'],['style','Use as style reference']] as const).map(([mode,label])=><button key={mode} type="button" aria-pressed={(params.krea_reference_mode??'identity')===mode} disabled={locked} onClick={()=>change('krea_reference_mode',mode)}>{label}</button>)}{(params.krea_reference_mode??'identity')==='identity'?<><p>Add the person's photo. A scene photo is optional.</p><p className="krea-framing-hint">Say how much of the person shows: full body, sitting on a bench, close-up. Without it, Krea copies the photo's crop.</p>{inputs.length>1?<div className="krea-roles"><label>Person<select value={Math.min(params.krea_person??0,inputs.length-1)} disabled={locked} onChange={e=>{const person=Number(e.target.value);setParams(p=>({...p,krea_person:person,krea_scene:p.krea_scene===person?null:p.krea_scene}));}}>{inputs.map((input,i)=><option key={input.id+i} value={i}>{photoName(input,i)}</option>)}</select></label><label>Scene (optional)<select value={params.krea_scene!=null&&params.krea_scene<inputs.length?params.krea_scene:''} disabled={locked} onChange={e=>change('krea_scene',e.target.value===''?null:Number(e.target.value))}><option value="">None</option>{inputs.map((input,i)=>i===Math.min(params.krea_person??0,inputs.length-1)?null:<option key={input.id+i} value={i}>{photoName(input,i)}</option>)}</select></label></div>:null}</>:<p>Takes colors, light and texture from 1 to 3 photos. It does not keep the person.</p>}</div>:null}
+          {(zimage||moss)&&inputs.length?<div className="input-note zimage-redraw"><p>{zimage?'Z-Image':'MOSS Image'} redraws image 1 using your prompt. Lower change strength keeps more of the original; higher strength changes more. It does not keep a person's identity: faces and details can change. To keep a person, choose Qwen-Image-2.1, FLUX.3 Klein or Krea 2{moss?', or train a MOSS LoRA of the person':''}.{inputs.length>1?` Keep one input image for ${zimage?'Z-Image':'MOSS Image'}.`:''}</p>
             <SettingLabel htmlFor="zimage-denoise" label="Change" value="70%" onReset={()=>change('denoise',null)}>Change <b>{Math.round((params.denoise??0.7)*100)}%</b></SettingLabel><input id="zimage-denoise" type="range" min="0.1" max="1" step="0.05" disabled={locked} value={params.denoise??0.7} onChange={e=>change('denoise',Number(e.target.value))}/><small>Low keeps more of image 1. 100% ignores it.</small></div>:null}
           <LibraryPopover open={libraryOpen} onClose={closeLibrary} anchor={inputPanel}>
             <InputLibrary api={api} inputs={inputs} onChange={setInputs} results={history} people={people} onPeople={loadPeople} replace={replaceAt!==null} target={replaceAt??0} revision={libraryRevision} disabled={locked} limit={10} onUpload={upload} onClose={closeLibrary}/>
@@ -341,7 +370,12 @@ function App(){
         </section>
         <section className="panel controls-panel" hidden={imageSection==='swap'}>
         <div className="prompt-row"><label htmlFor="prompt" className="prompt-label">{t('prompt')}{inputs.length?<small>Optional</small>:null}<span className="mode-label">{inputs.length?(zimage?'Image to image':krea?'Style reference':t('editMode')):t('createMode')}</span></label><button type="button" className="prompt-chip" disabled={!examples.length} onClick={()=>setShowExamples(true)} title="Example prompts"><LayoutGrid size={13}/>Examples</button><PromptHistory scope="images" disabled={locked} onLoad={text=>{change('prompt',text);promptRef.current?.focus();}} onRun={text=>generate(text)}/></div>
-        <PromptInput ref={promptRef} id="prompt" dir="auto" className="prompt-input" placeholder={t('placeholder')} value={displayImageMentions(params.prompt)} disabled={locked} onValueChange={text=>change('prompt',text)} mentions={imageMentionOptions(inputs,people,image=>setInputs(old=>[...old,image]),zimage?1:activeTool?.inputs.max??10)}/>
+        <PromptInput ref={promptRef} id="prompt" dir="auto" className="prompt-input" placeholder={t('placeholder')} value={displayImageMentions(params.prompt)} disabled={locked} onValueChange={text=>change('prompt',text)} tools={knownFrom?<KnownPeoplePicker people={knownFrom.known_people!} source={knownFrom.title} prompt={params.prompt} disabled={locked} onInsert={text=>{
+          // At the cursor, with a separating space; a later edit keeps the person in the prompt text.
+          const el=promptRef.current,current=params.prompt,at=el?el.selectionStart??current.length:current.length,end=el?el.selectionEnd??at:at;
+          const before=current.slice(0,at),pad=before&&!/\s$/.test(before)?(/,\s*$/.test(before)?' ':', '):'';
+          change('prompt',before+pad+text+current.slice(end));}}/>:null} mentions={[...imageMentionOptions(inputs,people,image=>setInputs(old=>[...old,image]),zimage?1:activeTool?.inputs.max??10)]}/>
+        {flux3||activeTool?null:<label className="checkbox-label enhance-toggle" title="Each model's official prompt rewriter runs on this computer and writes a detailed English prompt from yours, in any language. Text to show in the picture stays as you wrote it. Off by default."><input type="checkbox" checked={!!params.enhance} disabled={locked} onChange={e=>change('enhance',e.target.checked)}/>Enhance prompt<small>On this computer, 10 to 60 seconds</small></label>}
         <MobileResults results={history.filter(item=>!!item.image_url)} onOpen={openResultPreview} onUseSettings={useMobileSettings} disabled={locked} onGallery={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}/>
         <ImageSettings part="main" {...settingsProps}/>
         <details className="disclosure advanced-settings" onToggle={e=>{const el=e.currentTarget;if(el.open)requestAnimationFrame(()=>el.scrollIntoView({block:'nearest',behavior:'smooth'}));}}><summary><ChevronRight size={15}/>{t('advanced')}<span className="summary-hint">{params.randomize_seed?'Random seed':`${t('seed')}: ${params.seed}`} · {params.steps??chosenModel?.generation_defaults?.steps??'…'} steps · CFG {params.cfg??chosenModel?.generation_defaults?.cfg??1}</span></summary>
@@ -359,7 +393,7 @@ function App(){
       </div>
       <div className="panel generate-dock">
         {busy&&submittedJob?<div className="submission-status"><span role="status"><Loader2 size={14} className={submittedJob.status==='queued'?'':'spin'}/>{submittedJob.status==='queued'?`${submittedJob.position?`Queued · #${submittedJob.position}`:'Added to queue'}${queue.state.paused?' · Paused':''}`:`${stageLabel(submittedJob)}${stepLabel(submittedJob)?' · '+stepLabel(submittedJob):''}`}</span><button className="text-button" onClick={async()=>{try{if(pollId){await api(`/api/jobs/${pollId}/cancel`,{method:'POST'});await queue.refresh();}}catch(e){setError(String(e));}}}>{submittedJob.status==='queued'?'Remove':'Stop'}</button></div>:null}
-        <div className="generate-row"><div className="generate-controls"><button className="button primary" disabled={locked||!ready} onClick={()=>imageSection==='swap'?generateSwap():generate()} title={t('keyboard')}>{submitting?<Loader2 size={20} className="spin"/>:<Sparkles size={20}/>}<span>{submitting?'Adding…':queue.count||queue.state.paused?'Add image to queue':t('generate')}</span></button></div></div>
+        <div className="generate-row"><div className="generate-controls"><button className="button primary" disabled={locked||!ready} onClick={()=>imageSection==='swap'?generateSwap():generate()} title={t('keyboard')}>{submitting?<span className="train-spinner" aria-hidden="true"/>:null}<span>{submitting?'Adding…':queue.count||queue.state.paused?'Add image to queue':t('generate')}</span></button></div></div>
         {error?<div className="message error" role="alert"><span>{error}</span><button className="icon-button" aria-label={t('close')} onClick={()=>setError('')}><X size={16}/></button></div>:null}
         {notice?<div className="notice" role="status">{notice}</div>:null}
         {job?.status==='cancelled'?<div className="notice">{t('cancelled')}</div>:null}
@@ -386,8 +420,8 @@ function App(){
     <TrainPage api={api} visible={tab==='train'} models={modelState} results={history} people={people} onPeople={loadPeople} onUse={id=>applyInstalled({id,kind:'image-lora'})}/>
     <Gallery onSendVideo={sendVideo} api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>
 
-    <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):showExamples?t('examples'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':'content-dialog'}>{!lightbox?<button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>:null}
-      {showSettings?<ModelSettings initialView={settingsView} enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
+    <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):showExamples?t('examples'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':showSettings?'content-dialog settings-dialog':'content-dialog'}>{!lightbox?<button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>:null}
+      {showSettings?<ModelSettings initialView={settingsView} enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{if(id!==params.model_id)manualSampling.current.clear();setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
       {lightbox?<header className="preview-topbar">
         <div className="preview-navigation">{previewIndex>=0&&previewList.length>1?<><button type="button" className="icon-button" disabled={previewIndex===0} onClick={()=>stepPreview(-1)} aria-label="Previous image"><ChevronLeft size={20}/></button><span>{previewIndex+1} / {previewList.length}</span><button type="button" className="icon-button" disabled={previewIndex===previewList.length-1} onClick={()=>stepPreview(1)} aria-label="Next image"><ChevronRight size={20}/></button></>:<span>{t('preview')}</span>}</div>
         {previewJob?<div className="preview-actions"><button type="button" className="button secondary" aria-label="Use settings" disabled={locked} onClick={()=>useMobileSettings(previewJob)}><RotateCcw size={17}/><span className="label-full">Use settings</span><span className="label-short">Settings</span></button><a className="button secondary" href={`${previewJob.image_url}?download=true`}><Download size={17}/>Download</a><UseImageAs jobId={previewJob.id} disabled={locked}/></div>:null}

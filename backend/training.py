@@ -160,7 +160,8 @@ ARCHS = {
         'gate':'https://huggingface.co/black-forest-labs/flux-3-image-klein-base',
         'families':['flux3-klein','flux3-klein-base']},
     'qwen-image-2.1': {'label': 'Qwen-Image-2.1', 'arch': 'qwen_image_2', 'name_or_path': 'Comfy-Org/Qwen-Image-2.1',
-                       'qtype': 'convrot8', 'qtype_te': 'convrot8', 'timestep_type': 'shift', 'guidance': 3.0, 'sample_steps': 25,
+                       # "2.1 is meant to be sampled without guidance" (ai-toolkit qwen_image_2/src/pipeline.py:403).
+                       'qtype': 'convrot8', 'qtype_te': 'convrot8', 'timestep_type': 'shift', 'guidance': 1.0, 'sample_steps': 25,
                        'model_kwargs': {'rgba': False}, 'families': ['qwen-image-2.1']},
     'qwen-image-2.1-turbo': {'label': 'Qwen-Image-2.1 Turbo', 'arch': 'qwen_image_2',
                              'name_or_path': 'Comfy-Org/Qwen-Image-2.1/diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors',
@@ -168,7 +169,8 @@ ARCHS = {
                              'qtype': 'convrot8', 'qtype_te': 'convrot8', 'timestep_type': 'shift', 'guidance': 1.0, 'sample_steps': 8,
                              'model_kwargs': {'turbo': True, 'rgba': False}, 'families': ['qwen-image-2.1-turbo']},
     'krea-2': {'label': 'Krea 2 Raw', 'arch': 'krea2', 'name_or_path': 'krea/Krea-2-Raw', 'timestep_type': 'linear', 'guidance': 4.0, 'low_vram': True,
-               'sample_steps': 25, 'gate': 'https://huggingface.co/krea/Krea-2-Raw', 'families': ['krea-2']},
+               # krea-ai/krea-2 README: "TRAIN on Raw and RUN on Turbo".
+               'sample_steps': 25, 'gate': 'https://huggingface.co/krea/Krea-2-Raw', 'families': ['krea-2', 'krea-2-turbo']},
     'krea-2-turbo': {'label': 'Krea 2 Turbo', 'arch': 'krea2', 'name_or_path': 'krea/Krea-2-Turbo', 'timestep_type': 'linear', 'guidance': 1.0, 'low_vram': True,
                      'sample_steps': 9, 'gate': 'https://huggingface.co/krea/Krea-2-Turbo',
                      'assistant_lora_path': 'ostris/krea2_turbo_training_adapter/krea2_turbo_training_adapter_v1.safetensors',
@@ -179,9 +181,18 @@ ARCHS = {
                       'families': ['z-image-turbo']},
     'z-image': {'label': 'Z-Image Base', 'arch': 'zimage', 'name_or_path': 'Tongyi-MAI/Z-Image', 'qtype': 'qfloat8', 'quantize': False, 'timestep_type': 'weighted',
                 'guidance': 4.0, 'sample_steps': 30, 'families': ['z-image']},
+    # ai-toolkit's "MOSS-Image Base" defaults (ui.tsx moss_image:base): the int8 ConvRot Base attaches as-is, CFG 3 samples with
+    # layer 22 skipped on the negative branch and the LoRA kept off layer 22. OpenMOSS: train LoRAs on Base, text encoder frozen.
+    # Base-trained LoRAs apply to SFT and to Base finetunes such as Serenity, not to the distilled Turbo.
+    'moss-image': {'label': 'MOSS Image', 'arch': 'moss_image', 'name_or_path': 'OpenMOSS-Team/MOSS-Image-Base', 'qtype': 'convrot8', 'qtype_te': 'convrot8',
+                   'timestep_type': 'shift', 'guidance': 3.0, 'sample_steps': 30, 'model_kwargs': {'uncond_skip_layers': [22]},
+                   'network_kwargs': {'ignore_if_contains': ['layers.22.']}, 'gate': 'https://huggingface.co/OpenMOSS-Team/MOSS-Image-Base',
+                   'families': ['moss-image-base', 'moss-image']},
 }
 # civitai.inspect() names for the trained file, to check it before it is added.
-INSPECT_ARCH = {'flux3':'flux3-klein','qwen_image_2': 'qwen-image-2.1', 'krea2': 'krea-2', 'zimage': 'z-image'}
+INSPECT_ARCH = {'flux3':'flux3-klein','qwen_image_2': 'qwen-image-2.1', 'krea2': 'krea-2', 'zimage': 'z-image', 'moss_image': 'moss-image'}
+# The app's own files for a training, so the trainer reads them instead of downloading its defaults.
+LOCAL_FILES = {'flux3-klein-base': ['flux3-base-int8', 'flux3-encoder-int8', 'flux3-vae'], 'moss-image': ['moss-base-int8', 'moss-encoder-int8', 'flux3-vae']}
 
 
 def slug(name: str) -> str:
@@ -192,6 +203,18 @@ def output_dir(request: dict) -> Path:
     """One folder per name and base model, not per job: ai-toolkit continues from the last saved step in it,
     so Continue after Stop (a new queue job) picks up where the training stopped."""
     return TRAININGS_DIR / f"{slug(request['name'])}_{request['arch']}"
+
+
+def preservation(request: dict) -> dict:
+    """Differential output preservation for a character with a trigger word: the same image and caption with the trigger
+    replaced by its class word ("photo of idoperson, a man" -> "photo of man, a man") keeps the base model's idea of the
+    class (Krea's LoRA workflow; MOSS Serenity's prior preservation). The class comes from the captions, else "person"."""
+    if request.get('subject') == 'style' or not request.get('trigger_word'):
+        return {'diff_output_preservation': False}
+    text = ' '.join(i.get('caption', '') for i in request.get('images', [])).lower()
+    women, men = len(re.findall(r'\b(?:woman|women|girl|lady)\b', text)), len(re.findall(r'\b(?:man|men|boy|guy)\b', text))
+    word = 'woman' if women > men else 'man' if men > women else 'person'
+    return {'diff_output_preservation': True, 'diff_output_preservation_multiplier': 1.0, 'diff_output_preservation_class': word}
 
 
 def build_config(request: dict, dataset_dir: Path, output_dir: Path) -> dict:
@@ -217,13 +240,21 @@ def build_config(request: dict, dataset_dir: Path, output_dir: Path) -> dict:
         # A local package bypasses the toolkit's search for older repack names.
         # Its explicit model_path must always select the downloaded Base file.
         model['name_or_path']=str(Path(path('flux3-base-int8')).parent)
+    if info['arch']=='moss_image':
+        from .models import entry, local_path
+        def path(model_id):
+            item=entry(model_id)
+            return str(local_path(item,item['files'][0]))
+        # Single files: the int8 ConvRot Base, the Qwen3.5-9B int8 encoder and the full FLUX.2 VAE (the toolkit's default VAE file).
+        model.update(name_or_path=path('moss-base-int8'),te_name_or_path=path('moss-encoder-int8'),vae_path=path('flux3-vae'))
     if info.get('assistant_lora_path'):
         model['assistant_lora_path'] = info['assistant_lora_path']
     process = {
         'type': 'diffusion_trainer', 'training_folder': str(output_dir), 'device': 'cuda', 'trigger_word': trigger,
         'performance_log_every': 10,
-        'network': {'type': 'lora', 'linear': int(request['rank']), 'linear_alpha': int(request['rank'])},
-        'save': {'dtype': 'bf16', 'save_every': int(request['save_every']), 'max_step_saves_to_keep': 4, 'save_format': 'diffusers', 'push_to_hub': False},
+        'network': {'type': 'lora', 'linear': int(request['rank']), 'linear_alpha': int(request['rank']), **({'network_kwargs': info['network_kwargs']} if info.get('network_kwargs') else {})},
+        # Every checkpoint stays: likeness often peaks before the last step, and the user picks the best one.
+        'save': {'dtype': 'bf16', 'save_every': int(request['save_every']), 'max_step_saves_to_keep': int(request['steps']) // int(request['save_every']) + 2, 'save_format': 'diffusers', 'push_to_hub': False},
         'datasets': [{'folder_path': str(dataset_dir), 'caption_ext': 'txt', 'caption_dropout_rate': 0.05, 'cache_latents_to_disk': True,
                       'resolution': list(request['resolutions']), 'num_repeats': 1}],
         'train': {'batch_size': 1, 'steps': int(request['steps']), 'gradient_accumulation': 1, 'train_unet': True, 'train_text_encoder': False,
@@ -231,7 +262,7 @@ def build_config(request: dict, dataset_dir: Path, output_dir: Path) -> dict:
                   'content_or_style': 'balanced', 'optimizer_params': {'weight_decay': 1e-4}, 'unload_text_encoder': False,
                   # Captions are encoded once to disk (with the blank caption for dropout); the text encoder then leaves the GPU.
                   'cache_text_embeddings': info.get('cache_text_embeddings', True), 'lr': float(request['learning_rate']), 'ema_config': {'use_ema': False, 'ema_decay': 0.99},
-                  'skip_first_sample': False, 'disable_sampling': not prompts, 'dtype': 'bf16', 'diff_output_preservation': False,
+                  'skip_first_sample': False, 'disable_sampling': not prompts, 'dtype': 'bf16', **preservation(request),
                   'loss_type': 'mse'},
         'logging': {'log_every': 1, 'use_ui_logger': False},
         'model': model,
@@ -326,7 +357,9 @@ def prepare_dataset(request: dict, directory: Path) -> Path:
 
 def trainer_env() -> dict:
     env = {key: value for key, value in os.environ.items() if key not in ('VIRTUAL_ENV', 'PYTHONPATH', 'PYTHONHOME')}
-    env.update(PYTHONUTF8='1', PYTHONUNBUFFERED='1', HF_HOME=str(DATA_DIR / 'hf-cache'), HF_HUB_DISABLE_XET='1',
+    # HF_HUB_DISABLE_SYMLINKS: the data drive can be exFAT, where huggingface_hub's symlink probe passes but the cache's
+    # blob links fail ("[WinError 1] Incorrect function" for the MOSS tokenizer, 2026-10-21); it copies instead.
+    env.update(PYTHONUTF8='1', PYTHONUNBUFFERED='1', HF_HOME=str(DATA_DIR / 'hf-cache'), HF_HUB_DISABLE_XET='1', HF_HUB_DISABLE_SYMLINKS='1',
                NO_ALBUMENTATIONS_UPDATE='1', TQDM_MININTERVAL='2')
     if not env.get('HF_TOKEN'):
         # The app keeps its Hugging Face cache on the data drive; the account token stays in the user's home cache.
@@ -336,11 +369,25 @@ def trainer_env() -> dict:
     return env
 
 
+def untrained(path: Path) -> bool:
+    """True when every lora_B / lora_up tensor is all zeros: the LoRA starts there and did not move."""
+    from safetensors import safe_open
+    try:
+        with safe_open(str(path), 'pt') as handle:
+            ups = [key for key in handle.keys() if re.search(r'lora_(?:B|up)\b', key)]
+            return bool(ups) and all(not handle.get_tensor(key).any() for key in ups)
+    except Exception:
+        return False  # unreadable values: the architecture check below reports the file
+
+
 def register(job_id: str, request: dict, source: Path) -> dict:
     """Copy the finished LoRA to the models folder and add it to the LoRA list of its architecture."""
     from . import civitai, models
     info = ARCHS[request['arch']]
     found = civitai.inspect(source)
+    if untrained(source):
+        raise RuntimeError('The training finished, but the LoRA did not learn: all its up weights are still zero '
+                           '(a known ai-toolkit issue, #1054 and #1075). Run the training again, or lower the learning rate.')
     if found['kind'] != 'lora' or found['arch'] != INSPECT_ARCH[info['arch']]:
         raise RuntimeError(f"The trained file is not a {info['label']} LoRA ({found['kind']}, {found['arch']}).")
     relative = f"{job_id[:8]}_{slug(request['name'])}.safetensors"
@@ -397,9 +444,9 @@ def run(job_id: str, request: dict, directory: Path, on_process, cancelled) -> N
             raise RuntimeError(f'{missing} images need captions. Completed captions are saved. Retry or edit them before training.')
         write_json(directory / 'prepared-dataset.json', {'images': request['images']})
     if cancelled(): return
-    if request['arch']=='flux3-klein-base':
+    if request['arch'] in LOCAL_FILES:
         from . import models
-        models.ensure_installed(['flux3-base-int8','flux3-encoder-int8','flux3-vae'],owner=job_id,cancelled=cancelled,
+        models.ensure_installed(LOCAL_FILES[request['arch']],owner=job_id,cancelled=cancelled,
             progress=lambda transfer:update(stage='downloading_models',message='Downloading the training model files...',transfer=transfer))
     dataset = prepare_dataset(request, directory)
     output = output_dir(request)

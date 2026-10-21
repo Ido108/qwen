@@ -22,10 +22,14 @@ class MossCatalogTests(unittest.TestCase):
         for item in moss:
             defaults = item['generation_defaults']
             self.assertEqual((defaults['sampler'], defaults['scheduler'], defaults['shift']), ('euler', 'simple', 5.0), item['id'])
-            self.assertEqual(item['dependencies'], ['moss-encoder-int8', 'moss-vae-small'])
+            speed = defaults.get('speed_lora')
+            self.assertEqual(item['dependencies'], ['moss-encoder-int8', 'moss-vae-small'] + ([speed['id']] if speed else []))
             self.assertRegex(item['files'][0]['sha256'], r'^[0-9a-f]{64}$')
             if item['family'] == 'moss-image-turbo':
                 self.assertEqual((defaults['steps'], defaults['cfg']), (8, 1.0), item['id'])
+            elif item['id'].startswith('moss-serenity-'):
+                # Serenity README: CFG 4; Turbo is 8 steps with the DMD LoRA, Full is 50.
+                self.assertEqual((defaults['steps'], defaults['cfg']), (8 if speed else 50, 4.0), item['id'])
             else:
                 # OpenMOSS: 50 steps, CFG 3, flow-matching Euler, shift 5.
                 self.assertEqual((defaults['steps'], defaults['cfg']), (50, 3.0), item['id'])
@@ -42,8 +46,10 @@ class MossCatalogTests(unittest.TestCase):
         # A Qwen encoder or a Krea VAE does not apply; the full FLUX.2 VAE (the Civitai mirror's file) does.
         self.assertEqual(models.required('moss-base-int8', 'encoder-int8', vae='krea2-vae'), ['moss-base-int8', 'moss-encoder-int8', 'moss-vae-small'])
         self.assertEqual(models.required('moss-sft-int8', vae='flux3-vae'), ['moss-sft-int8', 'moss-encoder-int8', 'flux3-vae'])
-        with self.assertRaisesRegex(ValueError, 'text only'):
-            models.required('moss-sft-int8', images=1)
+        # One input image is redrawn (VAE encode + partial denoise); MOSS has no reference input for more.
+        self.assertEqual(models.required('moss-sft-int8', images=1), ['moss-sft-int8', 'moss-encoder-int8', 'moss-vae-small'])
+        with self.assertRaisesRegex(ValueError, 'one input image'):
+            models.required('moss-sft-int8', images=2)
         with self.assertRaisesRegex(ValueError, 'needs Qwen-Image'):
             models.required('moss-sft-int8', tool_id=models.image_tools()[0]['id'])
         with self.assertRaisesRegex(ValueError, 'does not work'):
@@ -96,3 +102,26 @@ class MossDetectionTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SerenityTests(unittest.TestCase):
+    def test_serenity_entries_follow_the_readme(self):
+        full, turbo = models.entry('moss-serenity-v2-bf16'), models.entry('moss-serenity-v2-turbo-bf16')
+        self.assertEqual((full['family'], full['generation_defaults']['steps'], full['generation_defaults']['cfg'], full['generation_defaults']['negative_prompt']),
+                         ('moss-image-base', 50, 4.0, 'bad ugly blurry'))
+        self.assertEqual((turbo['generation_defaults']['steps'], turbo['generation_defaults']['cfg'], turbo['generation_defaults']['speed_lora']['id']), (8, 4.0, 'moss-lora-dmd8'))
+        self.assertIn('moss-lora-dmd8', models.required('moss-serenity-v2-turbo-bf16'))
+        self.assertEqual(len(full['known_people']), 68)
+        self.assertEqual(len(models.entry('moss-serenity-v1-int8')['known_people']), 28)
+        self.assertEqual({p['class'] for p in full['known_people']}, {'man', 'woman'})
+        dmd = models.entry('moss-lora-dmd8')
+        self.assertEqual((dmd['accelerator']['steps'], dmd['families']), (8, ['moss-image-base']))
+
+
+class MossDenoiseTests(unittest.TestCase):
+    def test_denoise_like_zimage(self):
+        from backend.moss_engine import moss_denoise
+        self.assertEqual(moss_denoise({}, []), 1.0)
+        self.assertEqual(moss_denoise({}, ['image']), 0.7)
+        self.assertEqual(moss_denoise({'denoise': 0.5}, ['image']), 0.5)
+        self.assertEqual(moss_denoise({'denoise': 0.5}, []), 1.0)

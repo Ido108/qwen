@@ -76,6 +76,8 @@ def _release():
 def _encode_text(prompt, negative_text, fps, progress):
     import torch
     import comfy.sd
+    from . import sent_prompts
+    sent_prompts.install(comfy.sd)  # the exact encoder input, for the result details
     import comfy.utils
     from comfy_extras.nodes_lt import LTXVConditioning
     from .gpu_memory import GIB

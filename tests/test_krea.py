@@ -111,6 +111,18 @@ class KreaSamplingTests(unittest.TestCase):
         self.assertIs(worker.image_engine({'model_id': 'gguf-q8_0'}), comfy_engine.generate)
 
 
+class KreaIdentityPhotoTests(unittest.TestCase):
+    def test_person_and_scene_go_in_the_card_order_whatever_the_add_order(self):
+        from backend.krea_edit import identity_photos
+        photos = ['a', 'b', 'c']
+        self.assertEqual(identity_photos(photos, {}), ['a'])  # the first photo is the person
+        self.assertEqual(identity_photos(photos, {'krea_person': 1}), ['b'])
+        self.assertEqual(identity_photos(photos, {'krea_person': 0, 'krea_scene': 2}), ['c', 'a'])  # scene first
+        self.assertEqual(identity_photos(photos, {'krea_person': 2, 'krea_scene': 0}), ['a', 'c'])
+        self.assertEqual(identity_photos(photos, {'krea_person': 1, 'krea_scene': 1}), ['b'])  # the same photo is not both
+        self.assertEqual(identity_photos(['a'], {'krea_person': 4, 'krea_scene': 3}), ['a'])  # removed photos fall back
+
+
 class KreaCivitaiTests(unittest.TestCase):
     def test_base_models_and_variants(self):
         self.assertEqual(civitai.BASE_MODELS['Krea 2']['arch'], 'krea-2')

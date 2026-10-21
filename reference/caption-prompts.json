@@ -1,0 +1,19 @@
+{
+  "default": {
+    "applies_to": "flux3-klein-base, qwen-image-2.1, qwen-image-2.1-turbo, krea-2, krea-2-turbo, z-image, z-image-turbo",
+    "source": "App wording. No architecture-specific caption form is published: the ai-toolkit examples (config/examples/train_lora_qwen_image_24gb.yaml, train_lora_flux_24gb.yaml) only require one .txt caption per image with the trigger word; the Qwen-Image-2.1, Krea 2 and Z-Image model cards give no caption guidance; FLUX.3 Klein (huggingface.co/black-forest-labs/flux-3-image-klein-base) takes full scene captions, which this long caption matches. 2026-10-21 research (docs/lora-dataset-captioning.md): class word after the trigger (malcolmrey MOSS Serenity docs/training.md; DOP class word in ostris ai-toolkit; chengyansen-ai/krea2-lora-training \"single person\"); describe what changes per image incl. hair, leave fixed identity traits out (chengyansen-ai/krea2-lora-training; perfectgf/lora-dataset-studio DATASET_GUIDE.md); shorter captions (Krea 2 caps text at 512 tokens, ostris.com/docs/ai-toolkit/models/krea2; Serenity uses one sentence).",
+    "intro": "Write one factual English caption for an image, about 40 to 90 words. Use only clearly visible image content. State concrete details in natural sentences. Describe the setting, background, light and viewpoint. Never mention training, LoRA, a dataset, captions or the purpose of the image. ",
+    "character": "Write \"a man\" or \"a woman\" right after the subject word, as the photo shows. Then describe what can change from photo to photo: hair style, length and color, expression, pose, action, clothes, accessories, framing and camera angle. Do not describe the face shape, eyes, nose, skin tone or body build: the subject word stands for them. Describe other visible people briefly by their position and action. ",
+    "style": "Describe the depicted subjects, their actions, objects, composition and spatial relationships. Keep the visual style itself implicit so the learned style word represents it. ",
+    "trigger_character": "Refer to the main subject only as {trigger}, never by any other name, and start the caption with {trigger} followed by a comma. ",
+    "trigger_style": "Begin with \"In the style of {trigger},\". ",
+    "outro": "Return only the caption paragraph.",
+    "note": "2026-10-21: the earlier wording passed the dataset name and the words 'LoRA training image' to the caption model; live captions then named the subject (\"the man identified as Eido\"), repeated 'diffusion LoRA training image' and described skin, eyes and nose. This wording removes both."
+  },
+  "moss-image": {
+    "applies_to": "moss-image (character LoRAs; style LoRAs use the default)",
+    "source": "MOSS Serenity, a MOSS-Image Base person finetune: captions are 'photo of <trigger>, <one sentence>', the sentence giving who (a woman / a man), expression, framing, pose, clothing, background and light, e.g. 'photo of feliciaday, a woman with reddish-brown wavy hair smiling slightly, ...' (huggingface.co/malcolmrey/moss-serenity/blob/main/docs/training.md, Dataset); prompts name the hair (docs/generating.md, Prompting). OpenMOSS: English has the most training data (github.com/OpenMOSS/MOSS-Image/blob/main/USERGUIDE.md).",
+    "character": "Write one natural English sentence of at most 60 words that captions a photo of one person, in this order: \"a woman\" or \"a man\" with their hair, then expression, framing, pose, clothing, background and light, like \"a woman with reddish-brown wavy hair smiling slightly, ...\". Use only clearly visible content. Never name the person and never mention training, LoRA, a dataset or the purpose of the photo. Describe other visible people briefly by position. Return only the sentence.",
+    "prefix": "photo of {trigger}, "
+  }
+}

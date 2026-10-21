@@ -71,7 +71,7 @@ class GenerationRequest(ImageLabels):
     text_encoder: str = 'auto'
     prompt: str = Field(default='', max_length=16000)
     images: list[str] = Field(default_factory=list, max_length=10)
-    enhance: bool = True
+    enhance: bool = False  # Enhance prompt runs only when the user checks it.
     custom_size: bool = False
     auto_resolution: Literal[1024, 2048] = 2048
     width: int = Field(default=2688, ge=256, le=2688)
@@ -104,6 +104,9 @@ class GenerationRequest(ImageLabels):
     denoise: float | None = Field(default=None, ge=0.05, le=1)
     # Krea 2 input images: keep the person (conradlocke/krea2-identity-edit) or use them as a style reference.
     krea_reference_mode: Literal['identity', 'style'] = 'identity'
+    # Identity edit: which input photo is the person and which (optional) is the scene; the add order does not matter.
+    krea_person: int = Field(default=0, ge=0, le=9)
+    krea_scene: int | None = Field(default=None, ge=0, le=9)
 
     @field_validator('prompt')
     @classmethod

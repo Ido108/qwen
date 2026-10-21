@@ -83,6 +83,8 @@ def generate(request, prompt, images, width, height, progress):
     if not comfy_aimdo.control.init():
         raise RuntimeError('Could not initialize the model file reader.')
     import comfy.sd
+    from . import sent_prompts
+    sent_prompts.install(comfy.sd)  # the exact encoder input, for the result details
     import comfy.sample
     import comfy.utils
     import comfy.model_management as memory

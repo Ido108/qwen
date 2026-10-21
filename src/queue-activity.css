@@ -22,7 +22,8 @@
  .queue-activity-open{padding:7px 8px;gap:5px;min-height:44px}.queue-activity-open>svg{display:none}
  .queue-finished{padding:6px 10px;gap:8px}
  .queue-controls{flex-wrap:wrap;gap:8px}.queue-controls>span{flex-basis:100%}
- .queue-job{gap:8px}.queue-job-icon{width:24px}.queue-row-tools{flex-direction:column;align-items:flex-end}
+ .queue-job{gap:8px}.queue-thumb{width:52px;height:52px}
  .queue-row-tools .icon-button{width:36px;height:36px}.queue-row-action{min-height:36px}
 }
 @media(prefers-reduced-motion:reduce){.queue-activity .spin{animation:none}}
+.queue-activity-resume{flex-shrink:0;font-size:12px;white-space:nowrap}

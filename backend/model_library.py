@@ -55,9 +55,11 @@ def place(item, file):
     if kind is None and found is not None and not keep:
         kind, rest = SEGMENTS[parts[found]], Path(*parts[found + 1:])
     else:
-        kind = kind or KINDS.get(item.get('kind')) or ('loras' if item.get('format') == 'LoRA' else 'other')
+        # A catalog folder named after a ComfyUI type ('text_encoders/qwen-image-pe') names the type itself.
+        first = Path(item['directory']).parts[0]
+        kind = kind or KINDS.get(item.get('kind')) or SEGMENTS.get(first) or ('loras' if item.get('format') == 'LoRA' else 'other')
         rest = Path(*parts) if keep else Path(parts[-1])
-    folders = [part for part in Path(item['directory']).parts if part not in GENERIC] or [Path(item['directory']).parts[0]]
+    folders = [part for part in Path(item['directory']).parts if part not in GENERIC and part not in SEGMENTS] or [Path(item['directory']).parts[0]]
     return kind, Path(*folders) / rest
 
 

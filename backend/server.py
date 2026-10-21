@@ -225,7 +225,7 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
             if kind == 'image':
                 from .prompt_enhancer import enhance
                 rewrite = enhance(request['prompt'], pictures, request.get('enhancement_model') or antigravity.selected_model(), enhancement_progress,
-                                  redraw=models.is_zimage(models.entry(request['model_id'])))
+                                  redraw=models.is_zimage(models.entry(request['model_id'])), family=models.entry(request['model_id']).get('family', 'qwen-image-2.1'))
                 work['prompt'] = rewrite.get('positive_prompt') or request['prompt']
                 work['enhancement_result'] = rewrite
             elif task_kind == 'video':
@@ -1404,6 +1404,55 @@ def uploaded_video(video_id: str):
 OUTPAINT_DIRECTIONS = {'all', 'horizontal', 'vertical', 'left', 'right', 'top', 'bottom'}
 
 
+class PromptEdit(BaseModel):
+    text: str = Field(min_length=1, max_length=40000)
+
+
+@app.get('/api/prompts')
+def list_prompts():
+    """Every internal prompt the app sends to a model, its official default and the user's edit."""
+    from . import prompt_registry
+    return {'prompts': prompt_registry.listing()}
+
+
+@app.put('/api/prompts/{key}')
+def edit_prompt(key: str, body: PromptEdit):
+    from . import prompt_registry
+    try:
+        prompt_registry.save(key, body.text)
+    except KeyError:
+        raise HTTPException(400, 'This prompt cannot be edited.')
+    return {'prompts': prompt_registry.listing()}
+
+
+@app.delete('/api/prompts/{key}')
+def restore_prompt(key: str):
+    from . import prompt_registry
+    prompt_registry.restore(key)
+    return {'prompts': prompt_registry.listing()}
+
+
+class EnhancerChoice(BaseModel):
+    choice: str = Field(min_length=1, max_length=80)
+
+
+@app.get('/api/enhancer-settings')
+def enhancer_settings_list():
+    """The prompt enhancer of each image architecture: its official default and the user's choice."""
+    from . import enhancer_settings
+    return {'architectures': enhancer_settings.listing()}
+
+
+@app.put('/api/enhancer-settings/{arch}')
+def enhancer_settings_save(arch: str, body: EnhancerChoice):
+    from . import enhancer_settings
+    try:
+        enhancer_settings.save(arch, body.choice)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {'architectures': enhancer_settings.listing()}
+
+
 class SwapPromptEdit(BaseModel):
     text: str = Field(default='', max_length=6000)
     expected: str = Field(max_length=80)
@@ -1466,6 +1515,12 @@ def generate(body: GenerationRequest):
         from .image_sampling import validate as validate_sampling
         validate_sampling(body.model_dump(), models.entry(body.model_id))
         needed = models.required(body.model_id, body.text_encoder, body.tool_id, body.vae_id, [lora.id for lora in body.loras], len(body.images), body.krea_reference_mode)
+        if (body.images and body.krea_reference_mode == 'identity' and models.is_krea(models.entry(body.model_id))
+                and not body.prompt.strip() and not body.enhance):
+            # The identity LoRA restages from "an image and a plain-language instruction" (its card); with no instruction
+            # it copies the photo, and the beside placement turned that into a two-panel image.
+            raise ValueError('Krea 2 identity edit needs an instruction. Describe the new scene and how much of the person shows, '
+                             'for example: full body, standing on a beach at sunset.')
         tool = validate_image_tool(body) if body.tool_id else None
         if tool and tool.get('swap'):
             if not body.swap_selection:
@@ -1495,8 +1550,11 @@ def generate(body: GenerationRequest):
     if tool:
         # Tool prompts carry the LoRA trigger wording; enhancement would rewrite it.
         body.enhance = False
-    if body.enhance and not antigravity.status()['connected']:
-        raise HTTPException(409, 'Connect Google Account in Settings → Prompt enhancement, or turn off Enhance prompt.')
+    if body.enhance:
+        from .enhancer_settings import route
+        chosen = route(models.entry(body.model_id).get('family', 'qwen-image-2.1'), body.images, models.is_zimage(models.entry(body.model_id)))
+        if chosen['mode'] == 'cloud' and not antigravity.status()['connected']:
+            raise HTTPException(409, 'This model uses the cloud enhancer: connect Google Account in Settings, choose another enhancer there, or turn off Enhance prompt.')
     try:
         for image_id in body.images:
             resolve_image(image_id)
@@ -1920,7 +1978,7 @@ class TrainingImage(BaseModel):
 
 class TrainingRequest(BaseModel):
     name: str = Field(min_length=1, max_length=60)
-    arch: Literal['flux3-klein-base', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'krea-2', 'krea-2-turbo', 'z-image-turbo', 'z-image'] = 'z-image-turbo'
+    arch: Literal['flux3-klein-base', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'krea-2', 'krea-2-turbo', 'z-image-turbo', 'z-image', 'moss-image'] = 'z-image-turbo'
     subject: Literal['character', 'style'] = 'character'
     trigger_word: str = Field(default='', max_length=40)
     images: list[TrainingImage] = Field(min_length=1, max_length=300)
@@ -1940,11 +1998,18 @@ class CaptionRequest(BaseModel):
     name: str = Field(default='', max_length=60)
     trigger_word: str = Field(default='', max_length=40)
     subject: Literal['character', 'style'] = 'character'
+    # The training's base model: some architectures have their own caption form (reference/caption-prompts.json).
+    arch: str = Field(default='', max_length=40)
 
 
 @app.get('/api/training')
 def training_state():
-    jobs = sorted((j for j in all_jobs() if j.get('kind') == 'training'), key=lambda j: j['created_at'], reverse=True)
+    def kept(job):
+        # A finished training whose folder was deleted has no samples or LoRA left to show.
+        if job.get('status') in ('queued', 'running'): return True
+        try: return training.output_dir(job['request']).is_dir()
+        except (KeyError, TypeError): return True
+    jobs = sorted((j for j in all_jobs() if j.get('kind') == 'training' and kept(j)), key=lambda j: j['created_at'], reverse=True)
     return {'setup': training.setup_status(),
             'archs': [{'id': key, 'label': info['label'], 'gate': info.get('gate'), 'families': info['families'],
                        'turbo': 'assistant_lora_path' in info} for key, info in training.ARCHS.items()],
@@ -2038,7 +2103,8 @@ def training_recommendations(body: TrainingAdvice):
     for image in body.images:
         try:
             with Image.open(resolve_image(str(image.get('id', '')))) as photo:
-                images.append({'width': photo.width, 'height': photo.height})
+                from .training_profiles import image_facts
+                images.append(image_facts(photo))
         except (ValueError, OSError): raise HTTPException(400, 'A training image is missing. Add it again.')
     return recommend(body.arch, body.subject, images)
 

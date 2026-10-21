@@ -2114,6 +2114,49 @@
     }
   },
   {
+    "id": "pe-t2i-heretic-q8",
+    "title": "Prompt enhancer · Text to image (Qwen PE Heretic, Q8_0)",
+    "kind": "image-support",
+    "format": "GGUF Q8_0",
+    "repo": "pottokao/Qwen-Image-2.1-PE-T2I-Heretic-GGUF",
+    "revision": "143825976126abcfa68722d3e48819c5647f9cd8",
+    "directory": "text_encoders/qwen-image-pe",
+    "files": [
+      {
+        "path": "pe_t2i_heretic-Q8_0.gguf",
+        "bytes": 9527501120,
+        "sha256": "8720710160a896ce35162c2b111a452f198a428162ea4db793b5d643438d1b4c"
+      }
+    ],
+    "bytes": 9527501120,
+    "dependencies": [],
+    "note": "Qwen's official Qwen-Image-2.1 text-to-image prompt rewriter (fine-tuned Qwen3.5-VL 9B) with refusals removed by Heretic (98 of 100 refusals to 3, KL 0.036). Runs on this computer in llama.cpp: about 120 tokens per second on an RTX 5090."
+  },
+  {
+    "id": "pe-i2i-heretic-q8",
+    "title": "Prompt enhancer · Image editing (Qwen PE Heretic, Q8_0)",
+    "kind": "image-support",
+    "format": "GGUF Q8_0",
+    "repo": "pottokao/Qwen-Image-2.1-PE-I2I-Heretic-GGUF",
+    "revision": "564f783ebea6c244c7dae8460ece65eb174479a6",
+    "directory": "text_encoders/qwen-image-pe",
+    "files": [
+      {
+        "path": "pe_i2i_heretic-Q8_0.gguf",
+        "bytes": 9527501376,
+        "sha256": "056ba4b60e9dbef251c282133a2ee8330bf603e4cff87ad755e75c671aa57247"
+      },
+      {
+        "path": "pe_i2i_heretic.mmproj-bf16.gguf",
+        "bytes": 921704608,
+        "sha256": "171a59a76e498252fb0ee5c145633c6f3a2eaaad03a171e3d5828de230369807"
+      }
+    ],
+    "bytes": 10449205984,
+    "dependencies": [],
+    "note": "Qwen's official Qwen-Image-2.1 image-editing prompt rewriter with its untouched vision encoder, Heretic build without refusals. Sees the input images. Runs on this computer in llama.cpp."
+  },
+  {
     "id": "flux3-prompt",
     "title": "FLUX.3 prompt model - W4A8",
     "kind": "image-support",
@@ -2554,6 +2597,41 @@
     }
   },
   {
+    "id": "moss-sft-gguf-q4_k_s",
+    "title": "MOSS Image SFT · Q4_K_S",
+    "kind": "image",
+    "family": "moss-image",
+    "format": "GGUF",
+    "repo": "axiomofmind/Moss-Image-SFT-GGUF",
+    "revision": "d8a587c3a66bcab191e93bdd6f742d41b1104c68",
+    "directory": "axiomofmind-MOSS-Image-SFT-GGUF",
+    "files": [
+      {
+        "path": "MOSS-Image-SFT-Q4_K_S.gguf",
+        "bytes": 3464245216,
+        "sha256": "2aa25ebefa78ac0aa243e7fb29dc0b8fc47d0367d5161ea87ef753bed130ab1b"
+      }
+    ],
+    "bytes": 3464245216,
+    "dependencies": [
+      "moss-encoder-int8",
+      "moss-vae-small"
+    ],
+    "text_encoder": "moss-encoder-int8",
+    "recommended_vae": "moss-vae-small",
+    "generation_defaults": {
+      "steps": 50,
+      "cfg": 3.0,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "shift": 5.0,
+      "source": "https://huggingface.co/axiomofmind/Moss-Image-SFT-GGUF",
+      "model_card": "https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT",
+      "reviewed_on": "2026-10-21",
+      "note": "Saves VRAM, not time: 0.93 s/step against 0.22 for INT8 on an RTX 5090 (GGUF dequantizes every layer). Mixed Q4_K with all 42 ffn_down and four early value matrices kept at Q5_K (3.2 GiB). Same 463 tensors and moss_image architecture as the realrebelai files. OpenMOSS settings: 50 steps, CFG 3, Euler, shift 5."
+    }
+  },
+  {
     "id": "moss-base-gguf-q8_0",
     "title": "MOSS Image Base · Q8_0",
     "kind": "image",
@@ -2731,5 +2809,1541 @@
       }
     },
     "summary": "Speed LoRA for MOSS Image SFT: 4 steps at CFG 1 (rank reduced from akhaliq/MOSS-Image-SFT-4-steps). Not for the Turbo model."
+  },
+  {
+    "id": "moss-serenity-v2-turbo-bf16",
+    "title": "MOSS Serenity v2 Turbo · BF16",
+    "kind": "image",
+    "family": "moss-image-base",
+    "format": "BF16",
+    "layout": "comfy",
+    "repo": "malcolmrey/moss-serenity",
+    "revision": "3d3f117b900d67d1b158b9d248f5526d34cde052",
+    "directory": "malcolmrey-moss-serenity",
+    "files": [
+      {
+        "path": "serenity_base_v2_60000_bf16.safetensors",
+        "bytes": 10164674632,
+        "sha256": "df8b676ecca4c3c2e07d1bfd8db8c03117fd3c92ec3c9dcb6e39ad9792238b69"
+      }
+    ],
+    "bytes": 10164674632,
+    "dependencies": [
+      "moss-encoder-int8",
+      "moss-vae-small",
+      "moss-lora-dmd8"
+    ],
+    "text_encoder": "moss-encoder-int8",
+    "recommended_vae": "moss-vae-small",
+    "generation_defaults": {
+      "steps": 8,
+      "cfg": 4.0,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "shift": 5.0,
+      "negative_prompt": "bad ugly blurry",
+      "source": "https://huggingface.co/malcolmrey/moss-serenity",
+      "model_card": "https://huggingface.co/malcolmrey/moss-serenity",
+      "reviewed_on": "2026-10-21",
+      "note": "Serenity README, Turbo: lodestones MOSS-Image-Base-8-steps-dmd LoRA at 1.0, 8 steps, CFG 4, euler/simple, SLG layer 22 (0 to 50%), negative \"bad ugly blurry\" (workflow/base-turbo-no-lora.json). Prompt form: photo of <trigger>, a woman (or a man), then one sentence on look, framing, clothing, setting and light. Keep faces large (chest-up or closer).",
+      "speed_lora": {
+        "id": "moss-lora-dmd8",
+        "strength": 1.0
+      }
+    },
+    "known_people": [
+      {
+        "trigger": "alisonbrie",
+        "label": "Alison Brie",
+        "class": "woman"
+      },
+      {
+        "trigger": "amberrayne",
+        "label": "Amber Rayne",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyachalotra",
+        "label": "Anya Chalotra",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyataylorjoy",
+        "label": "Anya Taylor-Joy",
+        "class": "woman"
+      },
+      {
+        "trigger": "asmongold",
+        "label": "Asmongold",
+        "class": "man"
+      },
+      {
+        "trigger": "aubreyplaza",
+        "label": "Aubrey Plaza",
+        "class": "woman"
+      },
+      {
+        "trigger": "bradpitt",
+        "label": "Brad Pitt",
+        "class": "man"
+      },
+      {
+        "trigger": "emmawatson",
+        "label": "Emma Watson",
+        "class": "woman"
+      },
+      {
+        "trigger": "feliciaday",
+        "label": "Felicia Day",
+        "class": "woman"
+      },
+      {
+        "trigger": "gilliananderson",
+        "label": "Gillian Anderson",
+        "class": "woman"
+      },
+      {
+        "trigger": "helenmirren",
+        "label": "Helen Mirren",
+        "class": "woman"
+      },
+      {
+        "trigger": "jasonmomoa",
+        "label": "Jason Momoa",
+        "class": "man"
+      },
+      {
+        "trigger": "jennaortega",
+        "label": "Jenna Ortega",
+        "class": "woman"
+      },
+      {
+        "trigger": "jenniferlawrence",
+        "label": "Jennifer Lawrence",
+        "class": "woman"
+      },
+      {
+        "trigger": "keanureeves",
+        "label": "Keanu Reeves",
+        "class": "man"
+      },
+      {
+        "trigger": "klaudiajachira",
+        "label": "Klaudia Jachira",
+        "class": "woman"
+      },
+      {
+        "trigger": "mileycyrus",
+        "label": "Miley Cyrus",
+        "class": "woman"
+      },
+      {
+        "trigger": "morenabaccarin",
+        "label": "Morena Baccarin",
+        "class": "woman"
+      },
+      {
+        "trigger": "nathanfillion",
+        "label": "Nathan Fillion",
+        "class": "man"
+      },
+      {
+        "trigger": "oliviawilde",
+        "label": "Olivia Wilde",
+        "class": "woman"
+      },
+      {
+        "trigger": "rihanna",
+        "label": "Rihanna",
+        "class": "woman"
+      },
+      {
+        "trigger": "sadiesink",
+        "label": "Sadie Sink",
+        "class": "woman"
+      },
+      {
+        "trigger": "samuelljackson",
+        "label": "Samuel L. Jackson",
+        "class": "man"
+      },
+      {
+        "trigger": "sashagrey",
+        "label": "Sasha Grey",
+        "class": "woman"
+      },
+      {
+        "trigger": "scarlettjohansson",
+        "label": "Scarlett Johansson",
+        "class": "woman"
+      },
+      {
+        "trigger": "sweetanita",
+        "label": "Sweet Anita",
+        "class": "woman"
+      },
+      {
+        "trigger": "taylorswift",
+        "label": "Taylor Swift",
+        "class": "woman"
+      },
+      {
+        "trigger": "zendaya",
+        "label": "Zendaya",
+        "class": "woman"
+      },
+      {
+        "trigger": "aleksandrasawicka",
+        "label": "Aleksandra Sawicka",
+        "class": "woman"
+      },
+      {
+        "trigger": "beniciodeltoro",
+        "label": "Benicio del Toro",
+        "class": "man"
+      },
+      {
+        "trigger": "billieeilish",
+        "label": "Billie Eilish",
+        "class": "woman"
+      },
+      {
+        "trigger": "brielarson",
+        "label": "Brie Larson",
+        "class": "woman"
+      },
+      {
+        "trigger": "britneyspears",
+        "label": "Britney Spears",
+        "class": "woman"
+      },
+      {
+        "trigger": "camrenbicondova",
+        "label": "Camren Bicondova",
+        "class": "woman"
+      },
+      {
+        "trigger": "cateblanchett",
+        "label": "Cate Blanchett",
+        "class": "woman"
+      },
+      {
+        "trigger": "charlizetheron",
+        "label": "Charlize Theron",
+        "class": "woman"
+      },
+      {
+        "trigger": "chrishemsworth",
+        "label": "Chris Hemsworth",
+        "class": "man"
+      },
+      {
+        "trigger": "clairedanes",
+        "label": "Claire Danes",
+        "class": "woman"
+      },
+      {
+        "trigger": "colinfarrell",
+        "label": "Colin Farrell",
+        "class": "man"
+      },
+      {
+        "trigger": "danielcraig",
+        "label": "Daniel Craig",
+        "class": "man"
+      },
+      {
+        "trigger": "davidduchovny",
+        "label": "David Duchovny",
+        "class": "man"
+      },
+      {
+        "trigger": "elizabethmitchell",
+        "label": "Elizabeth Mitchell",
+        "class": "woman"
+      },
+      {
+        "trigger": "elizabetholsen",
+        "label": "Elizabeth Olsen",
+        "class": "woman"
+      },
+      {
+        "trigger": "emmastone",
+        "label": "Emma Stone",
+        "class": "woman"
+      },
+      {
+        "trigger": "erinmoriarty",
+        "label": "Erin Moriarty",
+        "class": "woman"
+      },
+      {
+        "trigger": "evagreen",
+        "label": "Eva Green",
+        "class": "woman"
+      },
+      {
+        "trigger": "evangelinelilly",
+        "label": "Evangeline Lilly",
+        "class": "woman"
+      },
+      {
+        "trigger": "felicityjones",
+        "label": "Felicity Jones",
+        "class": "woman"
+      },
+      {
+        "trigger": "galgadot",
+        "label": "Gal Gadot",
+        "class": "woman"
+      },
+      {
+        "trigger": "ginacarano",
+        "label": "Gina Carano",
+        "class": "woman"
+      },
+      {
+        "trigger": "guypearce",
+        "label": "Guy Pearce",
+        "class": "man"
+      },
+      {
+        "trigger": "haileesteinfeld",
+        "label": "Hailee Steinfeld",
+        "class": "woman"
+      },
+      {
+        "trigger": "hayleyatwell",
+        "label": "Hayley Atwell",
+        "class": "woman"
+      },
+      {
+        "trigger": "helenhunt",
+        "label": "Helen Hunt",
+        "class": "woman"
+      },
+      {
+        "trigger": "idriselba",
+        "label": "Idris Elba",
+        "class": "man"
+      },
+      {
+        "trigger": "januszkorwinmikke",
+        "label": "Janusz Korwin-Mikke",
+        "class": "man"
+      },
+      {
+        "trigger": "javierbardem",
+        "label": "Javier Bardem",
+        "class": "man"
+      },
+      {
+        "trigger": "jenniferaniston",
+        "label": "Jennifer Aniston",
+        "class": "woman"
+      },
+      {
+        "trigger": "jennifercarpenter",
+        "label": "Jennifer Carpenter",
+        "class": "woman"
+      },
+      {
+        "trigger": "jenpsaki",
+        "label": "Jen Psaki",
+        "class": "woman"
+      },
+      {
+        "trigger": "jodiefoster",
+        "label": "Jodie Foster",
+        "class": "woman"
+      },
+      {
+        "trigger": "joelkinnaman",
+        "label": "Joel Kinnaman",
+        "class": "man"
+      },
+      {
+        "trigger": "kaleycuoco",
+        "label": "Kaley Cuoco",
+        "class": "woman"
+      },
+      {
+        "trigger": "katdennings",
+        "label": "Kat Dennings",
+        "class": "woman"
+      },
+      {
+        "trigger": "katewinslet",
+        "label": "Kate Winslet",
+        "class": "woman"
+      },
+      {
+        "trigger": "lisaedelstein",
+        "label": "Lisa Edelstein",
+        "class": "woman"
+      },
+      {
+        "trigger": "milakunis",
+        "label": "Mila Kunis",
+        "class": "woman"
+      },
+      {
+        "trigger": "summerglau",
+        "label": "Summer Glau",
+        "class": "woman"
+      }
+    ]
+  },
+  {
+    "id": "moss-serenity-v2-bf16",
+    "title": "MOSS Serenity v2 · BF16",
+    "kind": "image",
+    "family": "moss-image-base",
+    "format": "BF16",
+    "layout": "comfy",
+    "repo": "malcolmrey/moss-serenity",
+    "revision": "3d3f117b900d67d1b158b9d248f5526d34cde052",
+    "directory": "malcolmrey-moss-serenity",
+    "files": [
+      {
+        "path": "serenity_base_v2_60000_bf16.safetensors",
+        "bytes": 10164674632,
+        "sha256": "df8b676ecca4c3c2e07d1bfd8db8c03117fd3c92ec3c9dcb6e39ad9792238b69"
+      }
+    ],
+    "bytes": 10164674632,
+    "dependencies": [
+      "moss-encoder-int8",
+      "moss-vae-small"
+    ],
+    "text_encoder": "moss-encoder-int8",
+    "recommended_vae": "moss-vae-small",
+    "generation_defaults": {
+      "steps": 50,
+      "cfg": 4.0,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "shift": 5.0,
+      "negative_prompt": "bad ugly blurry",
+      "source": "https://huggingface.co/malcolmrey/moss-serenity",
+      "model_card": "https://huggingface.co/malcolmrey/moss-serenity",
+      "reviewed_on": "2026-10-21",
+      "note": "Serenity README, Full: 50 steps, CFG 4, euler/simple, SkipLayerGuidanceDiTSimple layer 22 (0 to 50%), negative \"bad ugly blurry\". Prompt form: photo of <trigger>, a woman (or a man), then one sentence on look, framing, clothing, setting and light. Keep faces large (chest-up or closer)."
+    },
+    "known_people": [
+      {
+        "trigger": "alisonbrie",
+        "label": "Alison Brie",
+        "class": "woman"
+      },
+      {
+        "trigger": "amberrayne",
+        "label": "Amber Rayne",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyachalotra",
+        "label": "Anya Chalotra",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyataylorjoy",
+        "label": "Anya Taylor-Joy",
+        "class": "woman"
+      },
+      {
+        "trigger": "asmongold",
+        "label": "Asmongold",
+        "class": "man"
+      },
+      {
+        "trigger": "aubreyplaza",
+        "label": "Aubrey Plaza",
+        "class": "woman"
+      },
+      {
+        "trigger": "bradpitt",
+        "label": "Brad Pitt",
+        "class": "man"
+      },
+      {
+        "trigger": "emmawatson",
+        "label": "Emma Watson",
+        "class": "woman"
+      },
+      {
+        "trigger": "feliciaday",
+        "label": "Felicia Day",
+        "class": "woman"
+      },
+      {
+        "trigger": "gilliananderson",
+        "label": "Gillian Anderson",
+        "class": "woman"
+      },
+      {
+        "trigger": "helenmirren",
+        "label": "Helen Mirren",
+        "class": "woman"
+      },
+      {
+        "trigger": "jasonmomoa",
+        "label": "Jason Momoa",
+        "class": "man"
+      },
+      {
+        "trigger": "jennaortega",
+        "label": "Jenna Ortega",
+        "class": "woman"
+      },
+      {
+        "trigger": "jenniferlawrence",
+        "label": "Jennifer Lawrence",
+        "class": "woman"
+      },
+      {
+        "trigger": "keanureeves",
+        "label": "Keanu Reeves",
+        "class": "man"
+      },
+      {
+        "trigger": "klaudiajachira",
+        "label": "Klaudia Jachira",
+        "class": "woman"
+      },
+      {
+        "trigger": "mileycyrus",
+        "label": "Miley Cyrus",
+        "class": "woman"
+      },
+      {
+        "trigger": "morenabaccarin",
+        "label": "Morena Baccarin",
+        "class": "woman"
+      },
+      {
+        "trigger": "nathanfillion",
+        "label": "Nathan Fillion",
+        "class": "man"
+      },
+      {
+        "trigger": "oliviawilde",
+        "label": "Olivia Wilde",
+        "class": "woman"
+      },
+      {
+        "trigger": "rihanna",
+        "label": "Rihanna",
+        "class": "woman"
+      },
+      {
+        "trigger": "sadiesink",
+        "label": "Sadie Sink",
+        "class": "woman"
+      },
+      {
+        "trigger": "samuelljackson",
+        "label": "Samuel L. Jackson",
+        "class": "man"
+      },
+      {
+        "trigger": "sashagrey",
+        "label": "Sasha Grey",
+        "class": "woman"
+      },
+      {
+        "trigger": "scarlettjohansson",
+        "label": "Scarlett Johansson",
+        "class": "woman"
+      },
+      {
+        "trigger": "sweetanita",
+        "label": "Sweet Anita",
+        "class": "woman"
+      },
+      {
+        "trigger": "taylorswift",
+        "label": "Taylor Swift",
+        "class": "woman"
+      },
+      {
+        "trigger": "zendaya",
+        "label": "Zendaya",
+        "class": "woman"
+      },
+      {
+        "trigger": "aleksandrasawicka",
+        "label": "Aleksandra Sawicka",
+        "class": "woman"
+      },
+      {
+        "trigger": "beniciodeltoro",
+        "label": "Benicio del Toro",
+        "class": "man"
+      },
+      {
+        "trigger": "billieeilish",
+        "label": "Billie Eilish",
+        "class": "woman"
+      },
+      {
+        "trigger": "brielarson",
+        "label": "Brie Larson",
+        "class": "woman"
+      },
+      {
+        "trigger": "britneyspears",
+        "label": "Britney Spears",
+        "class": "woman"
+      },
+      {
+        "trigger": "camrenbicondova",
+        "label": "Camren Bicondova",
+        "class": "woman"
+      },
+      {
+        "trigger": "cateblanchett",
+        "label": "Cate Blanchett",
+        "class": "woman"
+      },
+      {
+        "trigger": "charlizetheron",
+        "label": "Charlize Theron",
+        "class": "woman"
+      },
+      {
+        "trigger": "chrishemsworth",
+        "label": "Chris Hemsworth",
+        "class": "man"
+      },
+      {
+        "trigger": "clairedanes",
+        "label": "Claire Danes",
+        "class": "woman"
+      },
+      {
+        "trigger": "colinfarrell",
+        "label": "Colin Farrell",
+        "class": "man"
+      },
+      {
+        "trigger": "danielcraig",
+        "label": "Daniel Craig",
+        "class": "man"
+      },
+      {
+        "trigger": "davidduchovny",
+        "label": "David Duchovny",
+        "class": "man"
+      },
+      {
+        "trigger": "elizabethmitchell",
+        "label": "Elizabeth Mitchell",
+        "class": "woman"
+      },
+      {
+        "trigger": "elizabetholsen",
+        "label": "Elizabeth Olsen",
+        "class": "woman"
+      },
+      {
+        "trigger": "emmastone",
+        "label": "Emma Stone",
+        "class": "woman"
+      },
+      {
+        "trigger": "erinmoriarty",
+        "label": "Erin Moriarty",
+        "class": "woman"
+      },
+      {
+        "trigger": "evagreen",
+        "label": "Eva Green",
+        "class": "woman"
+      },
+      {
+        "trigger": "evangelinelilly",
+        "label": "Evangeline Lilly",
+        "class": "woman"
+      },
+      {
+        "trigger": "felicityjones",
+        "label": "Felicity Jones",
+        "class": "woman"
+      },
+      {
+        "trigger": "galgadot",
+        "label": "Gal Gadot",
+        "class": "woman"
+      },
+      {
+        "trigger": "ginacarano",
+        "label": "Gina Carano",
+        "class": "woman"
+      },
+      {
+        "trigger": "guypearce",
+        "label": "Guy Pearce",
+        "class": "man"
+      },
+      {
+        "trigger": "haileesteinfeld",
+        "label": "Hailee Steinfeld",
+        "class": "woman"
+      },
+      {
+        "trigger": "hayleyatwell",
+        "label": "Hayley Atwell",
+        "class": "woman"
+      },
+      {
+        "trigger": "helenhunt",
+        "label": "Helen Hunt",
+        "class": "woman"
+      },
+      {
+        "trigger": "idriselba",
+        "label": "Idris Elba",
+        "class": "man"
+      },
+      {
+        "trigger": "januszkorwinmikke",
+        "label": "Janusz Korwin-Mikke",
+        "class": "man"
+      },
+      {
+        "trigger": "javierbardem",
+        "label": "Javier Bardem",
+        "class": "man"
+      },
+      {
+        "trigger": "jenniferaniston",
+        "label": "Jennifer Aniston",
+        "class": "woman"
+      },
+      {
+        "trigger": "jennifercarpenter",
+        "label": "Jennifer Carpenter",
+        "class": "woman"
+      },
+      {
+        "trigger": "jenpsaki",
+        "label": "Jen Psaki",
+        "class": "woman"
+      },
+      {
+        "trigger": "jodiefoster",
+        "label": "Jodie Foster",
+        "class": "woman"
+      },
+      {
+        "trigger": "joelkinnaman",
+        "label": "Joel Kinnaman",
+        "class": "man"
+      },
+      {
+        "trigger": "kaleycuoco",
+        "label": "Kaley Cuoco",
+        "class": "woman"
+      },
+      {
+        "trigger": "katdennings",
+        "label": "Kat Dennings",
+        "class": "woman"
+      },
+      {
+        "trigger": "katewinslet",
+        "label": "Kate Winslet",
+        "class": "woman"
+      },
+      {
+        "trigger": "lisaedelstein",
+        "label": "Lisa Edelstein",
+        "class": "woman"
+      },
+      {
+        "trigger": "milakunis",
+        "label": "Mila Kunis",
+        "class": "woman"
+      },
+      {
+        "trigger": "summerglau",
+        "label": "Summer Glau",
+        "class": "woman"
+      }
+    ]
+  },
+  {
+    "id": "moss-serenity-v1-turbo-int8",
+    "title": "MOSS Serenity v1 Turbo · INT8",
+    "kind": "image",
+    "family": "moss-image-base",
+    "format": "INT8",
+    "layout": "comfy",
+    "repo": "malcolmrey/moss-serenity",
+    "revision": "3d3f117b900d67d1b158b9d248f5526d34cde052",
+    "directory": "malcolmrey-moss-serenity",
+    "files": [
+      {
+        "path": "serenity_base_v1_24000_int8_convrot.safetensors",
+        "bytes": 5413708446,
+        "sha256": "521a740fdb89e8c021ba37356eee7f07f8cab2a4be100db0ad1381bcd6d0ac68"
+      }
+    ],
+    "bytes": 5413708446,
+    "dependencies": [
+      "moss-encoder-int8",
+      "moss-vae-small",
+      "moss-lora-dmd8"
+    ],
+    "text_encoder": "moss-encoder-int8",
+    "recommended_vae": "moss-vae-small",
+    "generation_defaults": {
+      "steps": 8,
+      "cfg": 4.0,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "shift": 5.0,
+      "negative_prompt": "bad ugly blurry",
+      "source": "https://huggingface.co/malcolmrey/moss-serenity",
+      "model_card": "https://huggingface.co/malcolmrey/moss-serenity",
+      "reviewed_on": "2026-10-21",
+      "note": "Serenity README, Turbo: lodestones MOSS-Image-Base-8-steps-dmd LoRA at 1.0, 8 steps, CFG 4, euler/simple, SLG layer 22 (0 to 50%), negative \"bad ugly blurry\" (workflow/base-turbo-no-lora.json). Prompt form: photo of <trigger>, a woman (or a man), then one sentence on look, framing, clothing, setting and light. Keep faces large (chest-up or closer).",
+      "speed_lora": {
+        "id": "moss-lora-dmd8",
+        "strength": 1.0
+      }
+    },
+    "known_people": [
+      {
+        "trigger": "alisonbrie",
+        "label": "Alison Brie",
+        "class": "woman"
+      },
+      {
+        "trigger": "amberrayne",
+        "label": "Amber Rayne",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyachalotra",
+        "label": "Anya Chalotra",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyataylorjoy",
+        "label": "Anya Taylor-Joy",
+        "class": "woman"
+      },
+      {
+        "trigger": "asmongold",
+        "label": "Asmongold",
+        "class": "man"
+      },
+      {
+        "trigger": "aubreyplaza",
+        "label": "Aubrey Plaza",
+        "class": "woman"
+      },
+      {
+        "trigger": "bradpitt",
+        "label": "Brad Pitt",
+        "class": "man"
+      },
+      {
+        "trigger": "emmawatson",
+        "label": "Emma Watson",
+        "class": "woman"
+      },
+      {
+        "trigger": "feliciaday",
+        "label": "Felicia Day",
+        "class": "woman"
+      },
+      {
+        "trigger": "gilliananderson",
+        "label": "Gillian Anderson",
+        "class": "woman"
+      },
+      {
+        "trigger": "helenmirren",
+        "label": "Helen Mirren",
+        "class": "woman"
+      },
+      {
+        "trigger": "jasonmomoa",
+        "label": "Jason Momoa",
+        "class": "man"
+      },
+      {
+        "trigger": "jennaortega",
+        "label": "Jenna Ortega",
+        "class": "woman"
+      },
+      {
+        "trigger": "jenniferlawrence",
+        "label": "Jennifer Lawrence",
+        "class": "woman"
+      },
+      {
+        "trigger": "keanureeves",
+        "label": "Keanu Reeves",
+        "class": "man"
+      },
+      {
+        "trigger": "klaudiajachira",
+        "label": "Klaudia Jachira",
+        "class": "woman"
+      },
+      {
+        "trigger": "mileycyrus",
+        "label": "Miley Cyrus",
+        "class": "woman"
+      },
+      {
+        "trigger": "morenabaccarin",
+        "label": "Morena Baccarin",
+        "class": "woman"
+      },
+      {
+        "trigger": "nathanfillion",
+        "label": "Nathan Fillion",
+        "class": "man"
+      },
+      {
+        "trigger": "oliviawilde",
+        "label": "Olivia Wilde",
+        "class": "woman"
+      },
+      {
+        "trigger": "rihanna",
+        "label": "Rihanna",
+        "class": "woman"
+      },
+      {
+        "trigger": "sadiesink",
+        "label": "Sadie Sink",
+        "class": "woman"
+      },
+      {
+        "trigger": "samuelljackson",
+        "label": "Samuel L. Jackson",
+        "class": "man"
+      },
+      {
+        "trigger": "sashagrey",
+        "label": "Sasha Grey",
+        "class": "woman"
+      },
+      {
+        "trigger": "scarlettjohansson",
+        "label": "Scarlett Johansson",
+        "class": "woman"
+      },
+      {
+        "trigger": "sweetanita",
+        "label": "Sweet Anita",
+        "class": "woman"
+      },
+      {
+        "trigger": "taylorswift",
+        "label": "Taylor Swift",
+        "class": "woman"
+      },
+      {
+        "trigger": "zendaya",
+        "label": "Zendaya",
+        "class": "woman"
+      }
+    ]
+  },
+  {
+    "id": "moss-serenity-v1-int8",
+    "title": "MOSS Serenity v1 · INT8",
+    "kind": "image",
+    "family": "moss-image-base",
+    "format": "INT8",
+    "layout": "comfy",
+    "repo": "malcolmrey/moss-serenity",
+    "revision": "3d3f117b900d67d1b158b9d248f5526d34cde052",
+    "directory": "malcolmrey-moss-serenity",
+    "files": [
+      {
+        "path": "serenity_base_v1_24000_int8_convrot.safetensors",
+        "bytes": 5413708446,
+        "sha256": "521a740fdb89e8c021ba37356eee7f07f8cab2a4be100db0ad1381bcd6d0ac68"
+      }
+    ],
+    "bytes": 5413708446,
+    "dependencies": [
+      "moss-encoder-int8",
+      "moss-vae-small"
+    ],
+    "text_encoder": "moss-encoder-int8",
+    "recommended_vae": "moss-vae-small",
+    "generation_defaults": {
+      "steps": 50,
+      "cfg": 4.0,
+      "sampler": "euler",
+      "scheduler": "simple",
+      "shift": 5.0,
+      "negative_prompt": "bad ugly blurry",
+      "source": "https://huggingface.co/malcolmrey/moss-serenity",
+      "model_card": "https://huggingface.co/malcolmrey/moss-serenity",
+      "reviewed_on": "2026-10-21",
+      "note": "Serenity README, Full: 50 steps, CFG 4, euler/simple, SkipLayerGuidanceDiTSimple layer 22 (0 to 50%), negative \"bad ugly blurry\". Prompt form: photo of <trigger>, a woman (or a man), then one sentence on look, framing, clothing, setting and light. Keep faces large (chest-up or closer)."
+    },
+    "known_people": [
+      {
+        "trigger": "alisonbrie",
+        "label": "Alison Brie",
+        "class": "woman"
+      },
+      {
+        "trigger": "amberrayne",
+        "label": "Amber Rayne",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyachalotra",
+        "label": "Anya Chalotra",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyataylorjoy",
+        "label": "Anya Taylor-Joy",
+        "class": "woman"
+      },
+      {
+        "trigger": "asmongold",
+        "label": "Asmongold",
+        "class": "man"
+      },
+      {
+        "trigger": "aubreyplaza",
+        "label": "Aubrey Plaza",
+        "class": "woman"
+      },
+      {
+        "trigger": "bradpitt",
+        "label": "Brad Pitt",
+        "class": "man"
+      },
+      {
+        "trigger": "emmawatson",
+        "label": "Emma Watson",
+        "class": "woman"
+      },
+      {
+        "trigger": "feliciaday",
+        "label": "Felicia Day",
+        "class": "woman"
+      },
+      {
+        "trigger": "gilliananderson",
+        "label": "Gillian Anderson",
+        "class": "woman"
+      },
+      {
+        "trigger": "helenmirren",
+        "label": "Helen Mirren",
+        "class": "woman"
+      },
+      {
+        "trigger": "jasonmomoa",
+        "label": "Jason Momoa",
+        "class": "man"
+      },
+      {
+        "trigger": "jennaortega",
+        "label": "Jenna Ortega",
+        "class": "woman"
+      },
+      {
+        "trigger": "jenniferlawrence",
+        "label": "Jennifer Lawrence",
+        "class": "woman"
+      },
+      {
+        "trigger": "keanureeves",
+        "label": "Keanu Reeves",
+        "class": "man"
+      },
+      {
+        "trigger": "klaudiajachira",
+        "label": "Klaudia Jachira",
+        "class": "woman"
+      },
+      {
+        "trigger": "mileycyrus",
+        "label": "Miley Cyrus",
+        "class": "woman"
+      },
+      {
+        "trigger": "morenabaccarin",
+        "label": "Morena Baccarin",
+        "class": "woman"
+      },
+      {
+        "trigger": "nathanfillion",
+        "label": "Nathan Fillion",
+        "class": "man"
+      },
+      {
+        "trigger": "oliviawilde",
+        "label": "Olivia Wilde",
+        "class": "woman"
+      },
+      {
+        "trigger": "rihanna",
+        "label": "Rihanna",
+        "class": "woman"
+      },
+      {
+        "trigger": "sadiesink",
+        "label": "Sadie Sink",
+        "class": "woman"
+      },
+      {
+        "trigger": "samuelljackson",
+        "label": "Samuel L. Jackson",
+        "class": "man"
+      },
+      {
+        "trigger": "sashagrey",
+        "label": "Sasha Grey",
+        "class": "woman"
+      },
+      {
+        "trigger": "scarlettjohansson",
+        "label": "Scarlett Johansson",
+        "class": "woman"
+      },
+      {
+        "trigger": "sweetanita",
+        "label": "Sweet Anita",
+        "class": "woman"
+      },
+      {
+        "trigger": "taylorswift",
+        "label": "Taylor Swift",
+        "class": "woman"
+      },
+      {
+        "trigger": "zendaya",
+        "label": "Zendaya",
+        "class": "woman"
+      }
+    ]
+  },
+  {
+    "id": "moss-lora-dmd8",
+    "title": "MOSS Image Base 8-step DMD LoRA",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "lodestones/MOSS-Image-Base-8-steps-dmd",
+    "revision": "da05cb3b52899179e2bb5f7efe1058fefcbae21b",
+    "directory": "loras/lodestones-MOSS-Image-Base-8-steps-dmd",
+    "files": [
+      {
+        "path": "lora.safetensors",
+        "bytes": 1189176800,
+        "sha256": "f0e6cd07f222dfaea798afe3b796e2c2995cadfd44ad56e02ca616f0467aec28"
+      }
+    ],
+    "bytes": 1189176800,
+    "dependencies": [],
+    "families": [
+      "moss-image-base"
+    ],
+    "default_strength": 1.0,
+    "accelerator": {
+      "steps": 8,
+      "source": "https://huggingface.co/lodestones/MOSS-Image-Base-8-steps-dmd (the LoRA alone, standard flow-matching Euler, shift 5, CFG 1, 4 to 8 steps)"
+    },
+    "trained_on": {
+      "family": "moss-image-base",
+      "label": "MOSS Image Base",
+      "evidence": "model card (lodestones/MOSS-Image-Base-8-steps-dmd)",
+      "settings": {
+        "steps": 8,
+        "cfg": 1
+      }
+    },
+    "summary": "Speed LoRA for MOSS Image Base (data-space DMD, update 12000): 8 steps at CFG 1 on the plain Base. The Serenity Turbo models use it at CFG 4, as in their workflow."
+  },
+  {
+    "id": "moss-serenity-v2-lora-r128",
+    "title": "MOSS Serenity v2 people LoRA (rank 128)",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "malcolmrey/moss-serenity",
+    "revision": "3d3f117b900d67d1b158b9d248f5526d34cde052",
+    "directory": "loras/malcolmrey-moss-serenity",
+    "files": [
+      {
+        "path": "lora-extract/serenity_v2_lora_r128.safetensors",
+        "bytes": 594630792,
+        "sha256": "9a5cbc344e3936e46a59eb98064c74433334924ec3a88bee5a044f8c91fd9acf"
+      }
+    ],
+    "bytes": 594630792,
+    "dependencies": [],
+    "families": [
+      "moss-image-base"
+    ],
+    "default_strength": 1.0,
+    "trained_on": {
+      "family": "moss-image-base",
+      "label": "MOSS Image Base",
+      "evidence": "Serenity README (lora-extract: SVD of the finetune for MOSS-Image Base)",
+      "settings": {
+        "steps": 50,
+        "cfg": 4
+      }
+    },
+    "summary": "Serenity v2 as a LoRA for MOSS Image Base (rank 128 keeps about 7% of the change; the full Serenity model keeps all of it). Prompt: photo of <trigger>, a woman or a man.",
+    "known_people": [
+      {
+        "trigger": "alisonbrie",
+        "label": "Alison Brie",
+        "class": "woman"
+      },
+      {
+        "trigger": "amberrayne",
+        "label": "Amber Rayne",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyachalotra",
+        "label": "Anya Chalotra",
+        "class": "woman"
+      },
+      {
+        "trigger": "anyataylorjoy",
+        "label": "Anya Taylor-Joy",
+        "class": "woman"
+      },
+      {
+        "trigger": "asmongold",
+        "label": "Asmongold",
+        "class": "man"
+      },
+      {
+        "trigger": "aubreyplaza",
+        "label": "Aubrey Plaza",
+        "class": "woman"
+      },
+      {
+        "trigger": "bradpitt",
+        "label": "Brad Pitt",
+        "class": "man"
+      },
+      {
+        "trigger": "emmawatson",
+        "label": "Emma Watson",
+        "class": "woman"
+      },
+      {
+        "trigger": "feliciaday",
+        "label": "Felicia Day",
+        "class": "woman"
+      },
+      {
+        "trigger": "gilliananderson",
+        "label": "Gillian Anderson",
+        "class": "woman"
+      },
+      {
+        "trigger": "helenmirren",
+        "label": "Helen Mirren",
+        "class": "woman"
+      },
+      {
+        "trigger": "jasonmomoa",
+        "label": "Jason Momoa",
+        "class": "man"
+      },
+      {
+        "trigger": "jennaortega",
+        "label": "Jenna Ortega",
+        "class": "woman"
+      },
+      {
+        "trigger": "jenniferlawrence",
+        "label": "Jennifer Lawrence",
+        "class": "woman"
+      },
+      {
+        "trigger": "keanureeves",
+        "label": "Keanu Reeves",
+        "class": "man"
+      },
+      {
+        "trigger": "klaudiajachira",
+        "label": "Klaudia Jachira",
+        "class": "woman"
+      },
+      {
+        "trigger": "mileycyrus",
+        "label": "Miley Cyrus",
+        "class": "woman"
+      },
+      {
+        "trigger": "morenabaccarin",
+        "label": "Morena Baccarin",
+        "class": "woman"
+      },
+      {
+        "trigger": "nathanfillion",
+        "label": "Nathan Fillion",
+        "class": "man"
+      },
+      {
+        "trigger": "oliviawilde",
+        "label": "Olivia Wilde",
+        "class": "woman"
+      },
+      {
+        "trigger": "rihanna",
+        "label": "Rihanna",
+        "class": "woman"
+      },
+      {
+        "trigger": "sadiesink",
+        "label": "Sadie Sink",
+        "class": "woman"
+      },
+      {
+        "trigger": "samuelljackson",
+        "label": "Samuel L. Jackson",
+        "class": "man"
+      },
+      {
+        "trigger": "sashagrey",
+        "label": "Sasha Grey",
+        "class": "woman"
+      },
+      {
+        "trigger": "scarlettjohansson",
+        "label": "Scarlett Johansson",
+        "class": "woman"
+      },
+      {
+        "trigger": "sweetanita",
+        "label": "Sweet Anita",
+        "class": "woman"
+      },
+      {
+        "trigger": "taylorswift",
+        "label": "Taylor Swift",
+        "class": "woman"
+      },
+      {
+        "trigger": "zendaya",
+        "label": "Zendaya",
+        "class": "woman"
+      },
+      {
+        "trigger": "aleksandrasawicka",
+        "label": "Aleksandra Sawicka",
+        "class": "woman"
+      },
+      {
+        "trigger": "beniciodeltoro",
+        "label": "Benicio del Toro",
+        "class": "man"
+      },
+      {
+        "trigger": "billieeilish",
+        "label": "Billie Eilish",
+        "class": "woman"
+      },
+      {
+        "trigger": "brielarson",
+        "label": "Brie Larson",
+        "class": "woman"
+      },
+      {
+        "trigger": "britneyspears",
+        "label": "Britney Spears",
+        "class": "woman"
+      },
+      {
+        "trigger": "camrenbicondova",
+        "label": "Camren Bicondova",
+        "class": "woman"
+      },
+      {
+        "trigger": "cateblanchett",
+        "label": "Cate Blanchett",
+        "class": "woman"
+      },
+      {
+        "trigger": "charlizetheron",
+        "label": "Charlize Theron",
+        "class": "woman"
+      },
+      {
+        "trigger": "chrishemsworth",
+        "label": "Chris Hemsworth",
+        "class": "man"
+      },
+      {
+        "trigger": "clairedanes",
+        "label": "Claire Danes",
+        "class": "woman"
+      },
+      {
+        "trigger": "colinfarrell",
+        "label": "Colin Farrell",
+        "class": "man"
+      },
+      {
+        "trigger": "danielcraig",
+        "label": "Daniel Craig",
+        "class": "man"
+      },
+      {
+        "trigger": "davidduchovny",
+        "label": "David Duchovny",
+        "class": "man"
+      },
+      {
+        "trigger": "elizabethmitchell",
+        "label": "Elizabeth Mitchell",
+        "class": "woman"
+      },
+      {
+        "trigger": "elizabetholsen",
+        "label": "Elizabeth Olsen",
+        "class": "woman"
+      },
+      {
+        "trigger": "emmastone",
+        "label": "Emma Stone",
+        "class": "woman"
+      },
+      {
+        "trigger": "erinmoriarty",
+        "label": "Erin Moriarty",
+        "class": "woman"
+      },
+      {
+        "trigger": "evagreen",
+        "label": "Eva Green",
+        "class": "woman"
+      },
+      {
+        "trigger": "evangelinelilly",
+        "label": "Evangeline Lilly",
+        "class": "woman"
+      },
+      {
+        "trigger": "felicityjones",
+        "label": "Felicity Jones",
+        "class": "woman"
+      },
+      {
+        "trigger": "galgadot",
+        "label": "Gal Gadot",
+        "class": "woman"
+      },
+      {
+        "trigger": "ginacarano",
+        "label": "Gina Carano",
+        "class": "woman"
+      },
+      {
+        "trigger": "guypearce",
+        "label": "Guy Pearce",
+        "class": "man"
+      },
+      {
+        "trigger": "haileesteinfeld",
+        "label": "Hailee Steinfeld",
+        "class": "woman"
+      },
+      {
+        "trigger": "hayleyatwell",
+        "label": "Hayley Atwell",
+        "class": "woman"
+      },
+      {
+        "trigger": "helenhunt",
+        "label": "Helen Hunt",
+        "class": "woman"
+      },
+      {
+        "trigger": "idriselba",
+        "label": "Idris Elba",
+        "class": "man"
+      },
+      {
+        "trigger": "januszkorwinmikke",
+        "label": "Janusz Korwin-Mikke",
+        "class": "man"
+      },
+      {
+        "trigger": "javierbardem",
+        "label": "Javier Bardem",
+        "class": "man"
+      },
+      {
+        "trigger": "jenniferaniston",
+        "label": "Jennifer Aniston",
+        "class": "woman"
+      },
+      {
+        "trigger": "jennifercarpenter",
+        "label": "Jennifer Carpenter",
+        "class": "woman"
+      },
+      {
+        "trigger": "jenpsaki",
+        "label": "Jen Psaki",
+        "class": "woman"
+      },
+      {
+        "trigger": "jodiefoster",
+        "label": "Jodie Foster",
+        "class": "woman"
+      },
+      {
+        "trigger": "joelkinnaman",
+        "label": "Joel Kinnaman",
+        "class": "man"
+      },
+      {
+        "trigger": "kaleycuoco",
+        "label": "Kaley Cuoco",
+        "class": "woman"
+      },
+      {
+        "trigger": "katdennings",
+        "label": "Kat Dennings",
+        "class": "woman"
+      },
+      {
+        "trigger": "katewinslet",
+        "label": "Kate Winslet",
+        "class": "woman"
+      },
+      {
+        "trigger": "lisaedelstein",
+        "label": "Lisa Edelstein",
+        "class": "woman"
+      },
+      {
+        "trigger": "milakunis",
+        "label": "Mila Kunis",
+        "class": "woman"
+      },
+      {
+        "trigger": "summerglau",
+        "label": "Summer Glau",
+        "class": "woman"
+      }
+    ]
   }
 ]

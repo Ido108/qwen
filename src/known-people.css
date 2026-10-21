@@ -1,0 +1,10 @@
+.known-people{position:relative;flex:none}.known-people-toggle{white-space:nowrap}
+.known-people-panel{position:absolute;z-index:30;left:0;top:calc(100% + 4px);width:min(340px,86vw);display:flex;flex-direction:column;gap:8px;padding:10px;background:#fff;color:#2b2438;border:1px solid #ddd6ef;border-radius:10px;box-shadow:0 10px 30px #2a1f4a26}
+.known-people-panel input{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cfc6e6;border-radius:8px;font:inherit;font-size:13px;color:#2b2438;background:#fff}
+.known-people-filter{display:flex;gap:4px}.known-people-panel .known-people-filter button{flex:1;justify-content:center;padding:5px 8px;border:1px solid #ddd6ef;border-radius:7px;background:#faf8ff;color:#3d3450;font-size:12px}
+.known-people-panel .known-people-filter button[aria-pressed=true]{background:#684ce6;border-color:#684ce6;color:#fff}
+.known-people-list{display:flex;flex-direction:column;max-height:280px;overflow-y:auto}
+.known-people-panel .known-people-list button{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;padding:7px 8px;border:0;border-radius:6px;background:transparent;color:#2b2438;text-align:left;font-size:13px}
+.known-people-panel .known-people-list button:hover,.known-people-panel .known-people-list button:focus-visible{background:#f1edff}
+.known-people-list small{color:#5f5672;font-size:11px}.known-people-list p{margin:6px 2px;color:#5f5672;font-size:12px}
+.known-people-note{color:#5f5672;font-size:11px;line-height:1.4}

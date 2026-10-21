@@ -41,7 +41,8 @@ def entry(model_id):
     raise ValueError('Unknown model.')
 
 def image_tools():
-    return json.loads(TOOLS_PATH.read_text(encoding='utf-8'))
+    from .prompt_registry import apply_tools
+    return apply_tools(json.loads(TOOLS_PATH.read_text(encoding='utf-8')))
 
 def image_tool(tool_id):
     for tool in image_tools():
@@ -119,8 +120,9 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0,k
     vae=resolve_vae(item,vae)
     if is_moss(item):
         if tool_id:raise ValueError('This image tool needs Qwen-Image. Remove the tool to use MOSS Image.')
-        if images:raise ValueError('MOSS Image makes images from text only: remove the input images or choose another model.')
-        ids=[model_id,encoder if encoder in MOSS_ENCODERS else item.get('text_encoder',MOSS_ENCODERS[0]),vae]
+        if images>1:raise ValueError('MOSS Image redraws one input image (image to image). Remove the extra images.')
+        speed=(item.get('generation_defaults') or {}).get('speed_lora')  # a Turbo entry built from a speed LoRA
+        ids=[model_id,encoder if encoder in MOSS_ENCODERS else item.get('text_encoder',MOSS_ENCODERS[0]),vae,*([speed['id']] if speed else [])]
     elif is_flux3(item):
         if tool_id:raise ValueError('This image tool needs Qwen-Image. Remove the tool to use FLUX.3.')
         if images>10:raise ValueError('FLUX.3 supports up to 10 reference images.')
@@ -177,10 +179,16 @@ def resolve_vae(item,vae='auto'):
     return vae
 
 def required_image(request):
-    """All files for an image request dict: model, encoder, VAE and an optional tool LoRA."""
-    return required(request['model_id'],request.get('text_encoder','auto'),request.get('tool_id'),request.get('vae_id','auto'),
-                    [lora['id'] for lora in request.get('loras') or []],len(request.get('images') or []),
-                    request.get('krea_reference_mode') or 'identity')
+    """All files for an image request dict: model, encoder, VAE, an optional tool LoRA and the local prompt rewriter."""
+    ids=required(request['model_id'],request.get('text_encoder','auto'),request.get('tool_id'),request.get('vae_id','auto'),
+                 [lora['id'] for lora in request.get('loras') or []],len(request.get('images') or []),
+                 request.get('krea_reference_mode') or 'identity')
+    if request.get('enhance') and request.get('execution')!='runpod':
+        from .prompt_enhancer import local_model
+        item=entry(request['model_id'])
+        rewriter=local_model(request.get('images') or [],item.get('family','qwen-image-2.1'),is_zimage(item))
+        if rewriter:ids.append(rewriter)
+    return ids
 
 LTX_FAMILIES=('ltx25','ltx25-msr')
 

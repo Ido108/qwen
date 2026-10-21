@@ -1,6 +1,6 @@
 import type {InputImage,Person} from './InputLibrary';
 
-export type MentionOption={tag:string;label:string;image?:string;detail?:string;choose?:()=>void;key?:string};
+export type MentionOption={tag:string;label:string;image?:string;detail?:string;choose?:()=>void;key?:string;badge?:string};
 export function displayImageMentions(text:string){return text.replace(/<\s*(?:image|picture)\s*(\d+)\s*>/gi,(_,n)=>`@Image${Number(n)}`).replaceAll('<pose_source>','@PoseSource').replaceAll('<style_source>','@StyleSource');}
 export function imageMentionOptions(images:(InputImage|null)[],people:Person[]=[],add?:(image:InputImage)=>void,limit=images.length):MentionOption[]{
   const current=images.flatMap((image,i)=>{
@@ -13,9 +13,17 @@ export function imageMentionOptions(images:(InputImage|null)[],people:Person[]=[
   if(!add||images.filter(Boolean).length>=limit)return current;
   const next=images.indexOf(null)>=0?images.indexOf(null):images.length;
   return [...current,...people.filter(p=>!images.some(i=>i&&p.image_ids.includes(i.id))).map(p=>({
-    key:p.id,tag:`@Image${next+1}`,label:p.name,image:p.thumb_url,detail:'Add from People',
+    key:p.id,tag:`@Image${next+1}`,label:p.name,image:p.thumb_url,detail:`From People · adds the photo as Image ${next+1}`,badge:'+ Add',
     choose:()=>add({id:p.image_id,name:p.name,url:p.url,personId:p.id})
   }))];
+}
+
+export type KnownPerson={trigger:string;label:string;class:string};
+/** People a model knows by trigger (MOSS Serenity), in its README's prompt form: "photo of <trigger>, a woman" to start
+ *  a prompt, "<trigger>, a man" when the prompt already has "photo of" (two people in one shot). */
+export function knownPeopleOptions(known:KnownPerson[],source:string,prompt:string):MentionOption[]{
+  const started=/\bphoto of\b/i.test(prompt);
+  return known.map(p=>({key:`known:${p.trigger}`,tag:`${started?'':'photo of '}${p.trigger}, a ${p.class}`,label:p.label,detail:`${source} knows ${p.trigger}`,choose:()=>{}}));
 }
 
 export function mentionAt(value:string,caret:number){

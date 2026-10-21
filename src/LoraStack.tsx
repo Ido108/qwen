@@ -100,7 +100,7 @@ export function LoraStack({value,onChange,loras,family,onBrowse,disabled,compact
         <ResetButton label={`${lora!.title} strength`} value={lora!.default_strength??1} disabled={disabled} onReset={()=>setStrength(choice.id,lora!.default_strength??1)}/>
         <LoraPromptEditor model={lora!} compact disabled={disabled}/>
       </div>
-      {fit.blocked?<p className="lora-compatibility">{fit.blocked}</p>:fit.notice?<p className="lora-notice">{fit.notice}{fit.settings&&onAuthorSettings&&(hasModel?.(fit.settings.family)??true)?<> <button type="button" className="text-button lora-author-settings" disabled={disabled} onClick={()=>onAuthorSettings(fit.settings!)}>Use author settings</button></>:null}</p>:null}
+      {fit.blocked?<p className="lora-compatibility">{fit.blocked}</p>:fit.notice?<p className="lora-notice">{fit.notice}{fit.settings&&fit.settings.family!==family&&onAuthorSettings&&(hasModel?.(fit.settings.family)??true)?<> <button type="button" className="text-button lora-author-settings" disabled={disabled} onClick={()=>onAuthorSettings(fit.settings!)}>Use author settings</button></>:null}</p>:null}
       {lora_.test_file?<p className="lora-trigger">{lora_.test_file}</p>:null}
     </div>;})}
     <div ref={picker} popover="auto" role="dialog" className="lora-picker" aria-label={picking?.replaceId?'Replace LoRA':'Add a LoRA'}

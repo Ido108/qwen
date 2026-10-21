@@ -6,6 +6,7 @@ import './run-details.css';
 import {resultCfg} from './resultCfg';
 import {resultLoras} from './resultLoras';
 import {ResultPrompt} from './ResultPrompt';
+import {SentPrompts,type SentPrompt} from './SentPrompts';
 import {resultSampling,scheduleLabel} from './resultSampling';
 
 export type Timing={stage_seconds?:Record<string,number>;encoder_load_seconds?:number;diffusion_load_seconds?:number;encoding_seconds?:number;model_reused?:boolean;conditioning_reused?:boolean;input_count?:number;input_cache_hits?:number;input_read_seconds?:number;input_preparation_reused?:boolean;cfg?:number;true_cfg_scale?:number;applied_lora?:string|null;sampler?:string;scheduler?:string;sampling?:string};
@@ -85,6 +86,7 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
       <header><h2 id={headingId}>Run details</h2><button type="button" className="icon-button" aria-label="Close run details" onClick={()=>dialog.current?.close()}><X size={19}/></button></header>
       <div className="run-details-body"><dl>{facts.map(([label,value])=><div key={label} className={label==='LoRAs (strength)'?'run-lora-fact':label.toLowerCase().includes('prompt')?'run-prompt-fact':undefined}><dt>{label}</dt><dd dir="auto">{value}</dd></div>)}</dl>
         {stages.length?<><h3>Time by stage</h3><dl>{stages.map(([label,value])=><div key={label}><dt>{stageName(label)}</dt><dd>{time(value)}</dd></div>)}</dl></>:null}
+        <SentPrompts items={(job as {sent_prompts?:SentPrompt[]}).sent_prompts}/>
       </div><footer><button type="button" className="text-button" onClick={copy}><Copy size={13}/>{copyState}</button></footer>
     </dialog>,document.body)}
   </div>;

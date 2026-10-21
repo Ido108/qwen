@@ -9,6 +9,10 @@ export type ImageTool={id:string;title:string;summary:string;lora:string;strengt
 export type ToolState={tool_id:string|null;tool_options:Record<string,string>;lora_strength:number|null};
 
 const presets=[[2688,1536,'16:9'],[1536,2688,'9:16'],[2048,2048,'1:1'],[2368,1728,'4:3'],[1728,2368,'3:4'],[1344,768,'16:9'],[768,1344,'9:16'],[1184,864,'4:3'],[864,1184,'3:4'],[1024,1024,'1:1']] as const;
+/** The dropdown group: a Turbo entry built from a speed LoRA on a Base family (MOSS Serenity Turbo: the 8-step DMD
+ *  LoRA) is listed with that architecture's Turbo models, never under a Base or Standard heading. */
+const TURBO_GROUP:Record<string,string>={'moss-image-base':'moss-image-turbo','moss-image':'moss-image-turbo','qwen-image-2.1':'qwen-image-2.1-turbo','krea-2':'krea-2-turbo','z-image':'z-image-turbo'};
+export function modelGroup(m:{family?:string;generation_defaults?:{speed_lora?:{id:string}}|null}){const family=m.family||'qwen-image-2.1';return m.generation_defaults?.speed_lora?TURBO_GROUP[family]||family:family;}
 const familyLabel=(family?:string)=>family==='qwen-image-2.1-turbo'?'Turbo':'Standard';
 const gb=(bytes:number)=>`${(bytes/1e9).toFixed(1)} GB`;
 // Uncensored Q8_0 GGUF files, and the official INT8 files: native INT8 matmul, the fastest Qwen-Image-2.1 on RTX 40 and 50 GPUs.
@@ -37,7 +41,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
   const defaultCfg=defaults?.cfg??(value.negative_prompt?.trim()?2:1);const validCfg=value.cfg==null||(value.cfg>=1&&value.cfg<=15);
   const family=model?.family||'qwen-image-2.1';
   const imageModels=(models?.models||[]).filter(m=>m.kind==='image');
-  const groups=[['flux3-klein','FLUX.3 Image Klein'],['flux3-klein-base','FLUX.3 Image Klein Base'],['qwen-image-2.1','Qwen 2.1 Standard · 40 steps'],['qwen-image-2.1-turbo','Qwen 2.1 Turbo · 8 steps, fast'],['krea-2-turbo','Krea 2 Turbo · 8 steps, fast'],['krea-2','Krea 2 Raw · 52 steps'],['z-image-turbo','Z-Image Turbo · 8 steps, fast'],['z-image','Z-Image Base · 30 steps'],['moss-image-turbo','MOSS Image Turbo · 8 steps, fast'],['moss-image','MOSS Image SFT · 50 steps'],['moss-image-base','MOSS Image Base · 50 steps']] as const;
+  const groups=[['flux3-klein','FLUX.3 Image Klein'],['flux3-klein-base','FLUX.3 Image Klein Base'],['qwen-image-2.1','Qwen 2.1 Standard'],['qwen-image-2.1-turbo','Qwen 2.1 Turbo (fast)'],['krea-2-turbo','Krea 2 Turbo (fast)'],['krea-2','Krea 2 Raw'],['z-image-turbo','Z-Image Turbo (fast)'],['z-image','Z-Image Base'],['moss-image-turbo','MOSS Image Turbo (fast)'],['moss-image','MOSS Image SFT'],['moss-image-base','MOSS Image Base']] as const;
   const order=['Q8_0','Q6_K','Q5_K_M','Q4_K_M','Q4_0','FP8','NVFP4','INT8','BF16'];
   const quant=(m:ModelEntry)=>m.title.split(' · ').at(-1)||m.title;
   const isPreset=presets.some(([w,h])=>w===value.width&&h===value.height);
@@ -59,14 +63,14 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
   const hintSteps=defaults?.steps??(family.endsWith('turbo')?8:family==='krea-2'?52:family==='z-image'?30:family==='flux3-klein'?16:family==='flux3-klein-base'||family==='moss-image'||family==='moss-image-base'?50:40);const hintCfg:number|null=defaults?.cfg??(family==='krea-2'?4.5:family==='moss-image'||family==='moss-image-base'?3:family==='z-image'?4:family==='flux3-klein-base'?4:family.endsWith('turbo')||family==='flux3-klein'?1:null);
   const hintSampler=defaults?.sampler&&defaults.sampler!=='euler'?defaults.sampler.replace(/_/g,' '):'';const hintScheduler=defaults?.scheduler&&defaults.scheduler!=='simple'?defaults.scheduler.replace(/_/g,' '):'';
   // CFG 1 runs one pass without the negative branch, so a negative prompt changes nothing.
-  const settingsHint=`${family.startsWith('flux3-klein')?(family.endsWith('base')?'FLUX.3 Klein Base':'FLUX.3 Klein'):family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':family==='z-image-turbo'?'Z-Image Turbo':family==='z-image'?'Z-Image Base':family==='moss-image-turbo'?'MOSS Image Turbo':family==='moss-image'?'MOSS Image SFT':family==='moss-image-base'?'MOSS Image Base':'Standard'}, ${hintSteps} steps, ${hintCfg===null?'CFG 2 with a negative prompt, else 1':`CFG ${hintCfg}`}${hintSampler?`, ${hintSampler}`:''}${hintScheduler?` / ${hintScheduler}`:''}${hintCfg!==null&&hintCfg<=1?' (negative prompt has no effect at CFG 1)':''}`;
+  const settingsHint=`${family.startsWith('flux3-klein')?(family.endsWith('base')?'FLUX.3 Klein Base':'FLUX.3 Klein'):family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':family==='z-image-turbo'?'Z-Image Turbo':family==='z-image'?'Z-Image Base':family==='moss-image-turbo'?'MOSS Image Turbo':family==='moss-image'?'MOSS Image SFT':family==='moss-image-base'?(defaults?.speed_lora?'MOSS Image Base Turbo (8-step DMD LoRA)':'MOSS Image Base'):'Standard'}, ${hintSteps} steps, ${hintCfg===null?'CFG 2 with a negative prompt, else 1':`CFG ${hintCfg}`}${hintSampler?`, ${hintSampler}`:''}${hintScheduler?` / ${hintScheduler}`:''}${hintCfg!==null&&hintCfg<=1?' (negative prompt has no effect at CFG 1)':''}`;
   const status=[RECOMMENDED.has(model?.id??'')?'★ Recommended':'',model?.ready?'✓ Installed':model?'Downloads when you generate':'',
     settingsHint,pageText?'Author settings':''].filter(Boolean).join(' · ');
   const cls=`image-generation-settings studio-settings settings-${part}`;
   if(part==='model')return <fieldset className={cls} disabled={disabled} aria-label="Model">
     <div className="field model-field"><label htmlFor="image-model">Model</label>
       <select id="image-model" value={modelId} onChange={e=>onModel(e.target.value)} title={model?.title}>
-        {groups.map(([id,label])=><optgroup key={id} label={label}>{imageModels.filter(m=>(m.family||'qwen-image-2.1')===id).sort((a,b)=>order.indexOf(quant(a))-order.indexOf(quant(b))).map(m=>
+        {groups.map(([id,label])=><optgroup key={id} label={label}>{imageModels.filter(m=>modelGroup(m)===id).sort((a,b)=>order.indexOf(quant(a))-order.indexOf(quant(b))).map(m=>
           <option key={m.id} value={m.id}>{m.title}{RECOMMENDED.has(m.id)?' ★':''}{m.ready?' ✓':` · ↓ ${gb(m.bytes)}`}</option>)}</optgroup>)}
       </select>
       <small className="model-status" title={[pageText,defaults?.note].filter(Boolean).join(' ')||undefined}>{status}</small>

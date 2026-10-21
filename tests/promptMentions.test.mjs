@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 const source=readFileSync(new URL('../src/promptMentions.ts',import.meta.url),'utf8');
 const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-const {mentionAt,imageMentionOptions,displayImageMentions}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const {mentionAt,imageMentionOptions,displayImageMentions,knownPeopleOptions}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 test('mention search accepts Hebrew names and ignores email addresses',()=>{
   assert.equal(mentionAt('name@example.com',16),null);
   assert.deepEqual(mentionAt('Use @משה',8),{start:4,end:8,query:'משה'});
@@ -28,4 +28,13 @@ test('labels describe the subject without changing its tag or guessing shared-ph
   const option=imageMentionOptions([image],people)[0];
   assert.equal(option.tag,'@Image1');assert.equal(option.label,'Photo');assert.equal(option.detail,'Dog · Image 1');
   assert.equal(imageMentionOptions([{...image,personId:'Bob'}],people)[0].label,'Bob');
+});
+
+test('known people insert the model README prompt form and stay searchable',()=>{
+  const known=[{trigger:'keanureeves',label:'Keanu Reeves',class:'man'},{trigger:'zendaya',label:'Zendaya',class:'woman'}];
+  const first=knownPeopleOptions(known,'MOSS Serenity v2',' ');
+  assert.equal(first[0].tag,'photo of keanureeves, a man');
+  assert.equal(typeof first[0].choose,'function');
+  assert.equal(knownPeopleOptions(known,'MOSS Serenity v2','photo of keanureeves, a man, and ')[1].tag,'zendaya, a woman');
+  assert.match(first[1].detail,/zendaya/);
 });

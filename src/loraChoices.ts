@@ -44,6 +44,25 @@ export function loraFit(lora:LoraMeta,family:string,pixels?:number):LoraFit{
   return {usable:true};
 }
 
+/** Sampling the active LoRAs ask for on this model and size: a speed LoRA's steps and CFG 1 first, then the
+ * author's own steps, CFG, sampler and schedule when the LoRA was made for this same model family. */
+export function loraSampling(active:{id:string}[],metas:(LoraMeta&{title?:string})[],family:string,pixels?:number):{values:AuthorSettings;note:string}|null{
+  const used=active.map(choice=>metas.find(meta=>meta.id===choice.id)).filter((meta):meta is LoraMeta&{title?:string}=>!!meta);
+  for(const meta of used){
+    const fit=loraFit(meta,family,pixels);
+    if(meta.accelerator&&fit.usable&&fit.settings?.steps)
+      return {values:{steps:fit.settings.steps,cfg:1},note:`Steps ${fit.settings.steps} and CFG 1 from the speed LoRA${meta.accelerator.steps_by_size&&pixels?' for this size':''}.`};
+  }
+  for(const meta of used){
+    const s=meta.trained_on?.family===family?meta.trained_on.settings:null;
+    if(!s)continue;
+    const values:AuthorSettings={...(s.steps?{steps:s.steps}:{}),...(s.cfg?{cfg:s.cfg}:{}),...(s.sampler?{sampler:s.sampler}:{}),...(s.scheduler?{scheduler:s.scheduler}:{})};
+    const parts=[values.steps?`steps ${values.steps}`:'',values.cfg?`CFG ${values.cfg}`:'',values.sampler?`sampler ${values.sampler}`:'',values.scheduler?`schedule ${values.scheduler}`:''].filter(Boolean);
+    if(parts.length)return {values,note:`${parts.join(', ').replace(/^./,c=>c.toUpperCase())} from the author of ${meta.title||'this LoRA'}.`};
+  }
+  return null;
+}
+
 /** Keep bypass choices in the draft, but send only applicable weights to a job. */
 export function enabledLoras(value:LoraChoice[],models:LoraMeta[],family:string){
   return value.filter(choice=>{

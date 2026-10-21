@@ -25,6 +25,15 @@ def pack():
     return sys.modules['qwen_krea2edit']
 
 
+def identity_photos(images, request):
+    """The photos in the card's training order: the scene first when one is chosen, then the person."""
+    person = min(int(request.get('krea_person') or 0), len(images) - 1)
+    scene = request.get('krea_scene')
+    if scene is None or not 0 <= int(scene) < len(images) or int(scene) == person:
+        return [images[person]]
+    return [images[int(scene)], images[person]]
+
+
 def reference_settings(count):
     """Card settings by photo count. The last photo is the person; with two, the first is the scene."""
     if count >= 2:

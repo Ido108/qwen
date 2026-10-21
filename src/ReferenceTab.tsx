@@ -12,7 +12,7 @@ import {ReferencePeople} from './ReferencePeople';
 import {migratePeople,personImages,remapPersonTags,type ReferencePerson} from './personReferences';
 import {GenerationTiming} from './GenerationTiming';
 import {useEffect,useRef,useState} from 'react';
-import {Download,Film,Loader2,Sparkles,UploadCloud,X} from 'lucide-react';
+import {Download,Film,UploadCloud,X} from 'lucide-react';
 import type {Api,ModelState} from './ModelSettings';
 import type {SavedJob} from './JobQueue';
 import {uploadVideo,type UploadedVideo} from './mediaUpload';
@@ -25,6 +25,7 @@ import {groupByFamily,supports,videoModelsFor} from './videoModels';
 import {PersonMatcher,type SourcePerson} from './PersonMatcher';
 import {nearestReferenceFrames,REFERENCE_FPS,REFERENCE_MAX_FRAMES,REFERENCE_MIN_FRAMES,sourceClipDefault} from './referenceTiming';
 import {ASPECT_OPTIONS,SIZE_OPTIONS,aspectFor,nearestReferenceSize,referenceSizeValid,type AspectMode,type SizeTier} from './referenceDimensions';
+import {useLastSeed} from './lastSeed';
 
 type Workflow='faceswap'|'reference'|'crossview';
 type Params={workflow:Workflow;workflow_prompts:Partial<Record<Workflow,string>>;model_id:string;source_video:string;source_start_seconds:number;source_end_seconds:number|null;reference_images:string[];reference_people:ReferencePerson[];source_people:{id:string;time:number;box:number[]}[];person_assignments:Record<string,string|null>;replace_subjects_first:boolean;replacement_prompt:string;warp_video:string|null;camera_azimuth:number;camera_elevation:number;camera_distance:number;camera_fov:number;camera_vertical_shift:number;camera_aim_lock:boolean;prompt:string;aspect_mode:AspectMode;custom_aspect_width:number;custom_aspect_height:number;size_tier:SizeTier;width:number;height:number;frames:number;steps:number|null;quality:'standard'|'turbo';seed:number;randomize_seed:boolean;reference_image_size:'match'|'max';source_audio:boolean;output_audio:'generated'|'source'|'mute';enhance:boolean;output_dir:string;loras:LoraChoice[]};
@@ -47,7 +48,7 @@ function loadDraft():Params{try{const saved=JSON.parse(localStorage.getItem('qwe
 export function ReferenceTab({library,videoInput,api,onSendVideo,token,models,visible,restoreRequest,onQueued,openSettings,addLora}:{library:VideoLibraryData;addLora?:{id:string;key:number}|null;videoInput:VideoInput|null;api:Api;onSendVideo:SendVideo;token:string;models:ModelState|null;visible:boolean;restoreRequest:{job:SavedJob;key:number}|null;onQueued:()=>void;openSettings:()=>void}){
   const [params,setParams]=useState<Params>(loadDraft);const [source,setSource]=useState<UploadedVideo|null>(null);const [warp,setWarp]=useState<UploadedVideo|null>(null);
   useEffect(()=>{if(!addLora)return;const lora=models?.models.find(m=>m.id===addLora.id);if(!lora)return;setParams(p=>p.loras.some(l=>l.id===lora.id)?p:{...p,loras:[...p.loras,{id:lora.id,strength:lora.default_strength??1}]});},[addLora?.key]);
-  const [job,setJob]=useState<SavedJob|null>(null);const [result,setResult]=useState<SavedJob|null>(null);const [history,setHistory]=useState<SavedJob[]>([]);const [pollId,setPollId]=useState<string|null>(null);
+  const [job,setJob]=useState<SavedJob|null>(null);const [result,setResult]=useState<SavedJob|null>(null);const [history,setHistory]=useState<SavedJob[]>([]);useLastSeed(history,seed=>setParams(p=>p.randomize_seed&&p.seed!==seed?{...p,seed}:p));const [pollId,setPollId]=useState<string|null>(null);
   const [previewMode,setPreviewMode]=useState<'source'|'result'|'live'>('result');
   const [error,setError]=useState('');const [notice,setNotice]=useState('');const [submitting,setSubmitting]=useState(false);const [uploading,setUploading]=useState('');const [uploadProgress,setUploadProgress]=useState(0);
   const [people,setPeople]=useState<SourcePerson[]>([]);const [peopleStatus,setPeopleStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');const [peopleError,setPeopleError]=useState('');const [scanVersion,setScanVersion]=useState(0);const [scanWindow,setScanWindow]=useState<{start:number;end:number}|null>(null);const [activePerson,setActivePerson]=useState<string|null>(null);
@@ -178,7 +179,7 @@ export function ReferenceTab({library,videoInput,api,onSendVideo,token,models,vi
       </div>
       <div className="vs-action">
         {models?.remote&&!selected?.ready?<div className="message warning">Connect a RunPod video endpoint in Settings.</div>:null}{missing.length?<div className="notice">Missing model files will download automatically when you add this job.</div>:null}{error?<div className="message error" role="alert"><span>{error}</span><button className="icon-button" onClick={()=>setError('')} aria-label="Dismiss error"><X size={16}/></button></div>:null}{notice?<div className="notice" role="status">{notice}</div>:null}
-        <div className="vs-action-row"><span className="vs-summary"><span>{params.width} × {params.height} · <output id="reference-duration" aria-label="Output duration">{(params.frames/REFERENCE_FPS).toFixed(1)} seconds</output> · {effectiveSteps} steps</span><small>{models?.remote?'RunPod GPU':'Local GPU'} · Ctrl + Enter in instructions</small></span>{busy?<button className="text-button" onClick={()=>pollId&&api(`/api/jobs/${pollId}/cancel`,{method:'POST'}).catch(e=>setError(e.message))}>{job?.status==='queued'?'Remove from queue':'Stop this job'}</button>:null}<button className="button primary reference-submit vs-submit" disabled={locked||!ready} onClick={()=>generate()}>{submitting?<Loader2 className="spin" size={17}/>:<Sparkles size={17}/>}Add to queue</button></div>
+        <div className="vs-action-row"><span className="vs-summary"><span>{params.width} × {params.height} · <output id="reference-duration" aria-label="Output duration">{(params.frames/REFERENCE_FPS).toFixed(1)} seconds</output> · {effectiveSteps} steps</span><small>{models?.remote?'RunPod GPU':'Local GPU'} · Ctrl + Enter in instructions</small></span>{busy?<button className="text-button" onClick={()=>pollId&&api(`/api/jobs/${pollId}/cancel`,{method:'POST'}).catch(e=>setError(e.message))}>{job?.status==='queued'?'Remove from queue':'Stop this job'}</button>:null}<button className="button primary reference-submit vs-submit" disabled={locked||!ready} onClick={()=>generate()}>{submitting?<span className="train-spinner" aria-hidden="true"/>:null}Add to queue</button></div>
       </div>
     </div>
       <section className="panel vs-result">

@@ -27,7 +27,8 @@ def video_request(body: OrbitRequest) -> VideoRequest:
     sampling=profile(item,entry(LORA_ID))
     if sampling is None:
         raise ValueError('Choose an Orbit model from the list. This model cannot use the required start and end frames.')
-    return VideoRequest(model_id=body.model_id, workflow='orbit', prompt=PROMPT, mode='image',
+    from .prompt_registry import get
+    return VideoRequest(model_id=body.model_id, workflow='orbit', prompt=get('orbit', PROMPT), mode='image',
                         first_frame=body.image, last_frame=body.image, width=768, height=768,
                         frames=73, steps=sampling['steps'], quality='standard', audio=False, enhance=False,
                         seed=body.seed, randomize_seed=body.randomize_seed, output_dir=body.output_dir,

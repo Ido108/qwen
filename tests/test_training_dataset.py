@@ -77,13 +77,15 @@ class DatasetTests(unittest.TestCase):
             self.assertEqual(small['resolutions'],[512])
             self.assertEqual(large['resolutions'],[512,768,1024])
             self.assertLess(small['steps'],large['steps'])
-            self.assertLess(small['learning_rate'],large['learning_rate'])
-            self.assertLessEqual(large['steps'],4000)
+            self.assertEqual((small['learning_rate'],large['learning_rate']),(1e-4,1e-4))  # every ai-toolkit source uses 1e-4
+            self.assertEqual(small['steps'],1500)
+            self.assertLessEqual(large['steps'],2000 if training.ARCHS[arch].get('assistant_lora_path') else 3000)
+            self.assertEqual(small['rank'],32 if training.ARCHS[arch]['arch'] in ('krea2','moss_image') else 16)
 
     def test_caption_identity_style_and_cache_keys_are_separate(self):
         character={'name':'Maya','trigger_word':'mayax','subject':'character'}
         style={**character,'subject':'style'}
-        self.assertIn('permanent identity features implicit',captions.prompt(character))
+        self.assertIn('the subject word stands for them',captions.prompt(character))
         self.assertIn('visual style itself implicit',captions.prompt(style))
         self.assertEqual(captions.clean('<think>hidden</think>A cup.',style),'In the style of mayax, A cup.')
         with tempfile.TemporaryDirectory() as folder, patch('backend.models.entry',return_value={'revision':'v1'}):
@@ -103,3 +105,25 @@ class DatasetTests(unittest.TestCase):
             self.assertEqual(result['a']['caption'],'Saved cup')
             self.assertNotIn('b',result)
             download.assert_not_called();spawn.assert_not_called()
+
+
+class DatasetNotesTests(unittest.TestCase):
+    def test_blur_size_and_near_copies_are_reported_from_the_images(self):
+        from PIL import Image, ImageDraw, ImageFilter
+        from backend.training_profiles import dataset_notes, image_facts
+        def photo(seed):
+            # Large blocks in a different layout per seed (the hash), fine lines on top (the sharpness).
+            image = Image.new('RGB', (1024, 1024), 'white'); draw = ImageDraw.Draw(image)
+            for i in range(8):
+                if (seed >> (i % 4)) & 1 ^ i % 2: draw.rectangle((i * 128, 0, i * 128 + 127, 1024), fill=(40 * (i % 3), 90, 160))
+            for i in range(40): draw.line((i * 25, 0, i * 25 + seed * 9, 1024), fill='black', width=3)
+            return image
+        sharp = [image_facts(photo(seed)) for seed in range(4)]
+        blurred = image_facts(photo(9).filter(ImageFilter.GaussianBlur(8)))
+        small = image_facts(photo(3).resize((600, 600)))
+        notes = ' '.join(dataset_notes('character', sharp + [blurred, small]))
+        self.assertIn('blurrier', notes)
+        self.assertIn('smaller than 768 px', notes)
+        self.assertIn('nearly the same', notes)  # the small copy of photo 3
+        self.assertIn('15 to 40', notes)
+        self.assertNotIn('15 to 40', ' '.join(dataset_notes('style', sharp)))

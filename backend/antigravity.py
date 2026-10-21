@@ -39,6 +39,8 @@ TOKEN_FILE = AUTH_DIR / 'antigravity.dpapi'
 KEYCHAIN_SERVICE = 'Qwen Antigravity'
 SETTINGS_FILE = AUTH_DIR / 'settings.json'
 MODELS = [
+    # Runs Qwen's own prompt rewriter (Heretic, uncensored) on this computer; needs no Google account.
+    {'id': 'local', 'name': 'On this computer: Qwen PE (uncensored)', 'local': True},
     {'id': 'gemini-3.7-flash', 'name': 'Gemini 3.7 Flash', 'wire': 'gemini-3.7-flash-tiered'},
     {'id': 'gemini-3.8-flash', 'name': 'Gemini 3.8 Flash', 'wire': 'gemini-3.8-flash-tiered'},
     {'id': 'gemini-3.6-flash', 'name': 'Gemini 3.6 Flash', 'wire': 'gemini-3.6-flash-tiered', 'enum': 'MODEL_PLACEHOLDER_M196'},
@@ -376,7 +378,12 @@ def _read_stream(response):
         raise ConnectionError('The selected Antigravity model returned no text. Select another model in Settings.')
     return ''.join(output)
 
+def cloud_model(model_id):
+    """The Antigravity model for a selection: video prompts always use a cloud model."""
+    return MODELS[1]['id'] if model_id == 'local' else model_id
+
 def generate_text(model_id, system, parts):
+    model_id = cloud_model(model_id)
     tokens = ensure_tokens()
     last_error = 'Antigravity is unavailable.'
     refreshed = False

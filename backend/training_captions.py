@@ -10,28 +10,33 @@ import os
 from pathlib import Path
 from .common import DATA_DIR, APP_DIR, read_json, write_json, resolve_image
 
-MODEL_ID = 'flux3-prompt'
-VERSION = 'dataset-caption-v1'
+# Qwen-Image PE I2I (Qwen3.5-VL 9B, Heretic, Q8_0) through llama.cpp: on an RTX 5090 it captioned the user's photos in
+# about 2 s each against about 10 s with the FLUX.3 prompt model in ComfyUI, followed the instructions, and refuses nothing.
+MODEL_ID = 'pe-i2i-heretic-q8'
+VERSION = 'dataset-caption-v3'
 CACHE = DATA_DIR / 'training-caption-cache'
+
+
+PROMPTS = APP_DIR / 'reference' / 'caption-prompts.json'
+
+
+def prompts(request):
+    """The caption wording for the training's base model, with its source (reference/caption-prompts.json)."""
+    from .prompt_registry import apply_captions
+    table = apply_captions(json.loads(PROMPTS.read_text(encoding='utf-8')))  # Settings > Prompts edits
+    own = table.get(request.get('arch') or '')
+    return own if own and own.get(request.get('subject', 'character')) else table['default']
 
 
 def prompt(request):
     name = request.get('name', '').strip()
     trigger = request.get('trigger_word', '').strip()
-    start = f'Use {json.dumps(trigger)} as the subject name. ' if trigger else ''
-    if request.get('subject') == 'style':
-        subject = ('Describe the depicted subjects, their actions, objects, composition and spatial relationships. '
-                   'Keep the visual style itself implicit so the learned style word represents it. ')
-        start = f'Begin with "In the style of {trigger},". ' if trigger else ''
-    else:
-        subject = ('Describe the main subject through its pose, expression, action, clothes, accessories and framing. '
-                   'Keep its permanent identity features implicit so the subject word represents them. '
-                   'Describe other visible people separately through their position and action. ')
-    return ('Write one factual English caption for a diffusion LoRA training image, about 60 to 120 words. '
-            'Use only clearly visible image content. State concrete details in natural sentences. '
-            'Describe the setting, background, light and viewpoint. '+subject+start+
-            f'The dataset name is {json.dumps(name)}; it identifies the training subject, not visible text. '
-            'Return only the caption paragraph.')
+    text = prompts(request)
+    if 'intro' not in text:
+        return text[request.get('subject', 'character')].format(name=json.dumps(name, ensure_ascii=False), trigger=trigger)
+    style = request.get('subject') == 'style'
+    start = text['trigger_style' if style else 'trigger_character'].format(trigger=json.dumps(trigger, ensure_ascii=False)) if trigger else ''
+    return text['intro'] + text['style' if style else 'character'] + start + text['outro'].format(name=json.dumps(name, ensure_ascii=False))
 
 
 def clean(text, request):
@@ -39,6 +44,13 @@ def clean(text, request):
     if not text or len(text) > 8000:
         raise ValueError('The caption model returned no usable caption. Retry this image.')
     trigger = request.get('trigger_word', '').strip()
+    if trigger:  # the instruction quotes the trigger; the caption must hold the bare word
+        text = re.sub(r'["“”]' + re.escape(trigger) + r'["“”]', trigger, text)
+    prefix = prompts(request).get('prefix')
+    if prefix and request.get('subject') != 'style':
+        # MOSS Serenity form: "photo of <trigger>, a man with ..."; the model writes only the sentence.
+        text = re.sub(r'^(?:a\s+)?photo of\s+[^,]*,\s*', '', text, flags=re.I).strip()
+        return prefix.format(trigger=trigger).replace('photo of , ', 'photo of ') + text[:1].lower() + text[1:]
     if trigger and not re.search(r'(?<!\w)' + re.escape(trigger) + r'(?!\w)', text, re.I):
         text = (f'In the style of {trigger}, ' if request.get('subject') == 'style' else f'{trigger}, ') + text
     return text
@@ -96,49 +108,34 @@ def worker(directory):
     state = directory / 'caption-progress.json'
     def progress(**values): write_json(state, values)
     progress(stage='loading_caption_model', message='Loading the caption model...')
-    from .flux3_runtime import activate
-    activate(progress)
-    import torch
-    import numpy as np
+    import base64
+    import io
     from PIL import Image, ImageOps
-    import comfy.options
-    comfy.options.enable_args_parsing(False)
-    from comfy.cli_args import args
-    args.disable_async_offload = True
-    args.disable_pinned_memory = True
-    args.disable_dynamic_vram = True
-    import comfy_aimdo.control
-    comfy_aimdo.control.init()
-    import comfy.sd
-    import comfy.utils
-    from comfy_extras.nodes_textgen import TextGenerate
+    from .llama_runtime import Server
     from .models import entry, local_path
-    from .flux3_engine import PromptImages
     item = entry(MODEL_ID)
-    weights, metadata = comfy.utils.load_safetensors(str(local_path(item, item['files'][0])))
-    weights, _ = comfy.utils.convert_old_quants(weights, model_prefix='', metadata=metadata)
-    clip = comfy.sd.load_text_encoder_state_dicts([weights], clip_type=comfy.sd.CLIPType.FLUX3,
-        model_options={'initial_device': torch.device('cpu')}, disable_dynamic=True)
-    del weights
+    paths = [local_path(item, file) for file in item['files']]
     output = read_json(directory / 'captions.json')
-    for index, item in enumerate(items):
-        progress(stage='captioning', message=f'Writing caption {index + 1} of {len(items)}', step=index, total_steps=len(items))
-        try:
-            with Image.open(resolve_image(item['id'])) as image:
-                photo = ImageOps.exif_transpose(image).convert('RGB')
+    with Server(paths[0], paths[1]) as server:
+        for index, item in enumerate(items):
+            progress(stage='captioning', message=f'Writing caption {index + 1} of {len(items)}', step=index, total_steps=len(items))
+            try:
+                with Image.open(resolve_image(item['id'])) as image:
+                    photo = ImageOps.exif_transpose(image).convert('RGB')
                 photo.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
-                tensor = torch.from_numpy(np.array(photo).astype(np.float32) / 255).unsqueeze(0)
-            with torch.inference_mode():
-                text = TextGenerate.execute(PromptImages(clip, [tensor]), 'Write the training caption for this image.', 512,
-                    {'sampling_mode': 'off'}, thinking=False, use_default_template=True, mtp='off', system_prompt=prompt(request))[0]
-            answer = {'caption': clean(text, request), 'source': 'automatic', 'key': item['key']}
-            write_json(CACHE / (item['key'] + '.json'), answer)
-        except Exception as exc:
-            import traceback
-            traceback.print_exc()
-            answer = {'caption': '', 'error': f'Caption failed for this image: {type(exc).__name__}. Retry or edit it.'}
-        output[item['id']] = answer
-        write_json(directory / 'captions.json', output)
+                stream = io.BytesIO(); photo.save(stream, 'PNG')
+                picture = {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(stream.getvalue()).decode()}}
+                reply = server.chat({'messages': [{'role': 'system', 'content': prompt(request)},
+                                                  {'role': 'user', 'content': [picture, {'type': 'text', 'text': 'Write the training caption for this image.'}]}],
+                                     'temperature': 0.2, 'top_p': 0.9, 'max_tokens': 400, 'chat_template_kwargs': {'enable_thinking': False}})
+                answer = {'caption': clean(reply['choices'][0]['message'].get('content') or '', request), 'source': 'automatic', 'key': item['key']}
+                write_json(CACHE / (item['key'] + '.json'), answer)
+            except Exception as exc:
+                import traceback
+                traceback.print_exc()
+                answer = {'caption': '', 'error': f'Caption failed for this image: {type(exc).__name__}. Retry or edit it.'}
+            output[item['id']] = answer
+            write_json(directory / 'captions.json', output)
     progress(stage='captioning', message='Captions ready.', step=len(items), total_steps=len(items))
 
 

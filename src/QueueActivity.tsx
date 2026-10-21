@@ -18,7 +18,7 @@ export function stepLabel(job:SavedJob){
 }
 
 /** One persistent status for the whole queue, independent of the last submitted job. */
-export function QueueActivity({state,error,onOpen,onView}:{state:QueueState;error:string;onOpen:()=>void;onView:(job:SavedJob)=>void}){
+export function QueueActivity({state,error,onOpen,onView,onResume}:{state:QueueState;error:string;onOpen:()=>void;onView:(job:SavedJob)=>void;onResume?:()=>void}){
   const tracked=useRef(new Set<string>());
   const [finished,setFinished]=useState<SavedJob|null>(null);
   const [now,setNow]=useState(Date.now());
@@ -43,9 +43,10 @@ export function QueueActivity({state,error,onOpen,onView}:{state:QueueState;erro
       <span className="queue-activity-icon" aria-hidden="true">{active?<Loader2 size={20} className="spin"/>:state.paused?<Pause size={20}/>:<Clock size={20}/>}</span>
       <div className="queue-activity-copy">
         <div className="queue-activity-title"><strong role="status">{active?`${jobKindLabel(active)} · ${stage}`:stage}</strong><span>{steps}{steps&&elapsed?' · ':''}{elapsed?formatDuration(elapsed):''}</span></div>
-        <div className="queue-activity-detail"><span>{waiting?`${waiting} waiting${state.paused?' · Queue paused':''}`:state.paused?'Queue paused · Current job continues':active?'You can keep editing':''}</span>{error?<span className="queue-reconnecting">Reconnecting · Last known progress</span>:null}</div>
+        <div className="queue-activity-detail"><span>{waiting?`${waiting} waiting${state.paused?' · Queue paused':''}`:state.paused?(active?'Current job continues · New jobs wait':'New jobs wait until you resume the queue'):active?'You can keep editing':''}</span>{error?<span className="queue-reconnecting">Reconnecting · Last known progress</span>:null}</div>
         {active?<progress aria-label={download?'Model download progress':'Current stage progress'} value={maximum?value||0:undefined} max={maximum||1}/>:null}
       </div>
+      {state.paused&&onResume?<button className="text-button queue-activity-resume" onClick={onResume}>Resume queue</button>:null}
       <button className="button secondary queue-activity-open" onClick={onOpen}><ListOrdered size={16}/><span>Queue</span><b>{waiting+(active?1:0)}</b></button>
     </div>:null}
     {finished?<div className={`queue-finished ${finished.status==='failed'?'failed':''}`}>

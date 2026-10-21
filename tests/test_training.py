@@ -23,10 +23,11 @@ class ConfigTests(unittest.TestCase):
                     'qwen-image-2.1': ('qwen_image_2', 'Comfy-Org/Qwen-Image-2.1', 'shift', None, ['qwen-image-2.1']),
                     'qwen-image-2.1-turbo': ('qwen_image_2', 'Comfy-Org/Qwen-Image-2.1/diffusion_models/qwen_image_2.1_turbo_int8_convrot.safetensors',
                                              'shift', 'ostris/qwen_image_2_turbo_training_adapter', ['qwen-image-2.1-turbo']),
-                    'krea-2': ('krea2', 'krea/Krea-2-Raw', 'linear', None, ['krea-2']),
+                    'krea-2': ('krea2', 'krea/Krea-2-Raw', 'linear', None, ['krea-2', 'krea-2-turbo']),
                     'krea-2-turbo': ('krea2', 'krea/Krea-2-Turbo', 'linear', 'ostris/krea2_turbo_training_adapter', ['krea-2-turbo']),
                     'z-image-turbo': ('zimage', 'Tongyi-MAI/Z-Image-Turbo', 'weighted', 'ostris/zimage_turbo_training_adapter', ['z-image-turbo']),
-                    'z-image': ('zimage', 'Tongyi-MAI/Z-Image', 'weighted', None, ['z-image'])}
+                    'z-image': ('zimage', 'Tongyi-MAI/Z-Image', 'weighted', None, ['z-image']),
+                    'moss-image': ('moss_image', 'moss_image_base_int8_convrot.safetensors', 'shift', None, ['moss-image-base', 'moss-image'])}
         self.assertEqual(set(training.ARCHS), set(expected))
         for key, (arch, path, timestep, adapter, families) in expected.items():
             config = training.build_config({**REQUEST, 'arch': key}, Path('data'), Path('out'))
@@ -35,6 +36,7 @@ class ConfigTests(unittest.TestCase):
             if arch=='flux3':
                 self.assertEqual(Path(selected_path),Path(process['model']['model_kwargs']['model_path']).parent)
                 selected_path=path
+            if arch=='moss_image':selected_path=Path(selected_path).name
             self.assertEqual((process['model']['arch'], selected_path, process['train']['timestep_type']), (arch, path, timestep), key)
             self.assertEqual(process['model'].get('assistant_lora_path', '').startswith(adapter) if adapter else 'assistant_lora_path' not in process['model'], True, key)
             self.assertEqual(training.ARCHS[key]['families'], families)
@@ -43,6 +45,52 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(process['model']['low_vram'], arch=='krea2', key)
             # FLUX.3's own runner reuses the prompt; cached embeddings measured twice as slow there.
             self.assertEqual(process['train']['cache_text_embeddings'], arch!='flux3', key)
+
+    def test_moss_trains_on_the_local_base_files_like_the_toolkit_defaults(self):
+        process = training.build_config({**REQUEST, 'arch': 'moss-image'}, Path('data'), Path('out'))['config']['process'][0]
+        model = process['model']
+        self.assertEqual((Path(model['te_name_or_path']).name, Path(model['vae_path']).name), ('qwen3.5_9b_int8_convrot.safetensors', 'flux2-vae.safetensors'))
+        self.assertEqual((model['qtype'], model['qtype_te'], model['model_kwargs']), ('convrot8', 'convrot8', {'uncond_skip_layers': [22]}))
+        self.assertEqual(process['network']['network_kwargs'], {'ignore_if_contains': ['layers.22.']})
+        self.assertEqual((process['sample']['guidance_scale'], process['sample']['sample_steps']), (3.0, 30))
+        self.assertEqual(training.LOCAL_FILES['moss-image'], ['moss-base-int8', 'moss-encoder-int8', 'flux3-vae'])
+        self.assertEqual(training.INSPECT_ARCH['moss_image'], 'moss-image')
+
+    def test_caption_wording_follows_the_architecture(self):
+        from backend.training_captions import clean, prompt
+        request = {'name': 'עידו', 'trigger_word': 'idoperson', 'subject': 'character'}
+        # Class word after the trigger; hair and clothes described, fixed identity traits left to the trigger.
+        self.assertIn('40 to 90 words', prompt({**request, 'arch': 'qwen-image-2.1'}))
+        self.assertIn('"a man" or "a woman"', prompt(request))
+        self.assertNotIn('עידו', prompt(request))  # the dataset name made the caption model name the subject
+        self.assertIn('only as "idoperson"', prompt(request))
+        moss = prompt({**request, 'arch': 'moss-image'})
+        self.assertIn('one natural English sentence', moss)
+        self.assertEqual(clean('A man with short dark hair, smiling.', {**request, 'arch': 'moss-image'}), 'photo of idoperson, a man with short dark hair, smiling.')
+        self.assertEqual(clean('photo of idoperson, a man.', {**request, 'arch': 'moss-image'}), 'photo of idoperson, a man.')
+        self.assertIn('40 to 90 words', prompt({**request, 'arch': 'moss-image', 'subject': 'style'}))
+        self.assertEqual(clean('A toy.', {**request, 'arch': 'z-image'}), 'idoperson, A toy.')
+        self.assertEqual(clean('In the style of "idoperson", a man.', {**request, 'subject': 'style'}), 'In the style of idoperson, a man.')
+
+    def test_character_trainings_preserve_their_class_and_keep_every_checkpoint(self):
+        request = {**REQUEST, 'arch': 'moss-image', 'images': [{'id': 'a', 'caption': 'photo of knitelph, a man with short hair'}]}
+        process = training.build_config(request, Path('data'), Path('out'))['config']['process'][0]
+        self.assertEqual((process['train']['diff_output_preservation'], process['train']['diff_output_preservation_class'],
+                          process['train']['diff_output_preservation_multiplier']), (True, 'man', 1.0))
+        self.assertEqual(process['save']['max_step_saves_to_keep'], 5)  # 300 steps, a save every 100
+        self.assertFalse(training.build_config({**request, 'subject': 'style'}, Path('data'), Path('out'))['config']['process'][0]['train']['diff_output_preservation'])
+        self.assertEqual(training.preservation({**REQUEST, 'images': [{'caption': 'a toy'}]})['diff_output_preservation_class'], 'person')
+        self.assertEqual(training.ARCHS['qwen-image-2.1']['guidance'], 1.0)
+
+    def test_a_lora_that_did_not_learn_is_refused(self):
+        import torch
+        from safetensors.torch import save_file
+        with tempfile.TemporaryDirectory() as folder:
+            zero, learned = Path(folder) / 'zero.safetensors', Path(folder) / 'learned.safetensors'
+            save_file({'a.lora_A.weight': torch.ones(4, 8), 'a.lora_B.weight': torch.zeros(8, 4)}, str(zero))
+            save_file({'a.lora_A.weight': torch.ones(4, 8), 'a.lora_B.weight': torch.full((8, 4), .01)}, str(learned))
+            self.assertTrue(training.untrained(zero))
+            self.assertFalse(training.untrained(learned))
 
     def test_request_values_reach_the_job(self):
         config = training.build_config(REQUEST, Path('data'), Path('out'))
@@ -197,7 +245,7 @@ class ApiTests(unittest.TestCase):
             response=self.client.post('/api/training/start',json={**REQUEST,'settings_mode':'recommended','steps':19999,'images':[{'id':item['id'],'caption':'User text'}]},headers=self.headers)
             self.assertEqual(response.status_code,202,response.text)
             r=response.json()['request']
-            self.assertEqual(r['steps'],500)
+            self.assertEqual(r['steps'],1500)  # one image, character: the 1500 step floor
             self.assertEqual(r['resolutions'],[512])
             self.assertEqual(r['images'][0]['caption'],'User text')
             self.assertTrue(r['profile_version'])

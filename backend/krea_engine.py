@@ -69,6 +69,8 @@ def generate(request, prompt, images, width, height, progress):
     if not comfy_aimdo.control.init():
         raise RuntimeError('Could not initialize the model file reader.')
     import comfy.sd
+    from . import sent_prompts
+    sent_prompts.install(comfy.sd)  # the exact encoder input, for the result details
     import comfy.model_base
     import comfy.sample
     import comfy.samplers
@@ -130,6 +132,9 @@ def generate(request, prompt, images, width, height, progress):
     negative_text = request.get('negative_prompt', '').strip()
     started = time.perf_counter()
     identity = bool(images) and (request.get('krea_reference_mode') or 'identity') == 'identity'
+    if identity:
+        from .krea_edit import identity_photos
+        images = identity_photos(images, request)
     conditioning_key = _conditioning.fingerprint(f"krea2|{cfg > 1}|{'identity' if identity else 'style'}|{prompt}", negative_text, images)
     cached = _conditioning.get(conditioning_key)
     progress(stage='encoding', message='Using saved prompt and image data.' if cached else

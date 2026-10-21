@@ -23,6 +23,9 @@ image_inputs = ImageInputs()
 
 def update(**values):
     now = time.time()
+    if 'sent_prompt' in values:
+        from .sent_prompts import add
+        values['sent_prompts'] = add(job, values.pop('sent_prompt'))
     stage=values.get('stage',job.get('stage'))
     if stage=='generating' and 'step' in values:
         step=values['step']
@@ -53,11 +56,23 @@ def update(**values):
     print(json.dumps({k: v for k, v in values.items() if k != 'request'}, ensure_ascii=False), flush=True)
 
 def rewrite_prompt(images):
-    from .prompt_enhancer import enhance
-    from .antigravity import selected_model
+    from .prompt_enhancer import enhance, enhance_local
+    from .enhancer_settings import route
     from .models import entry, is_zimage
-    return enhance(request['prompt'], images, request.get('enhancement_model') or selected_model(), update,
-                   redraw=is_zimage(entry(request['model_id'])))
+    item = entry(request['model_id'])
+    family = item.get('family', 'qwen-image-2.1')
+    # Settings > Prompt enhancement: each architecture's own official enhancer unless the user chose another.
+    chosen = route(family, images, is_zimage(item))
+    if chosen['mode'] == 'none':
+        return {}  # FLUX.3 rewrites with BFL's prompt model inside its own engine
+    update(enhancer=chosen['label'], sent_prompt={'label': 'Enhancer used', 'text': f"{chosen['label']} (prompt: {chosen['spec']})"})
+    if chosen['mode'] == 'local':
+        # Krea 2 and MOSS Image rewrite with their own text encoder, as their official templates do.
+        picked_encoder = request.get('text_encoder') or 'auto'
+        encoder = picked_encoder if picked_encoder != 'auto' else next((dep for dep in item.get('dependencies', []) if entry(dep).get('kind') == 'encoder'), None)
+        return enhance_local(request['prompt'], images, update, family=family, redraw=is_zimage(item), seed=request.get('seed', 0), encoder_id=encoder,
+                             spec=chosen['spec'], runner=chosen['runner'])
+    return enhance(request['prompt'], images, chosen['model'], update, redraw=is_zimage(item), family=family, spec=chosen['spec'])
 
 def image_engine(saved):
     """Krea 2 models run in krea_engine, Z-Image models in zimage_engine; Qwen-Image-2.1 models in comfy_engine."""
@@ -77,6 +92,8 @@ def image_engine(saved):
 
 def run():
     update(status='running', stage='loading', message='Loading generation tools…', started_at=time.time())
+    from . import sent_prompts
+    sent_prompts.clear()  # a failed earlier job in this resident worker must not leak its encoder text
     if request.get('kind') == 'multi-reference':
         from .ltx_worker import run as run_ltx
         return run_ltx(request, job, directory, update)
@@ -118,6 +135,11 @@ def run():
     from .lora_prompts import internal_prompt
     prompt, lora_words = internal_prompt(prompt, request)
     update(lora_prompt_words=lora_words)
+    if request.get('swap_prompt_template'):
+        update(sent_prompt={'label': 'Swap template', 'text': request['swap_prompt_template']})
+    if tool and tool.get('prompt'):
+        update(sent_prompt={'label': f"Tool prompt ({tool['title']})", 'text': tool['prompt']})
+    update(sent_prompt={'label': 'Prompt sent to the image model (after enhancement, LoRA words and tool text)', 'text': prompt})
     if tool and tool_size:
         width, height = tool_size
     else:
@@ -127,8 +149,8 @@ def run():
         if entry(request['model_id']).get('family') in ('krea-2', 'moss-image', 'moss-image-base', 'moss-image-turbo') and not request['custom_size']:
             # Krea 2 Raw is trained up to 1K (krea-ai/krea-2 README); Turbo makes 1K to 2K.
             sizing = {**request, 'auto_resolution': min(request.get('auto_resolution', 2048), 1024)}
-        # Z-Image redraws image 1, so the output keeps its shape.
-        follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith(('z-image','flux3-klein')))
+        # Z-Image and MOSS redraw image 1, so the output keeps its shape.
+        follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith(('z-image','flux3-klein','moss-image')))
         width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if follow_first else rewrite)
     if images and entry(request['model_id']).get('family', '').startswith('krea-2') and (request.get('krea_reference_mode') or 'identity') == 'identity':
         # Krea 2 identity edit: the card says generate at 2 MP or less; the photo tokens double the sequence.
@@ -138,6 +160,8 @@ def run():
     render_height = math.ceil(height / 32) * 32
     update(stage='loading_model', message=f"Loading {entry(request.get('model_id','official-bf16'))['title']}…", width=width, height=height)
     image = generate(request,prompt,images,render_width,render_height,update)
+    from . import sent_prompts
+    sent_prompts.flush(update, key=(request.get('model_id'), request.get('text_encoder'), prompt, tuple(request['images'])))
     update(stage='saving', message='Saving PNG…')
     if image.size != (width, height):
         image = image.resize((width, height), Image.Resampling.LANCZOS)

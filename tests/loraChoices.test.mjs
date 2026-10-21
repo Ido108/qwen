@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source=readFileSync(new URL('../src/loraChoices.ts',import.meta.url),'utf8');
 const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-const {enabledLoras,compatibleLoras,replaceLora,loraFit,speedSteps}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const {enabledLoras,compatibleLoras,replaceLora,loraFit,speedSteps,loraSampling}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
 const models=[{id:'portrait',families:['image']},{id:'style',families:['image']},{id:'motion',families:['video']}];
 
 test('bypass leaves the saved strength intact and excludes weights from a job',()=>{
@@ -79,4 +79,15 @@ test('speed LoRA steps follow the author size table', () => {
   assert.equal(speedSteps(fast, 2048 * 2048), 8);
   assert.equal(speedSteps(fast, 2688 * 1536), 8);
   assert.equal(speedSteps({steps: 4}, 2048 * 2048), 4);
+});
+
+test('active LoRAs set the recommended sampling for this model and size', () => {
+  const speed = {id: 'fast', families: ['moss-image'], accelerator: {steps: 4, steps_by_size: [[1048576, 4], [2359296, 6], [4194304, 8]]}};
+  const style = {id: 'style', title: 'Grain', families: ['qwen-image-2.1', 'qwen-image-2.1-turbo'], trained_on: {family: 'qwen-image-2.1', label: 'Qwen', settings: {steps: 50, cfg: 3, sampler: 'res_2m', scheduler: 'beta'}}};
+  assert.deepEqual(loraSampling([{id: 'fast'}], [speed], 'moss-image', 1024 * 1024).values, {steps: 4, cfg: 1});
+  assert.deepEqual(loraSampling([{id: 'fast'}], [speed], 'moss-image', 2048 * 2048).values, {steps: 8, cfg: 1});
+  assert.match(loraSampling([{id: 'fast'}], [speed], 'moss-image', 2048 * 2048).note, /Steps 8 and CFG 1 from the speed LoRA for this size/);
+  assert.deepEqual(loraSampling([{id: 'style'}], [style], 'qwen-image-2.1').values, {steps: 50, cfg: 3, sampler: 'res_2m', scheduler: 'beta'});
+  assert.equal(loraSampling([{id: 'style'}], [style], 'qwen-image-2.1-turbo'), null);  // another family: no automatic change
+  assert.equal(loraSampling([], [style], 'qwen-image-2.1'), null);
 });

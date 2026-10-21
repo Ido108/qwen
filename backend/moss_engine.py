@@ -20,8 +20,14 @@ _conditioning=ConditioningCache()
 DEFAULT_SHIFT=5.0  # supported_models.MOSSImage sampling_settings
 
 
+def moss_denoise(request,images):
+    """1 without an input image; with one, the user's image strength (denoise) or 0.7, as Z-Image's image to image."""
+    return float(request.get('denoise') or 0.7) if images else 1.0
+
+
 def generate(request,prompt,images,width,height,progress):
-    if images:raise RuntimeError('MOSS Image makes images from text only.')
+    # MOSS has no reference-image input (OpenMOSS; pleiades7/MOSS-Image-CharRef-PoC: "a text-to-image model with no
+    # reference-image input"). An input image is redrawn the standard way: VAE encode, then partial denoise.
     from .flux3_runtime import activate
     activate(progress)
     import torch
@@ -43,6 +49,8 @@ def generate(request,prompt,images,width,height,progress):
     import comfy_aimdo.control
     if not comfy_aimdo.control.init():raise RuntimeError('Could not initialize the model file reader.')
     import comfy.sd
+    from . import sent_prompts
+    sent_prompts.install(comfy.sd)  # the exact encoder input, for the result details
     import comfy.sample
     import comfy.utils
     import comfy.model_base
@@ -77,7 +85,9 @@ def generate(request,prompt,images,width,height,progress):
         return values,metadata
 
     cfg=float(request.get('cfg') or defaults['cfg'])
-    negative_text=request.get('negative_prompt','')
+    # A model can name its own negative (MOSS Serenity: "bad ugly blurry"); one the user typed wins.
+    negative_text=request.get('negative_prompt','').strip() or defaults.get('negative_prompt','')
+    if negative_text and cfg>1:progress(negative_prompt_used=negative_text)
     condition_key=_conditioning.fingerprint('moss|'+prompt,negative_text+'|'+str(cfg>1),[])
     cached=_conditioning.get(condition_key)
     if 'clip' not in _components:
@@ -150,7 +160,10 @@ def generate(request,prompt,images,width,height,progress):
     progress(diffusion_load_seconds=round(time.perf_counter()-started,3))
     model=_components['model']
     applied,lora_checks=[],[]
-    for choice in request.get('loras') or []:
+    # A Turbo entry built from a speed LoRA (MOSS Serenity Turbo: the DMD LoRA at 1.0) applies it first.
+    speed=defaults.get('speed_lora')
+    choices=([speed] if speed else [])+[choice for choice in request.get('loras') or [] if not speed or choice['id']!=speed['id']]
+    for choice in choices:
         item=entry(choice['id']);strength=float(choice.get('strength',1))
         from .lora_loading import read_lora_weights, load_model_lora
         lora=read_lora_weights(local_path(item,item['files'][0]))
@@ -172,15 +185,25 @@ def generate(request,prompt,images,width,height,progress):
         model=SkipLayerGuidanceDiTSimple.execute(model,0.0,0.5,'','22')[0]
         retain_lora_clone(model,_components['model'])
         progress(skip_layer_guidance='single 22, 0-50%')
-    latent=EmptyFlux2LatentImage.execute(width,height,1)[0]['samples']
+    denoise=moss_denoise(request,images)
+    if images:
+        # VAEEncode of image 1, cropped to the output shape: the layout, colors and pose stay, the prompt redraws.
+        from PIL import ImageOps
+        source=ImageOps.fit(images[0].convert('RGB'),(width,height),Image.Resampling.LANCZOS)
+        progress(stage='encoding',message='Processing the input image…')
+        with torch.inference_mode():
+            latent=vae.encode(torch.from_numpy(np.array(source).astype(np.float32)/255.0).unsqueeze(0))
+        latent=comfy.sample.fix_empty_latent_channels(model,latent)
+    else:
+        latent=EmptyFlux2LatentImage.execute(width,height,1)[0]['samples']
     noise=comfy.sample.prepare_noise(latent,request['seed'])
     steps=int(request['steps'])
     def callback(step,x0,x,total):
         progress(stage='generating',message='Generating image…',step=step+1,total_steps=total)
-    progress(stage='generating',message='Generating image…',step=0,cfg=cfg,shift=shift,sampling=f'{sampler}/{scheduler}',sampler=sampler,scheduler=scheduler)
+    progress(stage='generating',message='Generating image…',step=0,cfg=cfg,shift=shift,sampling=f'{sampler}/{scheduler}',sampler=sampler,scheduler=scheduler,denoise=denoise,input_image_used=bool(images))
     start=time.perf_counter()
     with torch.inference_mode():
-        samples=comfy.sample.sample(model,noise,steps,cfg,sampler,scheduler,positive,negative,latent,callback=callback,seed=request['seed'])
+        samples=comfy.sample.sample(model,noise,steps,cfg,sampler,scheduler,positive,negative,latent,denoise=denoise,callback=callback,seed=request['seed'])
         progress(stage='decoding',message='Decoding image…',sampling_seconds=round(time.perf_counter()-start,3))
         from .lora_runtime import execution_report
         progress(lora_execution=execution_report(model))
