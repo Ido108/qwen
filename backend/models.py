@@ -228,7 +228,7 @@ def required_video(request):
         ids=[item['id'],*[name for name in item['dependencies'] if name!='ltx25-msr-v2']]
         if ltx_video_two_pass(request):
             ids.append('ltx25-spatial-upscaler')
-        return list(dict.fromkeys(ids+video_loras(item,request)))
+        return list(dict.fromkeys(ids+video_loras(item,request)+video_rewriters(request)))
     if request.frames%17!=5:
         raise ValueError('MiniMax H3 uses 17n+5 frames. Choose a duration from the list.')
     if request.width>1344 or request.height>1344 or request.width*request.height>1344*768:
@@ -238,7 +238,17 @@ def required_video(request):
     profile=video_sampling(item,request.quality,request.steps)
     if profile.get('lora_id'):
         ids.append(profile['lora_id'])
-    return ids+video_loras(item,request)
+    return ids+video_loras(item,request)+video_rewriters(request)
+
+
+def video_rewriters(request):
+    """Enhance prompt on a video job runs on this computer (Settings > Prompts): Qwen PE T2I, plus the vision projector
+    of PE I2I when the job has pictures."""
+    if not getattr(request,'enhance',False) or getattr(request,'execution','local')=='runpod':
+        return []
+    from .prompt_enhancer import VIDEO_MODEL, VIDEO_VISION
+    pictures=any(getattr(request,name,None) for name in ('first_frame','last_frame','reference_images','source_video','images'))
+    return [VIDEO_MODEL]+([VIDEO_VISION] if pictures else [])
 
 
 def video_loras(item,request):
@@ -278,7 +288,7 @@ def required_reference(request):
     profile = reference_sampling(item, request.quality, request.steps)
     if profile.get('lora_id'):
         ids.append(profile['lora_id'])
-    return ids+video_loras(item,request)
+    return ids+video_loras(item,request)+video_rewriters(request)
 
 
 def required_upscale(request):
@@ -348,7 +358,7 @@ def install(model_id, *, include_dependencies=True):
             token=default_token.read_text(encoding='utf-8').strip() or None
     items=[entry(name) for name in ([model_id] if isinstance(model_id,str) else model_id)]
     if any(item.get('kind')=='enhancer' for item in items):
-        raise ValueError('Prompt enhancement now uses Antigravity. Local prompt models are no longer downloaded.')
+        raise ValueError('Enhance prompt uses Qwen-Image PE on this computer. These old prompt model files are no longer downloaded.')
     queue=[]
     def add(model):
         if include_dependencies:
@@ -513,7 +523,7 @@ def ensure_installed(ids, *, owner, cancelled=lambda:False, progress=lambda stat
 
 def start_download(model_id):
     if entry(model_id).get('kind')=='enhancer':
-        raise ValueError('Prompt enhancement uses Antigravity. Local prompt models are no longer downloaded.')
+        raise ValueError('Enhance prompt uses Qwen-Image PE on this computer. These old prompt model files are no longer downloaded.')
     entry(model_id)
     with lock:
         if _download_running_locked():

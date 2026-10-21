@@ -36,17 +36,3 @@ def put(name, value):
         data.pop(name, None)
         data[name] = value
         write_json(PATH, dict(list(data.items())[-SIZE:]))
-
-
-def cloud_text(model_id, system, parts, update):
-    """antigravity.generate_text with the saved answer reused; parts carry the pictures, duration and brief."""
-    from . import antigravity
-    name = key('cloud', model_id, system, parts)
-    saved = get(name)
-    if saved:
-        update(enhance_cached=True, message='Using the saved enhanced prompt (same prompt, images and enhancer)…')
-        return saved
-    text = antigravity.generate_text(model_id, system, parts)
-    if text and text.strip():
-        put(name, text)
-    return text

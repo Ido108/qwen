@@ -15,7 +15,7 @@ Reviewed 2026-09-22 for the local RTX 4090 24 GB / 64 GB RAM installation.
 ## Runtime contract
 
 - All model entries pin repository revisions, sizes and SHA-256 hashes in `model-catalog.json`. The installer does not download weights. Settings downloads a chosen model and missing shared files, supports resume/cancel, and verifies every model file.
-- Both families share the H3-specific Qwen3-VL-32B NVFP4 encoder, FP16 video VAE and FP32 audio VAE. This encoder is required video conditioning, not a local prompt rewriting LLM. Prompt rewriting stays on Antigravity.
+- Both families share the H3-specific Qwen3-VL-32B NVFP4 encoder, FP16 video VAE and FP32 audio VAE. This encoder is required video conditioning, not a local prompt rewriting LLM. Prompt rewriting runs on this computer (Qwen-Image PE, with the official LTX enhancer prompts for LTX).
 - FastH3 uses exactly 8 steps, video/audio shifts 10/3 and VSA attention with 10% retained cubes from 20% of the schedule. Dense fallback uses Comfy Kitchen INT8 attention. The installed CUDA sparse kernels support the RTX 4090.
 - Base H3 uses shift 12/3 and 20 steps by default. Optional official Turbo LoRA uses 8 steps at strength 1. Sampling guidance stays at 1 for both families.
 - Duration follows the actual 17k+5 frame grid at 24 fps. Native landscape size is 1344 × 768. The first uploaded image determines the initial aspect ratio; users may adjust dimensions in multiples of 32. Lower-resolution presets are labeled Draft.

@@ -24,7 +24,7 @@ from types import SimpleNamespace
 import httpx
 
 from . import civitai
-from .antigravity import AUTH_DIR, _crypt
+from .secure_store import AUTH_DIR, _crypt
 from .common import DATA_DIR, write_json
 
 HUB = 'https://huggingface.co'

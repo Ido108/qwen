@@ -1,5 +1,5 @@
 """Compatibility entry point: Q8 + Q4_K_M and their image companions.
-Prompt enhancement uses Antigravity, without downloading local LLMs.
+Enhance prompt uses Qwen-Image PE on this computer; its files download with the first job that uses it.
 """
 from pathlib import Path
 import runpy

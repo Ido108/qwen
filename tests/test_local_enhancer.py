@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from backend import antigravity, models, prompt_enhancer
+from backend import models, prompt_enhancer
 from backend.common import GenerationRequest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'reference'))
@@ -16,11 +16,6 @@ import pe_core
 class LocalEnhancerTests(unittest.TestCase):
     def test_enhance_is_off_unless_checked(self):
         self.assertFalse(GenerationRequest(prompt='a cat').enhance)
-
-    def test_local_is_the_default_and_video_prompts_stay_on_a_cloud_model(self):
-        self.assertEqual(antigravity.MODELS[0]['id'], 'local')
-        self.assertEqual(antigravity.cloud_model('local'), antigravity.MODELS[1]['id'])
-        self.assertEqual(antigravity.cloud_model('gemini-3.8-flash'), 'gemini-3.8-flash')
 
     def test_each_architecture_uses_its_own_official_prompt(self):
         self.assertEqual(prompt_enhancer.local_model([]), 'pe-t2i-heretic-q8')
@@ -40,16 +35,11 @@ class LocalEnhancerTests(unittest.TestCase):
             self.assertTrue(all(len(file['sha256']) == 64 for file in item['files']))
 
     def test_the_rewriter_downloads_with_the_job_only_when_enhancement_is_on(self):
-        request = {'model_id': 'uc-int8-convrot', 'enhance': True, 'enhancement_model': 'local', 'images': ['a.png']}
+        request = {'model_id': 'uc-int8-convrot', 'enhance': True, 'images': ['a.png']}
         rewriters = {'pe-t2i-heretic-q8', 'pe-i2i-heretic-q8'}
         self.assertIn('pe-i2i-heretic-q8', models.required_image(request))
         self.assertIn('pe-t2i-heretic-q8', models.required_image({**request, 'images': []}))
         self.assertFalse(rewriters & set(models.required_image({**request, 'enhance': False})))
-        # The cloud is now a per-architecture choice (Settings > Prompts), not the request's model id.
-        from backend import enhancer_settings
-        with tempfile.TemporaryDirectory() as folder, patch.object(enhancer_settings, 'PATH', Path(folder) / 'e.json'):
-            enhancer_settings.save('qwen-image-2.1', 'cloud')
-            self.assertFalse(rewriters & set(models.required_image(request)))
         self.assertTrue(rewriters & set(models.required_image({**request, 'model_id': 'krea2-turbo-nvfp4', 'images': []})))
 
     def test_chat_follows_each_official_layout(self):
@@ -121,18 +111,32 @@ class WorkerRouteTests(unittest.TestCase):
             self.assertEqual(run('a cat', [blue])['positive_prompt'], 'rewritten 4')
         worker.request.clear()
 
-    def test_video_enhance_reuses_the_saved_answer(self):
-        from backend import enhance_cache, video_worker
+    def test_video_enhance_runs_locally_and_reuses_the_saved_answer(self):
+        from backend import enhance_cache, llama_runtime, video_worker
         from PIL import Image
-        answers = iter(['first', 'second', 'third'])
-        request = {'frames': 121, 'audio': True, 'enhancement_model': 'gemini'}
-        with tempfile.TemporaryDirectory() as folder, patch.object(enhance_cache, 'PATH', Path(folder) / 'cache.json'),                 patch('backend.antigravity.generate_text', side_effect=lambda *_: next(answers)):
+        answers, sent = iter(['first', 'second', 'third']), []
+        class Server:
+            def __init__(self, model, vision=None): sent.append({'vision': bool(vision)})
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def chat(self, body):
+                sent[-1].update(body)
+                return {'choices': [{'message': {'content': next(answers)}}], 'usage': {}}
+        request = {'frames': 121, 'audio': True}
+        with tempfile.TemporaryDirectory() as folder, patch.object(enhance_cache, 'PATH', Path(folder) / 'cache.json'), \
+                patch.object(llama_runtime, 'Server', Server), patch.object(prompt_enhancer, '_free_comfy_gpu', lambda: None), \
+                patch.object(models, 'local_path', lambda item, file: 'x.gguf'):
             frame = {'first_frame': Image.new('RGB', (8, 8), 'red')}
-            run = lambda prompt, images, req=request: video_worker.enhance_ltx_video(prompt, images, req, lambda **_: None)
+            run = lambda prompt, images: video_worker.enhance_ltx_video(prompt, images, request, lambda **_: None)
             self.assertEqual(run('a dog runs', frame), 'first')
             self.assertEqual(run('a dog runs', frame), 'first')
             self.assertEqual(run('a dog runs', {'first_frame': Image.new('RGB', (8, 8), 'blue')}), 'second')
-            self.assertEqual(run('a dog runs', frame, {**request, 'frames': 241}), 'third')
+            self.assertEqual(run('a dog runs', {}), 'third')
+        self.assertEqual(len(sent), 3)
+        self.assertTrue(sent[0]['vision'] and not sent[2]['vision'])
+        self.assertFalse(sent[0]['chat_template_kwargs']['enable_thinking'])
+        self.assertIn('REFERENCE IMAGE', sent[0]['messages'][0]['content'])  # the official LTX image to video prompt
+        self.assertEqual(sent[2]['messages'][1]['content'][-1]['text'], 'user prompt: a dog runs')
 
     def test_fast_mode_skips_thinking_and_opens_the_qwen_answer(self):
         from backend import llama_runtime

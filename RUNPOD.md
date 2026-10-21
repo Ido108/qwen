@@ -1,6 +1,6 @@
 # Qwen on macOS with RunPod Serverless
 
-The Mac app keeps its interface, queue, prompts, uploads, gallery and finished files on the Mac. Image and video inference runs on dedicated RunPod Serverless endpoints. The worker uses the same pinned Qwen model catalog and image/video engines as the Windows app; it downloads only the model and supporting files required by the selected job to the attached network volume. Prompt enhancement stays in the desktop app through its Antigravity OAuth connection.
+The Mac app keeps its interface, queue, prompts, uploads, gallery and finished files on the Mac. Image and video inference runs on dedicated RunPod Serverless endpoints. The worker uses the same pinned Qwen model catalog and image/video engines as the Windows app; it downloads only the model and supporting files required by the selected job to the attached network volume. Prompt enhancement runs on the desktop computer (Qwen-Image PE) before the job is sent.
 
 ## Open on a Mac
 

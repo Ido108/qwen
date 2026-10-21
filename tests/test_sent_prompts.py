@@ -39,7 +39,7 @@ class SentPromptTests(unittest.TestCase):
     def test_registry_lists_every_internal_prompt_and_keeps_edits_apart(self):
         keys = {item['key'] for item in prompt_registry.listing()}
         for key in ('enhancer:qwen-image-2.1-t2i', 'enhancer:krea-2', 'enhancer:moss-image', 'flux3:t2i', 'tool:restore', 'orbit',
-                    'video:enhance', 'video:reference', 'video:ltx-enhance', 'krea:grounding', 'swap'):
+                    'video:enhance', 'video:reference', 'video:ltx-t2v', 'video:ltx-i2v', 'krea:grounding', 'swap'):
             self.assertIn(key, keys)
         official = prompt_registry.get('tool:restore')
         prompt_registry.save('tool:restore', 'My restore text')
@@ -93,8 +93,8 @@ class SentPromptTests(unittest.TestCase):
         self.assertTrue(all(route(f)['official'] for f in ('qwen-image-2.1', 'z-image', 'moss-image')))
         enhancer_settings.save('krea-2', 'qwen-pe')
         self.assertEqual((route('krea-2')['runner'], route('krea-2')['official']), ('llama', False))
-        enhancer_settings.save('moss-image', 'cloud')
-        self.assertEqual(route('moss-image')['mode'], 'cloud')
+        with self.assertRaises(ValueError):  # Enhance runs only on this computer
+            enhancer_settings.save('moss-image', 'cloud')
         with self.assertRaises(ValueError):
             enhancer_settings.save('qwen-image-2.1', 'moss-encoder')
 
@@ -137,7 +137,7 @@ class SentPromptTests(unittest.TestCase):
             self.assertIn("sent_prompt={'label': 'Prompt sent to the video model", source)
             self.assertIn('sent_prompts.flush(update)', source)
         enhancer = (APP / 'backend/prompt_enhancer.py').read_text(encoding='utf-8')
-        self.assertGreaterEqual(enhancer.count('_record(update'), 4)
+        self.assertGreaterEqual(enhancer.count('    _record(update'), 2)  # the Qwen PE image route and the video route
         self.assertNotIn('sent_prompt', (APP / 'backend/upscale_worker.py').read_text(encoding='utf-8'))  # upscalers send no prompt
 
     def test_rewriter_messages_are_recorded_in_full(self):

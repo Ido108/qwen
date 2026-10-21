@@ -19,7 +19,7 @@ from pathlib import Path
 
 import httpx
 
-from .antigravity import AUTH_DIR, _crypt
+from .secure_store import AUTH_DIR, _crypt
 from .common import DATA_DIR, MODELS_DIR, write_json
 
 SITE = 'https://civitai.red'

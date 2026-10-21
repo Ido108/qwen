@@ -50,15 +50,13 @@ def save_mp4(path, frames, audio, fps=24):
                 output.mux(packet)
 
 
-from .prompt_registry import LTX_VIDEO as LTX_ENHANCE_SYSTEM  # editable in Settings > Internal prompts
-
-
 def enhance_ltx_video(prompt, images, request, update):
-    """Antigravity rewrite in the prose style of the official LTX-2.5 prompts."""
+    """The official LTX 2.4+ enhancer prompts (ComfyUI TextGenerateLTX2Prompt, Gemma 4 path) and their user line."""
     import base64
     import io
-    from . import antigravity, enhance_cache
-    model_id = request.get('enhancement_model') or antigravity.selected_model()
+    from .prompt_enhancer import video_text
+    from .prompt_registry import get, ltx_official
+    t2v, i2v = ltx_official()
     parts = []
     for name, image in images.items():
         copy = image.copy()
@@ -67,13 +65,13 @@ def enhance_ltx_video(prompt, images, request, update):
         copy.save(stream, 'PNG')
         parts.extend([{'text': name.replace('_', ' ')},
                       {'inlineData': {'mimeType': 'image/png', 'data': base64.b64encode(stream.getvalue()).decode()}}])
-    parts.append({'text': f'Duration: {request["frames"]/24:.2f} seconds. Audio: {request["audio"]}. Brief: {prompt}'})
-    update(stage='rewriting', message='Enhancing video prompt with Antigravity...', rewrite_provider='Antigravity', rewrite_model=model_id)
-    from .prompt_registry import get
-    system = get('video:ltx-enhance', LTX_ENHANCE_SYSTEM)
-    update(sent_prompt={'label': f'Enhance with Antigravity {model_id}: system message', 'text': system})
-    update(sent_prompt={'label': f'Enhance with Antigravity {model_id}: user message', 'text': '\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)})
-    text = enhance_cache.cloud_text(model_id, system, parts, update).strip()
+    if images:
+        system = get('video:ltx-i2v', i2v)
+        parts.append({'text': f'User Raw Input Prompt: {prompt}.'})
+    else:
+        system = get('video:ltx-t2v', t2v)
+        parts.append({'text': f'user prompt: {prompt}'})
+    text = video_text(system, parts, update, 'Enhancing video prompt…').strip()
     if not text or len(text) > 16000:
         raise RuntimeError('Prompt enhancement returned an invalid response. Retry or turn off Enhance prompt.')
     update(rewritten_prompt=text, sent_prompt={'label': 'Enhance: rewritten prompt', 'text': text})

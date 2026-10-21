@@ -1,17 +1,16 @@
-"""Prompt enhancement with the official Qwen rewrite/output contract: on this computer (the default) or through Antigravity."""
+"""Prompt enhancement on this computer with each architecture's official rewrite prompt and output contract."""
 import base64
 import json
 import io
 import re
 import sys
 from .common import APP_DIR, VIDEO_UPLOADS_DIR
-from . import antigravity, enhance_cache
+from . import enhance_cache
 
 
 def enhance_reference(prompt, images, request, update):
-    """Antigravity rewrite that preserves the Ref2VA trigger and reference order."""
+    """Rewrite that preserves the Ref2VA trigger and reference order."""
     from PIL import Image
-    model_id=request.get('enhancement_model') or antigravity.selected_model()
     trigger='Faceswap' if request['workflow']=='faceswap' else 'crossview' if request['workflow']=='crossview' else ''
     from .prompt_registry import REFERENCE_VIDEO, get
     system=get('video:reference',REFERENCE_VIDEO).replace('{trigger}',repr(trigger))
@@ -30,10 +29,7 @@ def enhance_reference(prompt, images, request, update):
         parts.extend([{'text':f'Reference image <Picture {index+1}>'},
             {'inlineData':{'mimeType':'image/jpeg','data':base64.b64encode(stream.getvalue()).decode()}}])
     parts.append({'text':f'Duration: {request["frames"]/24:.2f} seconds. Brief: {prompt}'})
-    _record(update, f'Antigravity {model_id}', [{'role':'system','content':system},{'role':'user','content':'\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)}])
-    update(stage='rewriting',message='Enhancing reference video prompt with Antigravity…',
-           rewrite_provider='Antigravity',rewrite_model=model_id)
-    result=enhance_cache.cloud_text(model_id,system,parts,update).strip()
+    result=video_text(system,parts,update,'Enhancing reference video prompt…').strip()
     if not result or len(result)>16000:
         raise RuntimeError('Prompt enhancement returned an invalid response. Retry or turn off Enhance prompt.')
     if trigger and not result.lower().startswith(trigger.lower()):
@@ -42,7 +38,6 @@ def enhance_reference(prompt, images, request, update):
     return result
 
 def enhance_video(prompt, images, request, update):
-    model_id=request.get('enhancement_model') or antigravity.selected_model()
     from .prompt_registry import VIDEO, get
     system=get('video:enhance',VIDEO)
     parts=[]
@@ -51,13 +46,50 @@ def enhance_video(prompt, images, request, update):
         stream=io.BytesIO();copy.save(stream,'PNG')
         parts.extend([{'text':name.replace('_',' ')},{'inlineData':{'mimeType':'image/png','data':base64.b64encode(stream.getvalue()).decode()}}])
     parts.append({'text':f'Duration: {request["frames"]/24:.2f} seconds. Audio: {request["audio"]}. Brief: {prompt}'})
-    _record(update, f'Antigravity {model_id}', [{'role':'system','content':system},{'role':'user','content':'\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)}])
-    update(stage='rewriting',message='Enhancing video prompt with Antigravity…',rewrite_provider='Antigravity',rewrite_model=model_id)
-    text=enhance_cache.cloud_text(model_id,system,parts,update).strip()
+    text=video_text(system,parts,update,'Enhancing video prompt…').strip()
     if not text or len(text)>30000:
         raise RuntimeError('Prompt enhancement returned an invalid response. Retry or turn off Enhance prompt.')
     update(rewritten_prompt=text,sent_prompt={'label':'Enhance: rewritten prompt','text':text})
     return text
+
+# Video prompts on this computer: Qwen PE T2I (9B, uncensored) with the vision projector of its I2I sibling, which shares
+# the Qwen3.5-VL base. No thinking pass; sampling from the official LTX TextGenerate node defaults.
+VIDEO_MODEL, VIDEO_VISION = 'pe-t2i-heretic-q8', 'pe-i2i-heretic-q8'
+VIDEO_SETTINGS = {'temperature': 0.7, 'top_k': 64, 'top_p': 0.95, 'min_p': 0.05, 'repeat_penalty': 1.05, 'max_tokens': 1024}
+
+
+def video_text(system, parts, update, message):
+    """A video rewrite on this computer. parts: text and inlineData pictures in order; they carry the pictures,
+    duration and brief, so they also key the saved answer."""
+    from .models import entry, local_path
+    from .llama_runtime import Server
+    model = entry(VIDEO_MODEL)
+    update(stage='rewriting', message=message, rewrite_provider='Local', rewrite_model=model['title'])
+    content = [{'type': 'image_url', 'image_url': {'url': f"data:{part['inlineData']['mimeType']};base64,{part['inlineData']['data']}"}}
+               if 'inlineData' in part else {'type': 'text', 'text': part['text']} for part in parts]
+    chat = [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}]
+    _record(update, model['title'], [chat[0], {'role': 'user', 'content': _parts_text(parts)}])
+    name = enhance_cache.key('local-video', VIDEO_MODEL, VIDEO_SETTINGS, system, parts)
+    saved = enhance_cache.get(name)
+    if saved:
+        update(enhance_cached=True, message='Using the saved enhanced prompt (same prompt, images and enhancer)…')
+        return saved
+    import time
+    started = time.perf_counter()
+    pictures = any('inlineData' in part for part in parts)
+    vision = entry(VIDEO_VISION)
+    _free_comfy_gpu()
+    with Server(local_path(model, model['files'][0]), local_path(vision, vision['files'][1]) if pictures else None) as server:
+        reply = server.chat({'messages': chat, **VIDEO_SETTINGS, 'chat_template_kwargs': {'enable_thinking': False}})
+    text = re.sub(r'<think>.*?(?:</think>|$)', '', reply['choices'][0]['message'].get('content') or '', flags=re.S).strip()
+    update(rewrite_seconds=round(time.perf_counter() - started, 3), rewrite_tokens=reply.get('usage', {}).get('completion_tokens'))
+    if text:
+        enhance_cache.put(name, text)
+    return text
+
+
+def _parts_text(parts):
+    return '\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)
 
 LOCAL = 'local'
 FAST_OPENING = '{"rewritten_prompt": "'
@@ -279,27 +311,3 @@ def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.
                  'rewrite_tokens_per_second': round((reply.get('timings') or {}).get('predicted_per_second', 0), 1)}
     update(rewrite_seconds=round(time.perf_counter() - started, 3), **usage)
     return _finish(parse(spec, output, task), prompt, update)
-
-
-def enhance(prompt, images, model_id, update=lambda **_: None, redraw=False, family='qwen-image-2.1', spec=None):
-    """Antigravity (Gemini) with the same official prompts. redraw: Z-Image redraws image 1 (image to image)."""
-    key = spec or spec_key(family, images, redraw)
-    data = prompts()
-    spec = data[key]
-    task = 'edit' if key == 'qwen-image-2.1-edit' else 't2i'
-    chat = messages(spec, prompt)
-    system = spec['text'] if spec['role'] == 'system' else ''
-    if spec['output'] == 'json':
-        system += '\n' + data['cloud-json-reminder']['text']
-    parts = []
-    if key == 'qwen-image-2.1-edit':
-        for index, image in enumerate(images, 1):
-            copy = image.convert('RGBA')
-            copy.thumbnail((1024, 1024))
-            stream = io.BytesIO(); copy.save(stream, 'PNG')
-            parts.extend([{'text': f'<image{index}>'}, {'inlineData': {'mimeType': 'image/png', 'data': base64.b64encode(stream.getvalue()).decode()}}])
-    parts.append({'text': chat[-1]['content']})
-    _record(update, f'Antigravity {model_id}', ([{'role': 'system', 'content': system}] if system else []) + [{'role': 'user', 'content': '\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)}])
-    update(stage='rewriting', message='Enhancing prompt with Antigravity…', rewrite_provider='Antigravity', rewrite_model=model_id, rewrite_prompt=key)
-    text = enhance_cache.cloud_text(model_id, system, parts, update)
-    return _finish(parse(spec, text, task), prompt, update)

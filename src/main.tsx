@@ -38,7 +38,6 @@ import {compatibleLoras,loraSampling,type AuthorSettings,type LoraMeta} from './
 import {LibraryPopover} from './LibraryPopover';
 import {ResultsRail} from './ResultsRail';
 import {JobQueue,useQueue,type SavedJob} from './JobQueue';
-import type {EnhancementState} from './PromptSettings';
 import type {SendVideo,VideoInput} from './SendVideoTo';
 import type {UploadedVideo} from './mediaUpload';
 import {GenerationTiming,type Timing} from './GenerationTiming';
@@ -97,7 +96,6 @@ function App(){
   const [modelState,setModelState]=useState<ModelState|null>(null);
   const [showSettings,setShowSettings]=useState(()=>window.location.hash==='#settings');const [settingsView,setSettingsView]=useState<'models'|'enhance'|'location'>('models');
   const openSettings=(view:'models'|'enhance'|'location'='models')=>{setSettingsView(view);setShowSettings(true);};
-  const [enhancement,setEnhancement]=useState<EnhancementState|null>(null);
   const [examples,setExamples]=useState<Example[]>([]);
   const [history,setHistory]=useState<Job[]>([]);
   useLastSeed(history,seed=>setParams(p=>p.randomize_seed&&p.seed!==seed?{...p,seed}:p));
@@ -421,7 +419,7 @@ function App(){
     <Gallery onSendVideo={sendVideo} api={api} visible={tab==='gallery'} revision={queue.revision} models={modelState} onRestore={restoreJob} onQueued={queue.refresh} view={galleryView}/>
 
     <dialog ref={modal} aria-label={showSettings?t('settings'):showHelp?t('help'):showExamples?t('examples'):activeExample?.title_en||t('preview')} onCancel={closeModal} onClick={e=>{if(e.target===modal.current)closeModal();}} className={lightbox?'lightbox':showSettings?'content-dialog settings-dialog':'content-dialog'}>{!lightbox?<button className="dialog-close icon-button" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>:null}
-      {showSettings?<ModelSettings initialView={settingsView} enhancement={enhancement} onEnhancement={setEnhancement} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{if(id!==params.model_id)manualSampling.current.clear();setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
+      {showSettings?<ModelSettings initialView={settingsView} lang={lang} api={api} state={modelState} onState={setModelState} selected={params.model_id} onSelect={id=>{if(id!==params.model_id)manualSampling.current.clear();setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');}} videoSelected={videoModel} onVideoSelect={setVideoModel} encoder={params.text_encoder} onEncoder={id=>change('text_encoder',id)} busy={queue.count>0}/>:null}
       {lightbox?<header className="preview-topbar">
         <div className="preview-navigation">{previewIndex>=0&&previewList.length>1?<><button type="button" className="icon-button" disabled={previewIndex===0} onClick={()=>stepPreview(-1)} aria-label="Previous image"><ChevronLeft size={20}/></button><span>{previewIndex+1} / {previewList.length}</span><button type="button" className="icon-button" disabled={previewIndex===previewList.length-1} onClick={()=>stepPreview(1)} aria-label="Next image"><ChevronRight size={20}/></button></>:<span>{t('preview')}</span>}</div>
         {previewJob?<div className="preview-actions"><button type="button" className="button secondary" aria-label="Use settings" disabled={locked} onClick={()=>useMobileSettings(previewJob)}><RotateCcw size={17}/><span className="label-full">Use settings</span><span className="label-short">Settings</span></button><a className="button secondary" href={`${previewJob.image_url}?download=true`}><Download size={17}/>Download</a><UseImageAs jobId={previewJob.id} disabled={locked}/></div>:null}

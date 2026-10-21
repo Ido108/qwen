@@ -5,7 +5,7 @@
 .enhancer-row{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid #dfdceb;border-radius:8px;background:#fff}
 .enhancer-row>div{display:grid;gap:3px;min-width:0}
 .enhancer-row small{color:#645572;font-size:12px;line-height:1.4}
-.enhancer-row select{flex:0 0 280px;width:280px;min-width:0;color:#2f2639;background:#fff}
+.enhancer-row select{flex:0 0 340px;width:340px;min-width:0;color:#2f2639;background:#fff}
 .enhancer-fixed{font-size:12px;color:#4a3d58;white-space:nowrap}
 .prompt-group h4{margin:12px 0 6px;font-size:13px;color:#4a3d58}
 .prompt-item{border:1px solid #dfdceb;border-radius:8px;background:#fff;margin-bottom:6px}

@@ -21,8 +21,7 @@ class ReferenceSamplingTests(unittest.TestCase):
                  patch.object(server,'resolve_video',return_value=root/'source.mp4'), \
                  patch.object(server,'resolve_image',return_value=root/'ref.png'), \
                  patch.object(server,'probe_video_duration',return_value=5), \
-                 patch.object(server,'enqueue_locked',side_effect=lambda job,data:captured.append(data)), \
-                 patch.object(server.antigravity,'status',side_effect=AssertionError('Empty instructions must not require OAuth')):
+                 patch.object(server,'enqueue_locked',side_effect=lambda job,data:captured.append(data)):
                 for model_id,steps in [('h3-ref-turbo-int8',8),('h3-ref-pruned-q4_k_m',20),('h3-ref-full-q8_0',25),('h3-ref-eros-q4',25)]:
                     result=server.generate_reference_video(ReferenceVideoRequest(model_id=model_id,
                         source_video='no-real-media.mp4',reference_images=['ref.png'],prompt='',enhance=True,output_dir=folder))

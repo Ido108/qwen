@@ -22,7 +22,7 @@ from pathlib import Path
 import httpx
 from PIL import Image, ImageOps
 
-from .antigravity import AUTH_DIR, _crypt
+from .secure_store import AUTH_DIR, _crypt
 from .common import APP_DIR, DATA_DIR, UPLOADS_DIR, write_json
 
 PEOPLE_FILE = DATA_DIR / 'people.json'

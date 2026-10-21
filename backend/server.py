@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, GenerationRequest, VideoRequest, ReferenceVideoRequest, UpscaleRequest, model_status, resolve_image, resolve_video, read_json, write_json
 from .reference_timing import probe_video_duration, resolve_reference_clip
-from . import models, antigravity, cloud, civitai, people, training, moise_remote
+from . import models, cloud, civitai, people, training, moise_remote
 from .resident_worker import ImageWorker
 
 from .common import AUDIO_UPLOADS_DIR, resolve_audio
@@ -223,9 +223,15 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
                 current.update(values)
                 write_json(directory / 'status.json', current)
             if kind == 'image':
-                from .prompt_enhancer import enhance
-                rewrite = enhance(request['prompt'], pictures, request.get('enhancement_model') or antigravity.selected_model(), enhancement_progress,
-                                  redraw=models.is_zimage(models.entry(request['model_id'])), family=models.entry(request['model_id']).get('family', 'qwen-image-2.1'))
+                # RunPod jobs rewrite here, on this computer, before upload; the text encoder route needs ComfyUI, which
+                # this process does not load, so it uses the Qwen PE rewriter with the same official prompt instead.
+                from .enhancer_settings import route
+                from .prompt_enhancer import enhance_local
+                item = models.entry(request['model_id'])
+                chosen = route(item.get('family', 'qwen-image-2.1'), pictures, models.is_zimage(item))
+                rewrite = enhance_local(request['prompt'], pictures, enhancement_progress, family=item.get('family', 'qwen-image-2.1'),
+                                        redraw=models.is_zimage(item), seed=request.get('seed', 0), spec=chosen['spec'],
+                                        runner='llama', fast=chosen.get('fast', False)) if chosen['mode'] == 'local' else {}
                 work['prompt'] = rewrite.get('positive_prompt') or request['prompt']
                 work['enhancement_result'] = rewrite
             elif task_kind == 'video':
@@ -639,63 +645,6 @@ def catalog_state():
                 item['ready'] = cloud.ready('image' if item['kind'] == 'image' else 'video')
         state['remote'] = True
     return state
-
-class CallbackInput(BaseModel):
-    callbackInput: str = Field(min_length=1, max_length=16000)
-
-class EnhancementModel(BaseModel):
-    model: str = Field(min_length=1, max_length=100)
-
-@app.get('/api/oauth/antigravity/status')
-def connection_status():
-    return antigravity.status()
-
-@app.post('/api/oauth/antigravity/start')
-def connection_start():
-    return antigravity.start()
-
-@app.get('/api/oauth/antigravity/poll/{state}')
-def connection_poll(state: str):
-    return antigravity.poll(state)
-
-@app.post('/api/oauth/antigravity/exchange')
-def connection_exchange(body: CallbackInput):
-    try:
-        return antigravity.exchange(body.callbackInput)
-    except (ValueError, antigravity.ConnectionError) as exc:
-        raise HTTPException(400, str(exc))
-
-@app.post('/api/oauth/antigravity/refresh')
-def connection_refresh():
-    try:
-        antigravity.ensure_tokens(force=True)
-        return antigravity.status()
-    except antigravity.ConnectionError as exc:
-        raise HTTPException(424, str(exc))
-
-@app.post('/api/oauth/antigravity/disconnect')
-def connection_disconnect():
-    with active_lock:
-        if active_job or pending_jobs:
-            raise HTTPException(409, 'Finish or cancel queued jobs before disconnecting.')
-        return antigravity.disconnect()
-
-@app.post('/api/enhancement/model')
-def enhancement_model(body: EnhancementModel):
-    try:
-        return antigravity.set_model(body.model)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
-
-@app.post('/api/oauth/antigravity/test')
-def connection_test():
-    try:
-        text = antigravity.generate_text(antigravity.selected_model(), 'Return only the word OK.', [{'text': 'Connection test. Reply OK.'}])
-        if 'OK' not in text:
-            raise antigravity.ConnectionError('The selected model did not return the expected test response.')
-        return {'success': True, 'model': antigravity.selected_model(), 'connection': antigravity.status()}
-    except antigravity.ConnectionError as exc:
-        raise HTTPException(424, str(exc))
 
 class CivitaiKey(BaseModel):
     key: str = Field(min_length=10, max_length=200)
@@ -1550,11 +1499,6 @@ def generate(body: GenerationRequest):
     if tool:
         # Tool prompts carry the LoRA trigger wording; enhancement would rewrite it.
         body.enhance = False
-    if body.enhance:
-        from .enhancer_settings import route
-        chosen = route(models.entry(body.model_id).get('family', 'qwen-image-2.1'), body.images, models.is_zimage(models.entry(body.model_id)))
-        if chosen['mode'] == 'cloud' and not antigravity.status()['connected']:
-            raise HTTPException(409, 'This model uses the cloud enhancer: connect Google Account in Settings, choose another enhancer there, or turn off Enhance prompt.')
     try:
         for image_id in body.images:
             resolve_image(image_id)
@@ -1584,8 +1528,6 @@ def generate(body: GenerationRequest):
             data['enhance'] = False
             data['lora_strength'] = body.lora_strength if body.lora_strength is not None else tool['strength']
             data['reference_resolution'] = tool['reference_resolution']
-        # Store only a model selection. The worker resolves current tokens at execution.
-        data['enhancement_model'] = antigravity.selected_model()
         data['output_dir'] = str(destination)
         if body.randomize_seed:
             data['seed'] = secrets.randbelow(2147483648)
@@ -1627,14 +1569,12 @@ def generate_video(body: VideoRequest):
             raise ValueError('The output drive needs at least 1 GB of free space.')
     except (ValueError,OSError) as exc:
         raise HTTPException(400,str(exc))
-    if body.enhance and not antigravity.status()['connected']:
-        raise HTTPException(409,'Connect Google Account in Settings, or turn off Enhance prompt.')
     with active_lock:
         remote = cloud.settings()['mode'] == 'runpod'
         if remote and not cloud.ready('video'):
             raise HTTPException(503, 'Connect a RunPod video endpoint and network volume in Settings.')
         data=body.model_dump()
-        data.update(kind='video',execution='runpod' if remote else 'local',output_dir=str(destination),enhancement_model=antigravity.selected_model())
+        data.update(kind='video',execution='runpod' if remote else 'local',output_dir=str(destination))
         if body.randomize_seed:
             data['seed']=secrets.randbelow(2147483648)
         selected=models.entry(body.model_id)
@@ -1686,8 +1626,6 @@ def generate_reference_video(body: ReferenceVideoRequest):
             raise ValueError('The output drive needs at least 1 GB of free space.')
     except (ValueError,OSError) as exc:
         raise HTTPException(400,str(exc))
-    if body.enhance and not antigravity.status()['connected']:
-        raise HTTPException(409,'Connect Google Account in Settings, or turn off Enhance prompt.')
     with active_lock:
         remote = cloud.settings()['mode'] == 'runpod'
         if remote and not cloud.ready('video'):
@@ -1698,7 +1636,7 @@ def generate_reference_video(body: ReferenceVideoRequest):
         steps=sampling['steps']
         data=body.model_dump()
         data.update(kind='reference-video',execution='runpod' if remote else 'local',steps=steps,output_dir=str(destination),
-                    enhancement_model=antigravity.selected_model(),sampling_profile=sampling,
+                    sampling_profile=sampling,
                     steps_mode='custom' if body.steps is not None else 'model')
         if body.randomize_seed:
             data['seed']=secrets.randbelow(2147483648)

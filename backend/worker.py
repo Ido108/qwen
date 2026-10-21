@@ -82,15 +82,13 @@ def rewrite_prompt(images):
     return result
 
 def run_enhancer(chosen, images, item, family):
-    from .prompt_enhancer import enhance, enhance_local
+    from .prompt_enhancer import enhance_local
     from .models import entry, is_zimage
-    if chosen['mode'] == 'local':
-        # Krea 2 and MOSS Image rewrite with their own text encoder, as their official templates do.
-        picked_encoder = request.get('text_encoder') or 'auto'
-        encoder = picked_encoder if picked_encoder != 'auto' else next((dep for dep in item.get('dependencies', []) if entry(dep).get('kind') == 'encoder'), None)
-        return enhance_local(request['prompt'], images, update, family=family, redraw=is_zimage(item), seed=request.get('seed', 0), encoder_id=encoder,
-                             spec=chosen['spec'], runner=chosen['runner'], fast=chosen.get('fast', False))
-    return enhance(request['prompt'], images, chosen['model'], update, redraw=is_zimage(item), family=family, spec=chosen['spec'])
+    # Krea 2 and MOSS Image rewrite with their own text encoder, as their official templates do.
+    picked_encoder = request.get('text_encoder') or 'auto'
+    encoder = picked_encoder if picked_encoder != 'auto' else next((dep for dep in item.get('dependencies', []) if entry(dep).get('kind') == 'encoder'), None)
+    return enhance_local(request['prompt'], images, update, family=family, redraw=is_zimage(item), seed=request.get('seed', 0), encoder_id=encoder,
+                         spec=chosen['spec'], runner=chosen['runner'], fast=chosen.get('fast', False))
 
 def image_engine(saved):
     """Krea 2 models run in krea_engine, Z-Image models in zimage_engine; Qwen-Image-2.1 models in comfy_engine."""
