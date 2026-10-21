@@ -100,13 +100,13 @@ class WorkerRouteTests(unittest.TestCase):
         self.assertTrue(seen['spec'] and seen['runner'])
 
     def test_the_same_request_reuses_the_saved_rewrite(self):
-        from backend import worker
+        from backend import worker, enhance_cache
         from PIL import Image
         calls = []
         def local(prompt, images, update, **options):
             calls.append(prompt)
             return {'positive_prompt': f'rewritten {len(calls)}', 'parse_ok': True}
-        with tempfile.TemporaryDirectory() as folder, patch.object(worker, 'ENHANCE_CACHE', Path(folder) / 'cache.json'), \
+        with tempfile.TemporaryDirectory() as folder, patch.object(enhance_cache, 'PATH', Path(folder) / 'cache.json'), \
                 patch.object(worker, 'update', lambda **values: None), \
                 patch('backend.prompt_enhancer.enhance_local', side_effect=local):
             run = lambda prompt, images: (worker.request.clear(), worker.request.update({'model_id': 'uc-int8-convrot', 'prompt': prompt, 'seed': len(calls)}),
@@ -119,3 +119,16 @@ class WorkerRouteTests(unittest.TestCase):
             self.assertEqual(run('a cat', [red])['positive_prompt'], 'rewritten 3')
             self.assertEqual(run('a cat', [blue])['positive_prompt'], 'rewritten 4')
         worker.request.clear()
+
+    def test_video_enhance_reuses_the_saved_answer(self):
+        from backend import enhance_cache, video_worker
+        from PIL import Image
+        answers = iter(['first', 'second', 'third'])
+        request = {'frames': 121, 'audio': True, 'enhancement_model': 'gemini'}
+        with tempfile.TemporaryDirectory() as folder, patch.object(enhance_cache, 'PATH', Path(folder) / 'cache.json'),                 patch('backend.antigravity.generate_text', side_effect=lambda *_: next(answers)):
+            frame = {'first_frame': Image.new('RGB', (8, 8), 'red')}
+            run = lambda prompt, images, req=request: video_worker.enhance_ltx_video(prompt, images, req, lambda **_: None)
+            self.assertEqual(run('a dog runs', frame), 'first')
+            self.assertEqual(run('a dog runs', frame), 'first')
+            self.assertEqual(run('a dog runs', {'first_frame': Image.new('RGB', (8, 8), 'blue')}), 'second')
+            self.assertEqual(run('a dog runs', frame, {**request, 'frames': 241}), 'third')

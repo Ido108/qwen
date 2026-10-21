@@ -57,7 +57,7 @@ def enhance_ltx_video(prompt, images, request, update):
     """Antigravity rewrite in the prose style of the official LTX-2.5 prompts."""
     import base64
     import io
-    from . import antigravity
+    from . import antigravity, enhance_cache
     model_id = request.get('enhancement_model') or antigravity.selected_model()
     parts = []
     for name, image in images.items():
@@ -73,7 +73,7 @@ def enhance_ltx_video(prompt, images, request, update):
     system = get('video:ltx-enhance', LTX_ENHANCE_SYSTEM)
     update(sent_prompt={'label': f'Enhance with Antigravity {model_id}: system message', 'text': system})
     update(sent_prompt={'label': f'Enhance with Antigravity {model_id}: user message', 'text': '\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)})
-    text = antigravity.generate_text(model_id, system, parts).strip()
+    text = enhance_cache.cloud_text(model_id, system, parts, update).strip()
     if not text or len(text) > 16000:
         raise RuntimeError('Prompt enhancement returned an invalid response. Retry or turn off Enhance prompt.')
     update(rewritten_prompt=text, sent_prompt={'label': 'Enhance: rewritten prompt', 'text': text})

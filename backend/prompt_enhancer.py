@@ -5,7 +5,7 @@ import io
 import re
 import sys
 from .common import APP_DIR, VIDEO_UPLOADS_DIR
-from . import antigravity
+from . import antigravity, enhance_cache
 
 
 def enhance_reference(prompt, images, request, update):
@@ -33,7 +33,7 @@ def enhance_reference(prompt, images, request, update):
     _record(update, f'Antigravity {model_id}', [{'role':'system','content':system},{'role':'user','content':'\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)}])
     update(stage='rewriting',message='Enhancing reference video prompt with Antigravity…',
            rewrite_provider='Antigravity',rewrite_model=model_id)
-    result=antigravity.generate_text(model_id,system,parts).strip()
+    result=enhance_cache.cloud_text(model_id,system,parts,update).strip()
     if not result or len(result)>16000:
         raise RuntimeError('Prompt enhancement returned an invalid response. Retry or turn off Enhance prompt.')
     if trigger and not result.lower().startswith(trigger.lower()):
@@ -53,7 +53,7 @@ def enhance_video(prompt, images, request, update):
     parts.append({'text':f'Duration: {request["frames"]/24:.2f} seconds. Audio: {request["audio"]}. Brief: {prompt}'})
     _record(update, f'Antigravity {model_id}', [{'role':'system','content':system},{'role':'user','content':'\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)}])
     update(stage='rewriting',message='Enhancing video prompt with Antigravity…',rewrite_provider='Antigravity',rewrite_model=model_id)
-    text=antigravity.generate_text(model_id,system,parts).strip()
+    text=enhance_cache.cloud_text(model_id,system,parts,update).strip()
     if not text or len(text)>30000:
         raise RuntimeError('Prompt enhancement returned an invalid response. Retry or turn off Enhance prompt.')
     update(rewritten_prompt=text,sent_prompt={'label':'Enhance: rewritten prompt','text':text})
@@ -292,5 +292,5 @@ def enhance(prompt, images, model_id, update=lambda **_: None, redraw=False, fam
     parts.append({'text': chat[-1]['content']})
     _record(update, f'Antigravity {model_id}', ([{'role': 'system', 'content': system}] if system else []) + [{'role': 'user', 'content': '\n'.join('[image]' if 'inlineData' in part else part['text'] for part in parts)}])
     update(stage='rewriting', message='Enhancing prompt with Antigravity…', rewrite_provider='Antigravity', rewrite_model=model_id, rewrite_prompt=key)
-    text = antigravity.generate_text(model_id, system, parts)
+    text = enhance_cache.cloud_text(model_id, system, parts, update)
     return _finish(parse(spec, text, task), prompt, update)
