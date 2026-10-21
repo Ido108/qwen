@@ -156,6 +156,12 @@ def load_swift(request,selected,update):
     from swiftvr import SwiftVRPipeline
     from swiftvr.models import ReAE,WanTransformer3DModel
     root=checkpoint(selected['id']).parent.parent
+    # from_pretrained reads config.json next to the weights; a group split across D:\models and the data folder
+    # can hold it on the other drive.
+    config=checkpoint('swiftvr-config');weights_config=root/'transformer'/config.name
+    if config!=weights_config and not weights_config.is_file():
+        import shutil
+        shutil.copy2(config,weights_config)
     transformer=WanTransformer3DModel.from_pretrained(str(root),subfolder='transformer',
         torch_dtype=torch.bfloat16,local_files_only=True)
     reae=ReAE(str(checkpoint('swiftvr-reae')))

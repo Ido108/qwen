@@ -14,6 +14,9 @@ from rich.panel import Panel
 HTTP_SUCCESS=re.compile(r'"[A-Z]+ .* HTTP/\S+" [23]\d\d\b')
 TRANSFER_LINE=re.compile(r'^\[Civitai\] (downloading|verifying|preparing):')
 BAR_LINE=re.compile(r'\d+%\|.*\||\d+(?:\.\d+)?\s*(?:it/s|s/it)')
+# Red only for real problems: error words, or an HTTP 4xx/5xx status ("GET /x HTTP/1.1" 500). A bare 4xx/5xx
+# number also matched millisecond timestamps such as 16:00:38.441.
+ALERT=re.compile(r'(?:error|exception|traceback|failed)\b|HTTP/[\d.]+" [45]\d\d\b',re.I)
 STAGES={'preparing':'Preparing','loading':'Loading tools','loading_model':'Loading model','loading_encoder':'Loading text encoder','encoding':'Encoding inputs','rewriting':'Preparing prompt','downloading_models':'Downloading required models','generating':'Generating','saving':'Saving result','verifying':'Checking file','downloading':'Downloading','upscaling':'Upscaling','training':'Training','muxing_audio':'Adding audio','complete':'Complete','failed':'Failed','cancelled':'Cancelled'}
 STAGES.update(initializing_video='Start video tools', loading_video_vae='Load video encoder',
     preparing_conditioning='Prepare inputs', encoding_prompt='Encode prompt',
@@ -236,7 +239,7 @@ def watch_server(url,data_dir,*,once=False,stop_event=None):
         except (OSError,ValueError):pass
         for tail in tails+([worker] if worker else []):
             for line in tail.read():
-                console.print(Text(line,style='red' if re.search(r'error|exception|\b[45]\d\d\b',line,re.I) else None))
+                console.print(Text(line,style='red' if ALERT.search(line) else None))
         if once:return
         if stop_event:stop_event.wait(.6)
         else:time.sleep(.6)

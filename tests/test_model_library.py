@@ -110,6 +110,14 @@ class LibraryTests(unittest.TestCase):
             self.write(self.library / 'upscale_models/SeedVR2/ema_vae_fp16.safetensors')
             self.assertEqual(models.download_target({**vae, 'kind': 'upscale'}, dit), model_library.library_path({**vae, 'kind': 'upscale'}, dit))
 
+    def test_an_upscaler_group_picks_one_drive_by_its_total_size(self):
+        # A small config fits the library while the 20 GB model does not: both go to the data folder.
+        config = {'id': 'g-config', 'kind': 'upscale-support', 'directory': 'upscale/group', 'files': [{'path': 'transformer/config.json', 'bytes': 10}]}
+        weights = {'id': 'g-model', 'kind': 'upscale', 'directory': 'upscale/group', 'files': [{'path': 'transformer/model.safetensors', 'bytes': 1000}]}
+        with patch.object(models, 'catalog', return_value=[config, weights]),                 patch.object(model_library.shutil, 'disk_usage', return_value=type('U', (), {'free': model_library.RESERVE_BYTES + 500})()):
+            self.assertEqual(models.download_target(config, config['files'][0]), models.store_path(config, config['files'][0]))
+            self.assertEqual(models.download_target(weights, weights['files'][0]), models.store_path(weights, weights['files'][0]))
+
     def test_a_finished_download_moves_from_staging(self):
         staged = self.write(model_library.staging_dir({'directory': 'flux3'}) / 'vae/v.safetensors')
         target = self.library / 'vae/flux3/v.safetensors'

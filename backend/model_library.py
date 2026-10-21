@@ -139,7 +139,14 @@ def download_path(item, file, legacy):
         free = shutil.disk_usage(LIBRARY_DIR).free
     except OSError:
         return legacy
-    return library_path(item, file) if free > (file.get('bytes') or 0) + RESERVE_BYTES else legacy
+    needed = file.get('bytes') or 0
+    if item.get('kind') in TOGETHER:
+        # One drive for the whole group: per file, the small support files fit the library and the large model did
+        # not, so SwiftVR's config.json and its weights ended up on different drives (2026-10-21).
+        from . import models
+        group = [(other, f) for other in models.catalog() if other.get('directory') == item['directory'] for f in other.get('files', [])]
+        needed = sum(f.get('bytes') or 0 for other, f in group if not find(other, f))
+    return library_path(item, file) if free > needed + RESERVE_BYTES else legacy
 
 
 def staging_dir(item):
