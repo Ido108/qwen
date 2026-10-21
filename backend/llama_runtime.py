@@ -57,7 +57,7 @@ class Server:
     def __init__(self, model, mmproj=None, context=32768):
         self.port = free_port()
         command = [str(ensure()), '-m', str(model), '--host', '127.0.0.1', '--port', str(self.port), '-ngl', '999',
-                   '-c', str(context), '--jinja', '-fa', 'on', '--no-webui']
+                   '-c', str(context), '--jinja', '-fa', 'on', '--no-webui', '--no-warmup']
         if mmproj:
             command += ['--mmproj', str(mmproj)]
         self.process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

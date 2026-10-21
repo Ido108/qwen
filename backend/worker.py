@@ -89,7 +89,7 @@ def run_enhancer(chosen, images, item, family):
         picked_encoder = request.get('text_encoder') or 'auto'
         encoder = picked_encoder if picked_encoder != 'auto' else next((dep for dep in item.get('dependencies', []) if entry(dep).get('kind') == 'encoder'), None)
         return enhance_local(request['prompt'], images, update, family=family, redraw=is_zimage(item), seed=request.get('seed', 0), encoder_id=encoder,
-                             spec=chosen['spec'], runner=chosen['runner'])
+                             spec=chosen['spec'], runner=chosen['runner'], fast=chosen.get('fast', False))
     return enhance(request['prompt'], images, chosen['model'], update, redraw=is_zimage(item), family=family, spec=chosen['spec'])
 
 def image_engine(saved):

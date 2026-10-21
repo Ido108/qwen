@@ -29,7 +29,8 @@ class LocalEnhancerTests(unittest.TestCase):
         self.assertEqual(prompt_enhancer.spec_key('krea-2-turbo', []), 'krea-2')
         self.assertEqual(prompt_enhancer.spec_key('krea-2-turbo', [object()]), 'krea-2-identity')
         self.assertEqual(prompt_enhancer.spec_key('moss-image-turbo', []), 'moss-image')
-        self.assertIsNone(prompt_enhancer.local_model([], 'krea-2-turbo'))
+        # Krea 2 defaults to the fast Qwen PE rewriter with its Krea template; its own encoder stays selectable.
+        self.assertEqual(prompt_enhancer.local_model([], 'krea-2-turbo'), 'pe-t2i-heretic-q8')
         for key, spec in prompt_enhancer.prompts().items():
             if isinstance(spec, dict):
                 self.assertTrue(spec['text'] and spec['source'], key)
@@ -49,7 +50,7 @@ class LocalEnhancerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch.object(enhancer_settings, 'PATH', Path(folder) / 'e.json'):
             enhancer_settings.save('qwen-image-2.1', 'cloud')
             self.assertFalse(rewriters & set(models.required_image(request)))
-        self.assertFalse(rewriters & set(models.required_image({**request, 'model_id': 'krea2-turbo-nvfp4', 'images': []})))
+        self.assertTrue(rewriters & set(models.required_image({**request, 'model_id': 'krea2-turbo-nvfp4', 'images': []})))
 
     def test_chat_follows_each_official_layout(self):
         data = prompt_enhancer.prompts()
@@ -132,3 +133,19 @@ class WorkerRouteTests(unittest.TestCase):
             self.assertEqual(run('a dog runs', frame), 'first')
             self.assertEqual(run('a dog runs', {'first_frame': Image.new('RGB', (8, 8), 'blue')}), 'second')
             self.assertEqual(run('a dog runs', frame, {**request, 'frames': 241}), 'third')
+
+    def test_fast_mode_skips_thinking_and_opens_the_qwen_answer(self):
+        from backend import llama_runtime
+        sent = {}
+        class Server:
+            def __init__(self, *_): pass
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def chat(self, body):
+                sent.update(body)
+                return {'choices': [{'message': {'content': 'a red sign that says "שלום"", "wh_ratio": "1:1"}'}}], 'usage': {}}
+        with patch.object(llama_runtime, 'Server', Server), patch.object(prompt_enhancer, '_free_comfy_gpu', lambda: None),                 patch.object(models, 'local_path', lambda item, file: 'x.gguf'):
+            result = prompt_enhancer.enhance_local('שלט שכתוב עליו "שלום"', [], spec='qwen-image-2.1-t2i', runner='llama', fast=True)
+        self.assertFalse(sent['chat_template_kwargs']['enable_thinking'])
+        self.assertEqual(sent['messages'][-1], {'role': 'assistant', 'content': prompt_enhancer.FAST_OPENING})
+        self.assertEqual(result['positive_prompt'], 'a red sign that says "שלום"')

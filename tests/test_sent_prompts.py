@@ -87,9 +87,10 @@ class SentPromptTests(unittest.TestCase):
         self.assertEqual((route('qwen-image-2.1', [], False)['spec'], route('qwen-image-2.1', ['p'], False)['spec']),
                          ('qwen-image-2.1-t2i', 'qwen-image-2.1-edit'))
         self.assertEqual((route('krea-2-turbo')['runner'], route('moss-image')['spec'], route('z-image-turbo', [], True)['spec']),
-                         ('encoder', 'moss-image', 'z-image'))
+                         ('llama', 'moss-image', 'z-image'))
+        self.assertTrue(route('qwen-image-2.1')['fast'] and route('krea-2-turbo')['fast'])
         self.assertEqual(route('flux3-klein')['mode'], 'none')
-        self.assertTrue(all(route(f)['official'] for f in ('qwen-image-2.1', 'krea-2', 'z-image', 'moss-image')))
+        self.assertTrue(all(route(f)['official'] for f in ('qwen-image-2.1', 'z-image', 'moss-image')))
         enhancer_settings.save('krea-2', 'qwen-pe')
         self.assertEqual((route('krea-2')['runner'], route('krea-2')['official']), ('llama', False))
         enhancer_settings.save('moss-image', 'cloud')

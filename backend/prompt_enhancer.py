@@ -60,6 +60,7 @@ def enhance_video(prompt, images, request, update):
     return text
 
 LOCAL = 'local'
+FAST_OPENING = '{"rewritten_prompt": "'
 # Every system prompt with its official source and generation settings (a Settings editor can change this file).
 PROMPTS_PATH = APP_DIR / 'reference' / 'prompt-enhancer-prompts.json'
 # Qwen's official Qwen-Image-2.1 prompt rewriters (fine-tuned Qwen3.5-VL 9B), Heretic builds without refusals, run in llama.cpp.
@@ -233,7 +234,7 @@ def _prepare_comfy(moss, update):
         raise RuntimeError('Could not initialize the model file reader.')
 
 
-def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.1', redraw=False, seed=0, encoder_id=None, spec=None, runner=None):
+def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.1', redraw=False, seed=0, encoder_id=None, spec=None, runner=None, fast=False):
     """Rewrite on this computer with each architecture's official prompt and settings (prompt-enhancer-prompts.json)."""
     import time
     from .models import entry, local_path
@@ -256,16 +257,24 @@ def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.
         # Z-Image's template takes text only; Qwen's edit rewriter sees the input images through its vision projector.
         pictures = images if key == 'qwen-image-2.1-edit' else []
         chat = messages(spec, prompt, pictures)
+        # Fast: no thinking pass, and Qwen's answer starts at its JSON contract. Without the opening the edit rewriter
+        # still wrote about 4,000 tokens of plain-text analysis first (thinking off alone saved nothing for edits).
+        opening = FAST_OPENING if fast and key.startswith('qwen-image-2.1') else ''
+        if opening:
+            chat = chat + [{'role': 'assistant', 'content': opening}]
         _record(update, item['title'], chat)
         with Server(paths[0], paths[1] if len(paths) > 1 and pictures else None) as server:
             body = {'messages': chat, 'temperature': settings['temperature'], 'top_p': settings['top_p'],
                     'top_k': settings['top_k'], 'min_p': settings['min_p'], 'presence_penalty': settings['presence_penalty'],
                     'repeat_penalty': settings['repetition_penalty'], 'max_tokens': settings['max_tokens'], 'seed': int(seed) & 0x7fffffff,
-                    'chat_template_kwargs': {'enable_thinking': settings['thinking']}}
+                    'chat_template_kwargs': {'enable_thinking': settings['thinking'] and not fast}}
             reply = server.chat(body)
         message = reply['choices'][0]['message']
         reasoning = message.get('reasoning_content') or ''
-        output = (f'<think>\n{reasoning}\n</think>\n' if reasoning else '') + (message.get('content') or '')
+        content = message.get('content') or ''
+        if opening and not content.lstrip().startswith('{'):
+            content = opening + content
+        output = (f'<think>\n{reasoning}\n</think>\n' if reasoning else '') + content
         usage = {'rewrite_tokens': reply.get('usage', {}).get('completion_tokens'),
                  'rewrite_tokens_per_second': round((reply.get('timings') or {}).get('predicted_per_second', 0), 1)}
     update(rewrite_seconds=round(time.perf_counter() - started, 3), **usage)
