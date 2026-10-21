@@ -98,3 +98,24 @@ class WorkerRouteTests(unittest.TestCase):
                 patch('backend.prompt_enhancer.enhance_local', side_effect=local):
             self.assertEqual(worker.rewrite_prompt([]), {'positive_prompt': 'rewritten'})
         self.assertTrue(seen['spec'] and seen['runner'])
+
+    def test_the_same_request_reuses_the_saved_rewrite(self):
+        from backend import worker
+        from PIL import Image
+        calls = []
+        def local(prompt, images, update, **options):
+            calls.append(prompt)
+            return {'positive_prompt': f'rewritten {len(calls)}', 'parse_ok': True}
+        with tempfile.TemporaryDirectory() as folder, patch.object(worker, 'ENHANCE_CACHE', Path(folder) / 'cache.json'), \
+                patch.object(worker, 'update', lambda **values: None), \
+                patch('backend.prompt_enhancer.enhance_local', side_effect=local):
+            run = lambda prompt, images: (worker.request.clear(), worker.request.update({'model_id': 'uc-int8-convrot', 'prompt': prompt, 'seed': len(calls)}),
+                                          worker.rewrite_prompt(images))[-1]
+            red, blue = Image.new('RGB', (8, 8), 'red'), Image.new('RGB', (8, 8), 'blue')
+            self.assertEqual(run('a cat', [])['positive_prompt'], 'rewritten 1')
+            self.assertEqual(run('a cat', [])['positive_prompt'], 'rewritten 1')  # another seed, same request: saved
+            self.assertEqual(run('a dog', [])['positive_prompt'], 'rewritten 2')
+            self.assertEqual(run('a cat', [red])['positive_prompt'], 'rewritten 3')
+            self.assertEqual(run('a cat', [red])['positive_prompt'], 'rewritten 3')
+            self.assertEqual(run('a cat', [blue])['positive_prompt'], 'rewritten 4')
+        worker.request.clear()

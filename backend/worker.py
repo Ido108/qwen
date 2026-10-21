@@ -56,7 +56,6 @@ def update(**values):
     print(json.dumps({k: v for k, v in values.items() if k != 'request'}, ensure_ascii=False), flush=True)
 
 def rewrite_prompt(images):
-    from .prompt_enhancer import enhance, enhance_local
     from .enhancer_settings import route
     from .models import entry, is_zimage
     item = entry(request['model_id'])
@@ -66,6 +65,53 @@ def rewrite_prompt(images):
     if chosen['mode'] == 'none':
         return {}  # FLUX.3 rewrites with BFL's prompt model inside its own engine
     update(enhancer=chosen['label'], sent_prompt={'label': 'Enhancer used', 'text': f"{chosen['label']} (prompt: {chosen['spec']})"})
+    key = enhance_cache_key(chosen, images)
+    saved = enhance_cache_get(key)
+    if saved:
+        update(stage='rewriting', message='Using the saved enhanced prompt (same prompt, images and enhancer)…', enhance_cached=True,
+               rewrite_seconds=0, rewritten_prompt=saved['positive_prompt'],
+               sent_prompt={'label': 'Enhance: rewritten prompt (saved from an earlier job)', 'text': saved['positive_prompt']})
+        return saved
+    result = run_enhancer(chosen, images, item, family)
+    enhance_cache_put(key, result)
+    return result
+
+ENHANCE_CACHE = DATA_DIR / 'enhance-cache.json'
+ENHANCE_CACHE_SIZE = 300
+
+def enhance_cache_key(chosen, images):
+    """Same request text, input pictures, enhancer and its prompt (including Settings edits) give the same key."""
+    import hashlib
+    from .prompt_enhancer import prompts
+    digest = hashlib.sha256()
+    spec = prompts().get(chosen['spec']) if chosen['spec'] else None
+    digest.update(json.dumps([request['prompt'], chosen['label'], chosen['spec'], spec, request.get('text_encoder')],
+                             ensure_ascii=False, sort_keys=True, default=str).encode())
+    for image in images:
+        digest.update(f'{image.mode}{image.size}'.encode())
+        digest.update(image.tobytes())
+    return digest.hexdigest()
+
+def enhance_cache_get(key):
+    try:
+        return json.loads(ENHANCE_CACHE.read_text(encoding='utf-8')).get(key)
+    except (OSError, ValueError):
+        return None
+
+def enhance_cache_put(key, result):
+    if not result or not result.get('positive_prompt'):
+        return
+    try:
+        data = json.loads(ENHANCE_CACHE.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        data = {}
+    data.pop(key, None)
+    data[key] = result
+    write_json(ENHANCE_CACHE, dict(list(data.items())[-ENHANCE_CACHE_SIZE:]))
+
+def run_enhancer(chosen, images, item, family):
+    from .prompt_enhancer import enhance, enhance_local
+    from .models import entry, is_zimage
     if chosen['mode'] == 'local':
         # Krea 2 and MOSS Image rewrite with their own text encoder, as their official templates do.
         picked_encoder = request.get('text_encoder') or 'auto'
