@@ -1,4 +1,4 @@
-"""Start an independent Qwen server and open Chrome or an optional desktop window."""
+"""Start Qwen with terminal-controlled shutdown and separate browser clients."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -10,10 +10,13 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from urllib.request import urlopen
+from urllib.error import HTTPError
 
 from windows_processes import Instance, Job, set_event, reset_event, windows, post_message
-from watch_logs import watch, viewer_name
+from watch_logs import viewer_name
+from terminal_lifetime import TerminalLifetime
 
 APP = Path(__file__).resolve().parents[1]
 
@@ -34,11 +37,20 @@ def matching_server(url, data):
 
 
 def require_idle(url):
-    queue = get_json(url + '/api/queue')
-    if queue.get('active') or queue.get('pending'):
+    try:
+        activity = get_json(url + '/api/activity')
+    except HTTPError as error:
+        if error.code != 404:
+            raise
+        # Earlier versions lack the small activity snapshot.
+        queue = get_json(url + '/api/queue')
+        activity = {**get_json(url + '/api/models'), 'active': queue.get('active'),
+                    'pending_count': len(queue.get('pending', []))}
+    if not all(key in activity for key in ('active', 'pending_count', 'downloads', 'transfer')):
+        raise RuntimeError('Could not read Qwen activity. Nothing was stopped.')
+    if activity['active'] or activity['pending_count']:
         raise RuntimeError('Finish or cancel the queued jobs before stopping or restarting Qwen. Nothing was stopped.')
-    catalog = get_json(url + '/api/models')
-    if (catalog.get('transfer') or {}).get('status') == 'running' or any(item.get('status') == 'running' for item in catalog.get('downloads', [])):
+    if (activity['transfer'] or {}).get('status') == 'running' or any(item.get('status') == 'running' for item in activity['downloads']):
         raise RuntimeError('Model downloads are running. Wait for them to finish before stopping or restarting Qwen. Nothing was stopped.')
 
 
@@ -148,10 +160,11 @@ def stop_server(data, runtime):
 
 
 def serve(args):
-    """The background owner controls GPU children, but never owns a browser."""
+    """The owner stops GPU children when a connected terminal closes."""
     data, runtime = args.data_dir.resolve(), args.runtime_file.resolve()
     instance = Instance('Local\\Qwen-' + identity_for(data))
     job = None
+    terminals = None
     try:
         if not instance.acquire():
             return
@@ -164,13 +177,22 @@ def serve(args):
         log_dir.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ, QWEN_DATA_DIR=str(data), QWEN_SERVER_PORT=str(port), PYTHONUTF8='1')
         job = Job()
+        terminal_session = uuid.uuid4().hex
+        terminals = TerminalLifetime(data, terminal_session)
         command = [sys.executable, '-u', '-m', 'uvicorn', 'backend.server:app', '--host', '127.0.0.1',
                    '--port', str(port), '--loop', 'backend.windows_loop:new_event_loop']
         with (log_dir/'server.out.log').open('ab') as output, (log_dir/'server.err.log').open('ab') as error:
             server = job.spawn(command, cwd=APP, env=env, stdout=output, stderr=error)
         write_state(runtime, {'port':port, 'pid':server.pid, 'owner_pid':os.getpid(), 'url':url,
-                              'app_dir':str(APP), 'data_dir':str(data), 'managed':True, 'independent':True})
+                              'app_dir':str(APP), 'data_dir':str(data), 'managed':True, 'independent':True,
+                              'terminal_session':terminal_session, 'terminal_controls_shutdown':True})
         while True:
+            closed = terminals.closed_channel()
+            if closed:
+                # Explicit window closure stops active work too. The idle guard
+                # still protects programmatic Stop/Restart used during updates.
+                print(f'Qwen {closed} terminal closed. Stopping Qwen and its workers.', flush=True)
+                break
             if instance.stopped():
                 try:
                     require_idle(url)
@@ -186,6 +208,8 @@ def serve(args):
             job.close()
             if read_state(runtime).get('owner_pid') == os.getpid():
                 runtime.unlink(missing_ok=True)
+        if terminals:
+            terminals.close()
         instance.close()
 
 
@@ -193,7 +217,10 @@ def ensure_server(args):
     data, runtime = args.data_dir.resolve(), args.runtime_file.resolve()
     saved = read_state(runtime)
     if saved.get('url') and matching_server(saved['url'], data):
-        return saved
+        if saved.get('terminal_controls_shutdown') or args.no_console:
+            return saved
+        # Upgrade an old independent owner only when its jobs/downloads are idle.
+        stop_server(data, runtime)
     log_dir = data / 'logs'
     log_dir.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, '-u', str(APP/'scripts/desktop.py'), '--serve', '--data-dir', str(data),
@@ -229,17 +256,24 @@ def open_browser(args, url):
                      stderr=subprocess.DEVNULL, close_fds=True)
 
 
-def open_console(url, data):
-    """Open independent, named Terminal tabs. Reopening does not duplicate them."""
+def open_console(state, data):
+    """Open session-bound tabs. Closing either tab stops this Qwen owner."""
+    url = state['url']
+    session = state.get('terminal_session')
+    if not session or not state.get('owner_pid'):
+        raise RuntimeError('This Qwen server needs a restart to connect terminal shutdown.')
+    viewer_args = ['--url', url, '--data-dir', str(data),
+                   '--owner-session', session, '--owner-pid', str(state['owner_pid'])]
     terminal = shutil.which('wt.exe')
     if not terminal:
         print('Windows Terminal is unavailable. Activity appears in this terminal.', flush=True)
-        return watch(url, data)
+        from watch_logs import main as watch_main
+        return watch_main(viewer_args)
     command = [terminal, '-w', 'Qwen-' + identity_for(data)]
     missing = []
     for channel, title, color in (('activity', 'Qwen - Activity', '#7866DB'),
                                   ('server', 'Qwen - Server', '#399E91')):
-        instance = Instance(viewer_name(data, channel))
+        instance = Instance(viewer_name(data, channel, session))
         try:
             if instance.acquire():
                 missing.append(channel)
@@ -247,8 +281,7 @@ def open_console(url, data):
                     command.append(';')
                 command.extend(['new-tab', '--title', title, '--suppressApplicationTitle',
                                 '--tabColor', color, '-d', str(APP), sys.executable, '-u',
-                                str(APP/'scripts/watch_logs.py'), '--url', url,
-                                '--data-dir', str(data), '--channel', channel])
+                                str(APP/'scripts/watch_logs.py'), *viewer_args, '--channel', channel])
         finally:
             instance.close()
     if len(command) > 3:
@@ -260,7 +293,7 @@ def open_console(url, data):
     deadline = time.monotonic() + 8
     while missing and time.monotonic() < deadline:
         for channel in list(missing):
-            instance = Instance(viewer_name(data, channel))
+            instance = Instance(viewer_name(data, channel, session))
             try:
                 if not instance.acquire():
                     missing.remove(channel)
@@ -269,7 +302,7 @@ def open_console(url, data):
         if missing:
             time.sleep(.1)
     if missing:
-        raise RuntimeError('A log tab could not start. See the error in Windows Terminal. The server stays running.')
+        raise RuntimeError('A Qwen terminal tab could not start. See the error in Windows Terminal.')
 
 
 def run(args):
@@ -277,7 +310,9 @@ def run(args):
         return serve(args)
     if args.logs_only:
         saved = read_state(args.runtime_file.resolve())
-        return open_console(saved.get('url', f'http://127.0.0.1:{args.port}'), args.data_dir.resolve())
+        if not saved.get('url') or not matching_server(saved['url'], args.data_dir.resolve()):
+            raise RuntimeError('Qwen is not running. Open Start Qwen.')
+        return open_console(saved, args.data_dir.resolve())
     if args.restart or args.stop:
         stop_server(args.data_dir.resolve(), args.runtime_file.resolve())
     if args.stop:
@@ -286,9 +321,11 @@ def run(args):
     state = ensure_server(args)
     if not args.no_browser:
         open_browser(args, state['url'])
-    print(f'Qwen is ready: {state["url"]}\nThe server keeps running when you close the browser.', flush=True)
+    print(f'Qwen is ready: {state["url"]}\n'
+          'Closing a Qwen terminal tab stops Qwen and its active jobs.\n'
+          'Closing the browser leaves Qwen running. Models release after 10 minutes without jobs.', flush=True)
     if not args.no_console:
-        open_console(state['url'], args.data_dir.resolve())
+        open_console(state, args.data_dir.resolve())
 
 
 def main():
@@ -298,7 +335,7 @@ def main():
     parser.add_argument('--port', type=int, default=47821)
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--no-console', action='store_true', help='Do not open the activity and server log tabs')
-    parser.add_argument('--logs-only', action='store_true', help='Open the log tabs without starting or stopping the server')
+    parser.add_argument('--logs-only', action='store_true', help='Open terminal tabs for the running server; closing a tab stops Qwen')
     parser.add_argument('--serve', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--desktop-window', action='store_true')
     parser.add_argument('--restart', action='store_true')

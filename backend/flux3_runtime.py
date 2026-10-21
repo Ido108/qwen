@@ -14,13 +14,33 @@ PACKAGES = ['comfy-kitchen==0.2.38', 'comfy-aimdo==0.5.6']
 ROOT = Path(os.environ.get('QWEN_RUNTIME_DIR') or DATA_DIR) / 'flux3'
 COMFY = ROOT / ('ComfyUI-' + COMMIT)
 LIB = ROOT / 'packages'
+# Upstream fixes after the pinned commit, applied to the extracted files (idempotent).
+# Comfy-Org/ComfyUI#17239: a LoRA bias (diff_b, norm bias) on a sliced (fused qkv) target
+# crashed with a TypeError because the target is a (key, slice) tuple, not a key string.
+PATCHES = [('comfy/lora.py', 'def load_lora(lora, to_load, log_missing=True):',
+            'def bias_key(to):  # a weight sliced along dim 0 slices its bias the same way\n'
+            '    return (bias_key(to[0]), to[1]) if isinstance(to, tuple) else to[:-len(".weight")] + ".bias"\n\n\n'
+            'def load_lora(lora, to_load, log_missing=True):'),
+           ('comfy/lora.py', 'patch_dict["{}.bias".format(to_load[x][:-len(".weight")])] = ("diff", (b_norm,))',
+            'patch_dict[bias_key(to_load[x])] = ("diff", (b_norm,))'),
+           ('comfy/lora.py', 'patch_dict["{}.bias".format(to_load[x][:-len(".weight")])] = ("diff", (diff_bias,))',
+            'patch_dict[bias_key(to_load[x])] = ("diff", (diff_bias,))')]
+
+
+def patch(root=COMFY):
+    for name,old,new in PATCHES:
+        path=root/name
+        with path.open(encoding='utf-8',newline='') as file:text=file.read()
+        if new in text:continue
+        if text.count(old)!=1:raise RuntimeError('FLUX.3 tools do not match the expected version: '+name)
+        with path.open('w',encoding='utf-8',newline='') as file:file.write(text.replace(old,new))
 
 
 def ensure(progress=lambda **_: None):
     stamp=ROOT/'ready.json'
     expected={'comfy':COMMIT,'packages':PACKAGES}
     try:
-        if json.loads(stamp.read_text())==expected and (COMFY/'comfy/sd.py').is_file():return
+        if json.loads(stamp.read_text())==expected and (COMFY/'comfy/sd.py').is_file():return patch()
     except (OSError,ValueError):pass
     ROOT.mkdir(parents=True,exist_ok=True)
     if not (COMFY/'comfy/sd.py').is_file():
@@ -32,6 +52,7 @@ def ensure(progress=lambda **_: None):
             for name in source.namelist():
                 if not (ROOT/name).resolve().is_relative_to(ROOT.resolve()):raise ValueError('Invalid runtime archive path.')
             source.extractall(ROOT)
+    patch()
     progress(stage='installing_tools',message='Installing FLUX.3 image tools…')
     uv=shutil.which('uv')
     if not uv:

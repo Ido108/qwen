@@ -30,7 +30,7 @@ class ModelTests(unittest.TestCase):
             elif item['kind']=='image' and models.own_architecture(item):
                 continue  # tests/test_krea.py and tests/test_zimage.py check the official Krea 2 and Z-Image settings
             elif item['kind']=='image':
-                self.assertEqual(item['generation_defaults']['steps'],25,item['id'])
+                self.assertEqual(item['generation_defaults']['steps'],40,item['id'])  # Qwen-Image-2.1 model card
                 self.assertIn('workflow_templates',item['generation_defaults']['source'])
 
     def test_video_defaults_match_the_documented_model_families(self):
@@ -63,7 +63,10 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(models.required('gguf-q8_0'),['gguf-q8_0','encoder-int8','vae-texture-fix'])  # VAE auto
         self.assertEqual(models.required('gguf-q8_0',vae='vae'),['gguf-q8_0','encoder-int8','vae'])
         self.assertEqual(models.required('gguf-q4_k_m'),['gguf-q4_k_m','encoder-int8','vae-texture-fix'])
-        self.assertEqual(models.required('official-bf16'),['official-bf16','encoder-bf16','vae-texture-fix'])
+        # Every Qwen-Image-2.1 model uses the INT8 encoder by default, as the official ComfyUI workflows do; BF16 only by choice.
+        for model_id in ('official-bf16','turbo-bf16','int8-convrot','turbo-int8-convrot'):
+            self.assertEqual(models.required(model_id),[model_id,'encoder-int8','vae-texture-fix'])
+        self.assertEqual(models.required('official-bf16','encoder-bf16')[1],'encoder-bf16')
         self.assertEqual(models.required('gguf-q4_k_m','encoder-bf16')[1],'encoder-bf16')
         with self.assertRaises(ValueError): models.required('gguf-q8_0','unknown')
         with self.assertRaises(ValueError): models.required('vae')

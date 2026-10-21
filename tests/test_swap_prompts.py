@@ -25,7 +25,7 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(len(restored['versions']),len(first['versions'])+2)
         self.assertTrue(any(v['text']==text for v in restored['versions']))
         self.assertEqual(restored['versions'][0]['restored_from'],first['current'])
-        self.assertEqual(swap_prompts.get(models.image_tool('body-swap'))['current'],'style-v3')
+        self.assertEqual(swap_prompts.get(models.image_tool('body-swap'))['current'],'scene-v4')
 
     def test_stale_screen_cannot_overwrite_a_new_version(self):
         first=swap_prompts.get(self.tool)
@@ -50,15 +50,19 @@ class PromptTests(unittest.TestCase):
         for tool_id in ('head-swap','head-swap-expression','body-swap'):
             tool=models.image_tool(tool_id)
             state=swap_prompts.get(tool)
-            self.assertEqual(state['current'],'style-v3')
+            self.assertEqual(state['current'],'scene-v4')
             self.assertEqual(state['text'],swap_prompts.validate(tool,state['text']))
-            self.assertIn('Render these features in the exact visual style of <style_source>',state['text'])
-            self.assertLess(len(state['text'].split()),100)
+            self.assertIn('exact visual style of <style_source>',state['text'])
+            self.assertIn('contrast',state['text'])
+            self.assertIn('exact head angle',state['text'])
+            self.assertIn('blends into the image',state['text'])
+            self.assertIn('occlusion',state['text'])
+            self.assertTrue(any(v['id']=='style-v3' for v in state['versions']))
             self.assertNotRegex(state['text'].lower(),r"\b(?:not|no|without|avoid|don't|photorealistic|cartoon|anime|illustration)\b")
             old=next(v for v in state['versions'] if v['id']=='scene-v2')
             self.assertEqual(old['text'],swap_prompts._scene_prompt_v2(tool))
         custom='head_swap: Use <image1> for the scene and <image2> for identity. Keep the image grain.'
-        saved=swap_prompts.save(self.tool,custom,'style-v3')
+        saved=swap_prompts.save(self.tool,custom,'scene-v4')
         self.assertEqual(swap_prompts.get(self.tool)['text'],custom)
         restored=swap_prompts.save(self.tool,'',saved['current'],'scene-v2')
         self.assertEqual(restored['text'],swap_prompts._scene_prompt_v2(self.tool))

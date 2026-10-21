@@ -264,7 +264,7 @@ class AppTests(unittest.TestCase):
             saved=json.loads((Path(folder)/response.json()['id']/'request.json').read_text())
             self.assertEqual((saved['enhance'],saved['lora_strength'],saved['reference_resolution'],saved['vae_id']),(False,0.5,0,'vae-texture-fix'))
         from backend.models import required_image
-        self.assertEqual(required_image({'model_id':'turbo-bf16','tool_id':'restore'}),['turbo-bf16','encoder-bf16','vae-texture-fix','lora-restore'])
+        self.assertEqual(required_image({'model_id':'turbo-bf16','tool_id':'restore'}),['turbo-bf16','encoder-int8','vae-texture-fix','lora-restore'])
         self.assertEqual(post_status:=self.client.post('/api/generate',json={'prompt':'x','lora_strength':3},headers=self.headers).status_code,422)
 
     def test_swap_queue_stores_server_prompt_and_face_choices(self):

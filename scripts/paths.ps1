@@ -39,6 +39,8 @@ foreach ($location in @($dataRoot,$runtimeRoot)) {
 }
 $env:QWEN_DATA_DIR = $dataRoot
 $env:QWEN_RUNTIME_DIR = $runtimeRoot
+# Optional shared ComfyUI model folder (models_library_dir, for example D:\models): read first, and used for new downloads.
+if (-not $env:QWEN_MODELS_LIBRARY -and $localSettings.models_library_dir) { $env:QWEN_MODELS_LIBRARY = [IO.Path]::GetFullPath($localSettings.models_library_dir) }
 $env:PYTHONUTF8 = '1'
 $env:UV_CACHE_DIR = Join-Path $dataRoot 'uv-cache'
 $pythonInstallRoot = Join-Path $runtimeRoot 'python'

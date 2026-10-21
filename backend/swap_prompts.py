@@ -33,6 +33,26 @@ class PromptConflict(ValueError):
 def default_prompt(tool: dict) -> str:
     body = tool['id'] == 'body-swap'
     part = 'person' if body else 'head'
+    features = ('identity, facial features, hair, clothing, body shape and proportions' if body
+                else 'identity, facial features, hair, eye color and nose structure')
+    preserved = 'background and text' if body else 'body, clothing, background and text'
+    return (f'{"body_swap" if body else "head_swap"}: Start with <image1> as the base image. '
+            f'Replace only the selected {part} with the {features} from <image2>. '
+            f'Preserve the exact framing, composition, camera perspective, {preserved} of <image1>. '
+            'Keep the body pose from <image1>. Keep the exact head angle, head rotation, gaze, '
+            'expression and micro-expressions from <pose_source>. '
+            'Integrate the replacement with the same scale, placement, depth and occlusion as the original person. '
+            'Adapt the recognizable features from <image2> to the exact visual style of <style_source>, '
+            'matching its shapes, proportions, edges, coloring, lighting, contrast, texture and level of detail. '
+            'Match exactly how the original person blends into the image, including the transitions '
+            'at the face, hairline, ears, neck and clothing. '
+            'Use <image2> for the replacement identity and <image1> for the scene and composition.')
+
+
+def _style_prompt_v3(tool: dict) -> str:
+    """Retain the shorter prompt in history; style modes never replace the base."""
+    body = tool['id'] == 'body-swap'
+    part = 'person' if body else 'head'
     features = 'identity, clothing, body shape and proportions' if body else 'identity, facial features and hair'
     preserved = 'background and text' if body else 'body, clothing, background and text'
     return (f'{"body_swap" if body else "head_swap"}: Use <image1> as the base. '
@@ -73,8 +93,9 @@ def validate(tool: dict, text: str) -> str:
 
 def _initial(tool):
     validate(tool, tool['prompt'])
-    return {'current': 'style-v3', 'versions': [
-        {'id': 'style-v3', 'text': default_prompt(tool), 'created_at': None, 'label': 'Match scene style'},
+    return {'current': 'scene-v4', 'versions': [
+        {'id': 'scene-v4', 'text': default_prompt(tool), 'created_at': None, 'label': 'Scene and identity'},
+        {'id': 'style-v3', 'text': _style_prompt_v3(tool), 'created_at': None, 'label': 'Match scene style'},
         {'id': 'scene-v2', 'text': _scene_prompt_v2(tool), 'created_at': None, 'label': 'Scene preservation'},
         {'id': 'author-v1', 'text': tool['prompt'], 'created_at': None, 'label': 'Original prompt'}]}
 

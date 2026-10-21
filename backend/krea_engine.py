@@ -61,7 +61,8 @@ def generate(request, prompt, images, width, height, progress):
     args.disable_async_offload = True
     args.disable_pinned_memory = True
     args.disable_dynamic_vram = True
-    from .gpu_memory import configure_video_memory
+    from .gpu_memory import configure_attention, configure_video_memory
+    attention = configure_attention(args)
     configure_video_memory(torch, args, progress)
     import comfy_aimdo.control
     if not comfy_aimdo.control.init():
@@ -93,11 +94,20 @@ def generate(request, prompt, images, width, height, progress):
     encoder, vae_entry = entry(encoder_id), entry(vae_id)
     cache_key = (selected['id'], encoder_id, vae_id)
     if _components and _components['key'] != cache_key:
-        raise RuntimeError('Start a new image worker when changing model or encoder.')
+        if _components['key'][1:] != cache_key[1:]:
+            raise RuntimeError('Start a new image worker when changing model or encoder.')
+        # Another checkpoint with the same encoder and VAE: keep them and the saved prompt data
+        # (they do not depend on the image model) and replace only the image model.
+        memory.unload_model_and_clones(_components.pop('model'))
+        _components.pop('loras', None)
+        _components['key'] = cache_key
+        gc.collect()
+        memory.soft_empty_cache()
     reused = bool(_components)
+    model_reused = 'model' in _components
     started = time.perf_counter()
     progress(stage='loading_model', message='Using loaded image models.' if reused else 'Loading text encoder and VAE…',
-             model_reused=reused, selected_model=selected['title'], text_encoder_id=encoder_id, vae_id=vae_id, engine='ComfyUI Krea 2')
+             model_reused=reused, selected_model=selected['title'], text_encoder_id=encoder_id, vae_id=vae_id, engine='ComfyUI Krea 2', attention=attention)
     if reused:
         vae, clip = _components['vae'], _components['clip']
     else:
@@ -150,8 +160,8 @@ def generate(request, prompt, images, width, height, progress):
     progress(encoding_seconds=round(time.perf_counter() - started, 3))
 
     started = time.perf_counter()
-    progress(stage='loading_model', message='Using loaded image model.' if reused else 'Loading image model…')
-    if reused:
+    progress(stage='loading_model', message='Using loaded image model.' if model_reused else 'Loading image model…', diffusion_model_reused=model_reused)
+    if model_reused:
         model = _components['model']
     elif selected['format'] == 'GGUF':
         module_dir = APP_DIR / 'vendor' / 'ComfyUI-GGUF'
@@ -184,7 +194,7 @@ def generate(request, prompt, images, width, height, progress):
             raise RuntimeError(f"Could not load {selected['title']}.")
     if not isinstance(model.model, comfy.model_base.Krea2):
         raise RuntimeError(f"{selected['title']} is not a Krea 2 model.")
-    if not reused:
+    if not model_reused:
         del weights
         retain_cpu_weights(model)
         _components.update(key=cache_key, clip=clip, vae=vae, model=model)
@@ -205,7 +215,8 @@ def generate(request, prompt, images, width, height, progress):
         for lora_id, strength in stack:
             lora = entry(lora_id)
             if lora_id not in loras:
-                loras[lora_id] = comfy.utils.load_torch_file(str(local_path(lora, lora['files'][0])), safe_load=True)
+                from .lora_loading import read_lora_weights
+                loras[lora_id] = read_lora_weights(local_path(lora, lora['files'][0]))
             from .lora_loading import load_model_lora
             model, check = load_model_lora(model, loras[lora_id], strength, lora['title'], runtime=True)
             lora_checks.append({'id': lora_id, 'title': lora['title'], **check})
@@ -235,7 +246,7 @@ def generate(request, prompt, images, width, height, progress):
 
     def callback(step, x0, x, total):
         progress(stage='generating', message='Generating image…', step=step + 1, total_steps=total)
-    progress(stage='generating', message='Generating image…', step=0, sampling=f'{sampler}-{scheduler}', cfg=cfg, shift_mu=round(mu, 4))
+    progress(stage='generating', message='Generating image…', step=0, sampling=f'{sampler}-{scheduler}', sampler=sampler, scheduler=scheduler, cfg=cfg, shift_mu=round(mu, 4))
     started = time.perf_counter()
     with torch.inference_mode():
         samples = comfy.sample.sample_custom(model, noise, cfg, comfy.samplers.sampler_object(sampler), sigmas,

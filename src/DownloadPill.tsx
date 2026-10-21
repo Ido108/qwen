@@ -27,7 +27,7 @@ export function DownloadPill({api,state}:{api:Api;state:ModelState|null}){
   const transfer=state?.transfer;
   const running:Running[]=[
     ...(transfer?.status==='running'?[{key:'models',name:transfer.title||state?.models.find(m=>m.id===transfer.model_id)?.title||'Model',stage:transfer.stage,completed_bytes:transfer.completed_bytes,total_bytes:transfer.total_bytes,cancel:'/api/models/download/cancel'}]:[]),
-    ...(state?.downloads||[]).filter(d=>d.status==='running').map(d=>({key:d.requested_id,name:d.title||'Civitai model',stage:d.stage,completed_bytes:d.completed_bytes,total_bytes:d.total_bytes,cancel:`/api/civitai/install/${d.requested_id.split(':')[1]}/cancel`}))];
+    ...(state?.downloads||[]).filter(d=>d.status==='running').map(d=>({key:d.requested_id,name:d.title||'Civitai model',stage:d.stage,completed_bytes:d.completed_bytes,total_bytes:d.total_bytes,cancel:`/api/civitai/install/${d.version_id??d.requested_id.split(':')[1]}/cancel${d.file_id?`?file_id=${d.file_id}`:''}`}))];
   if(!running.length)return null;
   return <details className="download-pills"><summary><Download size={14}/>{running.length} {running.length===1?'download':'downloads'} in progress</summary>{running.map(item=><PillRow key={item.key} api={api} item={item}/>)}</details>;
 }

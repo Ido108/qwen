@@ -24,44 +24,69 @@ PHASE={'encoding':('encoding','Encoding source frames'),
 def run(request, job, directory, update):
     import av
     selected=entry(request['model_id'])
-    from .upscale_settings import output_dimensions, seed_memory_options
+    from .upscale_settings import output_dimensions, seed_memory_options, seed_vae_options
     source=resolve_video(request['source_video'])
     with av.open(str(source)) as media:
         stream=media.streams.video[0]
         width,height=output_dimensions(stream.width,stream.height,request)
-    update(width=width,height=height,actual_steps=1,model_id=selected['id'],model_format=selected['format'])
+        source_size=dict(source_width=stream.width,source_height=stream.height)
+    update(width=width,height=height,**source_size,actual_steps=1,model_id=selected['id'],model_format=selected['format'])
     if selected['family'] in ('flashvsr','swiftvr'):
         from .stream_upscale import run as run_streaming
         run_streaming(request,selected,source,directory,update,(width,height))
         return finish_output(request,job,directory,update)
     model_name=Path(selected['files'][0]['path']).name
     model_dir=local_path(selected,selected['files'][0]).parent
+    # SeedVR2 reads the DiT and its VAE from one folder; the D:\models library and the data folder can each hold one of them.
+    vae=entry('seedvr2-vae');vae_path=local_path(vae,vae['files'][0])
+    if vae_path.parent!=model_dir and not (model_dir/vae_path.name).is_file():
+        import shutil
+        shutil.copy2(vae_path,model_dir/(vae_path.name+'.part'));(model_dir/(vae_path.name+'.part')).replace(model_dir/vae_path.name)
     cli=APP_DIR/'vendor'/'SeedVR2'/'inference_cli.py'
     if not cli.is_file():
         raise RuntimeError('The SeedVR2 inference package is missing. Run Start Qwen.bat again.')
     raw=directory/'upscaled_raw.mp4'
+    short=min(width,height)
     cmd=[sys.executable,'-u','-m','backend.seedvr2_cli',str(source),
          '--output',str(raw),'--output_format','mp4',
          '--model_dir',str(model_dir),'--dit_model',model_name,
-         '--resolution',str(min(width,height)),
+         '--resolution',str(short),
          '--batch_size',str(request['batch_size']),
          '--chunk_size',str(request['chunk_size']),
          '--temporal_overlap',str(request['temporal_overlap']),
          '--seed',str(request['seed']),'--uniform_batch_size',
          '--color_correction',request.get('color_correction','lab')]
-    if min(width,height)>=1080:
-        cmd.extend(['--vae_encode_tiled','--vae_decode_tiled'])
     from .gpu_memory import dedicated_memory_snapshot
     gpu=dedicated_memory_snapshot()
-    cmd.extend(seed_memory_options(selected,{**request,'resolution':min(width,height)},gpu.get('free_gb')))
-    if gpu.get('available'):update(dedicated_free_gb=gpu['free_gb'],gpu_total_gb=gpu['total_gb'])
+    free=gpu.get('free_gb')
+    memory=seed_memory_options(selected,{**request,'resolution':short},free)
+    fast=seed_vae_options(short,free)+memory
+    # No --compile_dit: on Windows its first compile held batch 1 for over 6 minutes on one CPU core with the
+    # GPU idle (2026-10-21, 3B FP16, 1080p), against 63 s for the whole uncompiled DiT stage.
+    safe=seed_vae_options(short,free,conservative=True)+seed_memory_options(selected,{**request,'resolution':short,'memory_mode':'low_memory'},free)
+    if gpu.get('available'):update(dedicated_free_gb=free,gpu_total_gb=gpu['total_gb'])
     environment=os.environ.copy()
     environment['HF_HUB_OFFLINE']='1'
     environment['PYTHONUTF8']='1'
     environment['QWEN_UPSCALE_WIDTH']=str(width)
     environment['QWEN_UPSCALE_HEIGHT']=str(height)
     update(stage='loading_model',message='Loading SeedVR2 upscaling model…',
-           model_id=selected['id'],model_format=selected['format'])
+           model_id=selected['id'],model_format=selected['format'],upscale_options=' '.join(fast))
+    code=run_seed(cmd+fast,environment,update)
+    if code and fast!=safe and request.get('memory_mode','auto')=='auto':
+        # Larger batches, untiled VAE and compile are estimates; one retry uses the memory-saving path.
+        raw.unlink(missing_ok=True)
+        update(stage='loading_model',message='Retrying with GPU memory saving…',upscale_options=' '.join(safe),upscale_retry=True)
+        code=run_seed(cmd+safe,environment,update)
+    if code:
+        raise RuntimeError(f'SeedVR2 stopped with code {code}. See the job log for details.')
+    if not raw.is_file() or raw.stat().st_size==0:
+        raise RuntimeError('SeedVR2 finished without an output video.')
+
+    finish_output(request,job,directory,update)
+
+
+def run_seed(cmd, environment, update):
     process=subprocess.Popen(cmd,cwd=APP_DIR,env=environment,
                              stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                              encoding='utf-8',errors='replace',bufsize=1,
@@ -83,15 +108,9 @@ def run(request, job, directory, update):
                 stage,label=PHASE[name]
                 update(stage=stage,message=f'{label} · {index} of {total}',
                        step=index,total_steps=total)
-        code=process.wait()
+        return process.wait()
     finally:
         process.stdout.close()
-    if code:
-        raise RuntimeError(f'SeedVR2 stopped with code {code}. See the job log for details.')
-    if not raw.is_file() or raw.stat().st_size==0:
-        raise RuntimeError('SeedVR2 finished without an output video.')
-
-    finish_output(request,job,directory,update)
 
 
 def finish_output(request, job, directory, update, *, keep_raw=False):

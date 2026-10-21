@@ -23,12 +23,23 @@ def seed_memory_options(selected, request, free_gb=None):
     # GGUF stays quantized; FP8 also keeps a working/dequantization buffer.
     weights_gb = selected['bytes'] / 1024**3
     short_side = request['resolution']
-    reserve = 6 + 4 * (short_side / 1080)**2 * request.get('batch_size', 5) / 5
-    pressure = free_gb is not None and weights_gb + reserve > free_gb
-    swap = mode == 'low_memory' or pressure or short_side >= 2160
+    # Estimate only: the worker retries with the conservative options if the GPU runs out of memory.
+    reserve = 6 + 3 * (short_side / 1080)**2 * request.get('batch_size', 5) / 5
+    swap = mode == 'low_memory' or (free_gb is not None and weights_gb + reserve > free_gb)
     if not swap:
         return []
     blocks = 36 if size == 7 else 32
     fraction = .65 if mode == 'low_memory' else max(.25, min(.8, (weights_gb + reserve - (free_gb or 20)) / max(weights_gb, 1)))
     return ['--dit_offload_device', 'cpu', '--blocks_to_swap', str(min(blocks-1, max(8, math.ceil(blocks * fraction)))),
             '--vae_offload_device', 'cpu']
+
+
+def seed_vae_options(short_side, free_gb=None, conservative=False):
+    """1080p and above: the decoder always uses its default tiles. Untiled, decoding 21 frames at 1080p filled 32 GB
+    and spilled 11 GB to shared memory: the GPU showed 100% for minutes without finishing a batch (2026-10-21).
+    The encoder runs untiled up to 1080p with 24 GB or more free (measured 4.5 s per 21-frame batch, no spill)."""
+    if short_side < 1080:
+        return []
+    large = not conservative and free_gb is not None and free_gb >= 24
+    # Decoder tiles at 1080p, 21 frames: 1024 px 90.6 s, peak 28.5 GB; 768 px 86.8 s, peak 27.0 GB; 1536 px spilled 3.6 GB.
+    return (['--vae_decode_tiled', '--vae_decode_tile_size', '768'] if large and short_side <= 1080 else ['--vae_encode_tiled', '--vae_decode_tiled'])

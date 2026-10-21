@@ -16,12 +16,10 @@ def attach(model, patches, strength, title='LoRA'):
     import comfy.patcher_extension as pe
     records = []
     for target, adapter in patches.items():
-        values = getattr(adapter, 'weights', ())
-        if getattr(adapter, 'name', '') != 'lora' or len(values) != 6:
+        branch = linear_branch(adapter)
+        if branch is None:
             return None
-        up, down, alpha, mid, dora, reshape = values
-        if up.ndim != 2 or down.ndim != 2 or any(x is not None for x in (mid, dora, reshape)):
-            return None
+        kind, first, second, factor = branch
         key = target if isinstance(target, str) else target[0]
         offset = None if isinstance(target, str) else target[1]
         if not key.endswith('.weight') or offset is not None and offset[0] != 0:
@@ -30,8 +28,10 @@ def attach(model, patches, strength, title='LoRA'):
         module = model.model.diffusion_model.get_submodule(path)
         if not hasattr(module, 'in_features'):
             return None
-        scale = strength * (float(alpha) / down.shape[0] if alpha is not None else 1.)
-        records.append((path, offset, up, down, scale, title))
+        rows = offset[2] if offset is not None else module.out_features
+        if kind == 'lokr' and (first.shape[0] * second.shape[0] != rows or first.shape[1] * second.shape[1] != module.in_features):
+            return None
+        records.append((path, offset, first, second, strength * factor, kind, title))
     previous = model.get_attachment(KEY)
     records = (previous.records if previous else []) + records
 
@@ -41,12 +41,15 @@ def attach(model, patches, strength, title='LoRA'):
             self.records = records
             self.calls = 0
             self.executed = set()
+            self.effect_samples = {}
             self.layers = torch.nn.ModuleList()
             self.targets = defaultdict(list)
-            for path, offset, up, down, scale, label in records:
+            for path, offset, first, second, scale, kind, label in records:
                 layer = torch.nn.Module()
-                layer.register_parameter('up', torch.nn.Parameter(up, requires_grad=False))
-                layer.register_parameter('down', torch.nn.Parameter(down, requires_grad=False))
+                layer.kind = kind
+                # LoRA: first=up, second=down. LoKr: first=w1, second=w2 of the Kronecker product.
+                layer.register_parameter('first', torch.nn.Parameter(first, requires_grad=False))
+                layer.register_parameter('second', torch.nn.Parameter(second, requires_grad=False))
                 self.targets[path].append((len(self.layers), offset, scale))
                 self.layers.append(layer)
 
@@ -63,9 +66,29 @@ def attach(model, patches, strength, title='LoRA'):
                     continue
                 self.executed.add(index)
                 layer = self.layers[index]
-                down = layer.down.to(device=x.device, dtype=x.dtype)
-                up = layer.up.to(device=x.device, dtype=x.dtype)
-                delta = torch.nn.functional.linear(torch.nn.functional.linear(x, down), up) * scale
+                first = layer.first.to(device=x.device, dtype=x.dtype)
+                second = layer.second.to(device=x.device, dtype=x.dtype)
+                delta = branch_delta(layer.kind, first, second, x) * scale
+                # One small sample per adapter/operation. Keep reductions on the
+                # device until reporting; never synchronize the GPU per layer.
+                title = self.records[index][-1]
+                group = 'mlp-out' if path.endswith('.img_mlp.out') else 'mlp-in' if '.img_mlp.' in path else 'attention' if '.attn.' in path else 'other'
+                sample_key = (title, group)
+                if sample_key not in self.effect_samples:
+                    original = result if offset is None else result[..., offset[1]:offset[1]+offset[2]]
+                    # Select before flattening: a fused output slice can be
+                    # noncontiguous and flattening it can copy the full video.
+                    def first_values(tensor):
+                        while tensor.ndim > 1:
+                            tensor = tensor[0]
+                        return tensor[:1024].detach()
+                    base_sample = first_values(original)
+                    branch_sample = first_values(delta).to(base_sample.dtype)
+                    applied = (base_sample + branch_sample).float() - base_sample.float()
+                    self.effect_samples[sample_key] = (path, torch.stack([
+                        base_sample.float().square().mean().sqrt(),
+                        branch_sample.float().square().mean().sqrt(),
+                        applied.square().mean().sqrt()]))
                 if offset is None:
                     result = result + delta.to(result.dtype)
                 else:
@@ -77,7 +100,7 @@ def attach(model, patches, strength, title='LoRA'):
         def run(self, executor, *args, **kwargs):
             self.calls += 1
             dm = executor.class_obj
-            hooks, fused_outputs, captured = [], {}, {}
+            hooks, fused_outputs, captured, forced = [], {}, {}, []
             try:
                 # One hook per target sums all LoRAs. A fused MLP's output
                 # projection can bypass module hooks, so capture its final
@@ -89,6 +112,11 @@ def attach(model, patches, strength, title='LoRA'):
                         fused_outputs[parent] = path
                         continue
                     module = dm.get_submodule(path)
+                    # comfy.ops.linear_input_act (MOSS ffn_down, FLUX.3) fuses the input activation into the
+                    # quantized matmul and skips module hooks; forced, it calls the module with the activated input.
+                    if not getattr(module, 'comfy_force_forward', False):
+                        module.comfy_force_forward = True
+                        forced.append(module)
                     hooks.append(module.register_forward_hook(
                         lambda mod, inp, out, path=path: self.add(path, inp[0], out)))
                 for parent, path in fused_outputs.items():
@@ -103,6 +131,8 @@ def attach(model, patches, strength, title='LoRA'):
             finally:
                 for hook in hooks:
                     hook.remove()
+                for module in forced:
+                    module.comfy_force_forward = False
 
     bank = Branches()
     bank_patcher = comfy.model_patcher.ModelPatcher(bank, model.load_device, model.offload_device)
@@ -117,6 +147,44 @@ def attach(model, patches, strength, title='LoRA'):
         comfy.model_management.unload_model_and_clones(bank_patcher)
     clone.add_callback_with_key(pe.CallbacksMP.ON_CLEANUP, KEY, cleanup)
     return clone
+
+
+def linear_branch(adapter):
+    """(kind, first, second, alpha factor) for a plain linear LoRA or LoKr, else None (merged by Comfy instead).
+    The factor follows Comfy: LoRA alpha/rank; LoKr alpha/dim only for factorized matrices, else 1."""
+    import torch
+    values = getattr(adapter, 'weights', ())
+    name = getattr(adapter, 'name', '')
+    if name == 'lora' and len(values) == 6:
+        up, down, alpha, mid, dora, reshape = values
+        if up.ndim != 2 or down.ndim != 2 or any(x is not None for x in (mid, dora, reshape)):
+            return None
+        return 'lora', up, down, float(alpha) / down.shape[0] if alpha is not None else 1.
+    if name == 'lokr' and len(values) >= 9:
+        w1, w2, alpha, w1_a, w1_b, w2_a, w2_b, t2, dora = values[:9]
+        if t2 is not None or dora is not None:
+            return None
+        dim = None
+        if w1 is None:
+            dim = w1_b.shape[0]
+            w1 = torch.mm(w1_a.float(), w1_b.float())
+        if w2 is None:
+            dim = w2_b.shape[0]
+            w2 = torch.mm(w2_a.float(), w2_b.float())
+        if w1.ndim != 2 or w2.ndim != 2:
+            return None
+        return 'lokr', w1, w2, float(alpha) / dim if alpha is not None and dim is not None else 1.
+    return None
+
+
+def branch_delta(kind, first, second, x):
+    """The adapter's output change for input x, without building the full weight difference.
+    kron(w1, w2) @ x equals w1 @ X @ w2.T with x reshaped to X (w1 columns by w2 columns)."""
+    import torch
+    if kind == 'lora':
+        return torch.nn.functional.linear(torch.nn.functional.linear(x, second), first)
+    grid = x.reshape(*x.shape[:-1], first.shape[1], second.shape[1])
+    return torch.einsum('ij,...jl,kl->...ik', first, grid, second).reshape(*x.shape[:-1], first.shape[0] * second.shape[0])
 
 
 def execution_report(model):
@@ -134,4 +202,8 @@ def execution_report(model):
     for report in reports.values():
         if report['expected'] != report['executed']:
             raise RuntimeError(f'The LoRA "{report["title"]}" did not run all its layers. Generation stopped.')
+        report['layer_effects'] = [
+            {'layer': path, 'base_rms': values[0], 'branch_rms': values[1], 'applied_rms': values[2]}
+            for (title, _), (path, sample) in bank.effect_samples.items()
+            if title == report['title'] for values in [sample.float().cpu().tolist()]]
     return list(reports.values())

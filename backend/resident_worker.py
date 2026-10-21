@@ -26,6 +26,15 @@ def stop_process(process, timeout=30):
         process.wait(timeout=30)
 
 
+def swaps_model_only(old, new):
+    """Krea 2, Z-Image and MOSS Image workers keep the same encoder and VAE and replace only the image model."""
+    from .models import entry, is_krea, is_zimage, is_moss
+    if not old or old == new or old[1:] != new[1:]:
+        return False
+    before, after = entry(old[0]), entry(new[0])
+    return any(test(before) and test(after) for test in (is_krea, is_zimage, is_moss))
+
+
 class ImageWorker:
     def __init__(self):
         self.process = None
@@ -90,10 +99,11 @@ class ImageWorker:
     def start(self, directory, request):
         # The worker keeps model, encoder and VAE loaded; tool LoRAs are applied per job.
         key = tuple(required_image(request)[:3])
-        if self.process is not None and (self.key != key or self.process.poll() is not None):
+        if self.process is not None and ((self.key != key and not swaps_model_only(self.key, key)) or self.process.poll() is not None):
             self.close()
         if self.process is None:
             self._spawn(directory / 'worker.log', key)
+        self.key = key
         self.warming = False
         (directory / 'worker.done.json').unlink(missing_ok=True)
         self.process.stdin.write(json.dumps({'directory': str(directory)}) + '\n')

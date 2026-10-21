@@ -53,6 +53,19 @@ def _read_weights(model_id):
     return weights, metadata
 
 
+def _path(model_id):
+    item = entry(model_id)
+    return local_path(item, item['files'][0])
+
+
+def _prefetch(selected, request, *extra):
+    """Large sequential reads into the file cache, in the order the job needs the files."""
+    from .file_prefetch import prefetch
+    loras = [choice['id'] for choice in _with_distill_lora(selected, request.get('loras')) or []]
+    prefetch(_path('ltx25-gemma-int8'), _path('ltx25-video-vae'), _path('ltx25-audio-vae'), _path(selected['id']),
+             *(_path(model_id) for model_id in [*extra, *loras]))
+
+
 def _release():
     import comfy.model_management as memory
     gc.collect()
@@ -128,14 +141,28 @@ def _with_distill_lora(selected, loras):
 
 
 def _apply_user_loras(model, loras, progress):
-    """The user's LoRAs (for example from Civitai) go on top of the built-in ones."""
-    import comfy.sd
+    """The user's LoRAs (for example from Civitai) go on top of the built-in ones, with the same
+    key, size and attachment checks as image LoRAs; a LoRA that attaches nothing stops the job."""
+    from .lora_loading import read_lora_weights, load_model_lora
+    checks = []
     for choice in loras or []:
-        lora, _ = _read_weights(choice['id'])
-        model, _ = comfy.sd.load_lora_for_models(model, None, lora, float(choice.get('strength', 1.0)), 0)
-        del lora
-        progress(user_lora=choice['id'], user_lora_strength=float(choice.get('strength', 1.0)))
-    return model
+        item = entry(choice['id'])
+        strength = float(choice.get('strength', 1.0))
+        model, check = load_model_lora(model, read_lora_weights(local_path(item, item['files'][0])), strength, item['title'])
+        checks.append({'id': choice['id'], 'title': item['title'], **check})
+        progress(user_lora=choice['id'], user_lora_strength=strength)
+    progress(lora_checks=checks)
+    return _kitchen_attention(model, progress)
+
+
+def _kitchen_attention(model, progress):
+    """Comfy Kitchen INT8 attention, as the H3 engine uses; PyTorch attention when the kernel is missing."""
+    import comfy.ldm.modules.attention as attention
+    if not attention.COMFY_KITCHEN_INT8_ATTENTION_IS_AVAILABLE:
+        return model
+    from comfy_extras.nodes_model_advanced import ModelAttentionBackend
+    progress(attention='comfy kitchen int8')
+    return ModelAttentionBackend.execute(model, 'comfy kitchen attention')[0]
 
 
 def _drop_cleared_guides(conditioning):
@@ -158,7 +185,8 @@ def _decode(vae, audio_vae, latent, audio_latent, frames, want_audio, progress):
     from nodes import VAEDecodeTiled
     from comfy_extras.nodes_lt_audio import LTXVAudioVAEDecode
     progress(stage='decoding', message='Decoding video frames...')
-    pixels = VAEDecodeTiled().decode(vae, latent, 512, 64, 64, 16)[0]
+    # 32 GB holds larger tiles: 768 px covers a 1280x704 frame in 2 x 1 tiles instead of 3 x 2.
+    pixels = VAEDecodeTiled().decode(vae, latent, 768, 96, 64, 16)[0]
     pixels = pixels[:frames].float().cpu()
     del vae, latent
     _release()
@@ -182,6 +210,7 @@ def generate(request, images, voices, progress, preview_directory=None):
     from .gpu_memory import GIB
 
     total_steps = 11 if request['refine'] else 8
+    _prefetch(entry(request['model_id']), request, 'ltx25-msr-v2', *(['ltx25-spatial-upscaler'] if request['refine'] else []))
     progress(stage='loading_encoder', message='Loading the LTX text encoder...', total_steps=total_steps)
     positive, negative = _encode_text(request['prompt'], MSR_NEGATIVE, request['fps'], progress)
     progress(stage='loading_video_vae', message='Loading the video and audio encoders...')
@@ -207,7 +236,7 @@ def generate(request, images, voices, progress, preview_directory=None):
     model = _apply_user_loras(model, _with_distill_lora(selected, request.get('loras')), progress)
     progress(model_format=selected['format'], model_weight_gb=round(model.model_size()/GIB, 2),
              text_encoder_id='ltx25-gemma-int8', vae_id='ltx25-video-vae', audio_vae_id='ltx25-audio-vae',
-             lora_id='ltx25-msr-v2', actual_steps=total_steps, sampler='euler_ancestral', guidance=1.0)
+             lora_id='ltx25-msr-v2', actual_steps=total_steps, sampler='euler_ancestral', scheduler='ltx-distilled', guidance=1.0)
     _release()
     from .video_preview import LiveVideoPreview
     preview = LiveVideoPreview(preview_directory, model.model.latent_format, progress, request['frames']/request['fps'])
@@ -281,6 +310,7 @@ def generate_video(request, prompt, images, progress, preview_directory=None):
     keyframes = 'last_frame' in images
     two_pass = ltx_video_two_pass(SimpleNamespace(last_frame=keyframes))
     total_steps = len(SIGMAS) - 1 + (len(REFINE_SIGMAS) - 1 if two_pass else 0)
+    _prefetch(entry(request['model_id']), request, *(['ltx25-spatial-upscaler'] if two_pass else []))
     progress(stage='loading_encoder', message='Loading the LTX text encoder...', total_steps=total_steps,
              text_encoder_id='ltx25-gemma-int8', vae_id='ltx25-video-vae', audio_vae_id='ltx25-audio-vae',
              fps=fps, frames=frames, width=width, height=height)
@@ -328,7 +358,7 @@ def generate_video(request, prompt, images, progress, preview_directory=None):
     sampler = (comfy.samplers.ksampler(sampler_name, {'eta': 0.0, 's_noise': 1.0}) if keyframes
                else comfy.samplers.sampler_object(sampler_name))
     progress(model_format=selected['format'], model_weight_gb=round(model.model_size()/GIB, 2),
-             actual_steps=total_steps, sampler=sampler_name + (' (eta 0)' if keyframes else ''), guidance=1.0,
+             actual_steps=total_steps, sampler=sampler_name + (' (eta 0)' if keyframes else ''), scheduler='ltx-distilled', guidance=1.0,
              first_pass_width=pass_width, first_pass_height=pass_height, ltx_two_pass=two_pass, engine='ComfyUI')
     _release()
     from .video_preview import LiveVideoPreview

@@ -4,7 +4,7 @@ import {ImageLoadState,useResultImage} from './ProgressiveImage';
 
 /** Image viewer: pinch, wheel, double-tap, pan and explicit zoom controls.
  * At 100%, a one-finger horizontal swipe calls onSwipe; zoomed in, one finger pans. A pinch never swipes. */
-export function ZoomView({src,alt,className,onSwipe}:{src:string;alt:string;className?:string;onSwipe?:(step:1|-1)=>void}){
+export function ZoomView({src,alt,className,onSwipe,separateControls=false}:{src:string;alt:string;className?:string;onSwipe?:(step:1|-1)=>void;separateControls?:boolean}){
   const box=useRef<HTMLDivElement>(null);
   const img=useRef<HTMLImageElement>(null);
   const [view,setView]=useState({scale:1,x:0,y:0});
@@ -56,7 +56,14 @@ export function ZoomView({src,alt,className,onSwipe}:{src:string;alt:string;clas
     element.addEventListener('wheel',wheel,{passive:false});
     return()=>element.removeEventListener('wheel',wheel);
   },[]);
-  return <div ref={box} className={`zoom-view ${view.scale>1?'zoomed':''} ${className||''}`} tabIndex={0} aria-label="Image viewer"
+  const controls=<div className="zoom-controls" aria-label="Image zoom">
+    <button type="button" aria-label="Zoom out" disabled={view.scale<=1} {...control(()=>zoom(current.current.scale/1.5))}><Minus size={18}/></button>
+    <output aria-live="polite">{Math.round(view.scale*100)}%</output>
+    <button type="button" aria-label="Zoom in" disabled={view.scale>=8} {...control(()=>zoom(current.current.scale*1.5))}><Plus size={18}/></button>
+    <button type="button" aria-label="Fit image" {...control(()=>zoom(1))}><Maximize size={17}/><span>Fit</span></button>
+    {separateControls?<><ImageLoadState {...image} fullSize={view.scale>1}/>{failed?<p className="viewer-error" role="alert">The image could not load. Close and open it again.</p>:null}</>:null}
+  </div>;
+  const viewport=<div ref={box} className={`zoom-view ${view.scale>1?'zoomed':''} ${separateControls?'':className||''}`} tabIndex={0} aria-label="Image viewer"
     onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(['+','=','-','0'].includes(e.key)){e.preventDefault();zoom(e.key==='0'?1:current.current.scale*(e.key==='-'?1/1.5:1.5));}}}
     onPointerDown={e=>{
       if((e.target as Element).closest('button'))return;
@@ -95,13 +102,8 @@ export function ZoomView({src,alt,className,onSwipe}:{src:string;alt:string;clas
     onPointerCancel={e=>{setSwipe(0);pointers.current.delete(e.pointerId);startGesture();}}
     onDoubleClick={e=>{if(Date.now()-lastTouch.current>500&&!(e.target as Element).closest('button'))zoom(current.current.scale>1?1:2.5,e.clientX,e.clientY);}}>
     <img ref={img} key={image.url} src={image.url} alt={alt} draggable={false} decoding="async" data-quality={image.quality} onLoad={()=>setFailed(false)} onError={()=>setFailed(true)} style={{transform:`translate(${view.x+swipe}px,${view.y}px) scale(${view.scale})`}}/>
-    <ImageLoadState {...image} fullSize={view.scale>1}/>
-    {failed?<p className="viewer-error" role="alert">The image could not load. Close and open it again.</p>:null}
-    <div className="zoom-controls" aria-label="Image zoom">
-      <button type="button" aria-label="Zoom out" disabled={view.scale<=1} {...control(()=>zoom(current.current.scale/1.5))}><Minus size={18}/></button>
-      <output aria-live="polite">{Math.round(view.scale*100)}%</output>
-      <button type="button" aria-label="Zoom in" disabled={view.scale>=8} {...control(()=>zoom(current.current.scale*1.5))}><Plus size={18}/></button>
-      <button type="button" aria-label="Fit image" {...control(()=>zoom(1))}><Maximize size={17}/><span>Fit</span></button>
-    </div>
+    {separateControls?null:<><ImageLoadState {...image} fullSize={view.scale>1}/>{failed?<p className="viewer-error" role="alert">The image could not load. Close and open it again.</p>:null}</>}
+    {separateControls?null:controls}
   </div>;
+  return separateControls?<div className={`zoom-layout ${className||''}`}>{viewport}{controls}</div>:viewport;
 }

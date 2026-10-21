@@ -38,7 +38,11 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual((process['model']['arch'], selected_path, process['train']['timestep_type']), (arch, path, timestep), key)
             self.assertEqual(process['model'].get('assistant_lora_path', '').startswith(adapter) if adapter else 'assistant_lora_path' not in process['model'], True, key)
             self.assertEqual(training.ARCHS[key]['families'], families)
-            self.assertTrue(process['model']['quantize'] and process['model']['low_vram'])
+            # 32 GB GPU: Z-Image trains unquantized; only Krea 2 keeps CPU-first loading; captions are cached once except on FLUX.3.
+            self.assertEqual(process['model']['quantize'], arch!='zimage', key)
+            self.assertEqual(process['model']['low_vram'], arch=='krea2', key)
+            # FLUX.3's own runner reuses the prompt; cached embeddings measured twice as slow there.
+            self.assertEqual(process['train']['cache_text_embeddings'], arch!='flux3', key)
 
     def test_request_values_reach_the_job(self):
         config = training.build_config(REQUEST, Path('data'), Path('out'))

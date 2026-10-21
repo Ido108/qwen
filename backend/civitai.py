@@ -36,6 +36,8 @@ BASE_MODELS = {
     'ZImageBase': {'arch': 'z-image', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image', 'turbo': False},
     'Flux.3 Klein': {'arch':'flux3-klein','area':'image','lora_kind':'image-lora','model_kind':'image','turbo':True},
     'Flux.3 Klein-base': {'arch':'flux3-klein','area':'image','lora_kind':'image-lora','model_kind':'image','turbo':False},
+    # One tag for SFT, Base and Turbo merges; the version and file names tell them apart (moss_family).
+    'MOSS Image': {'arch':'moss-image','area':'image','lora_kind':'image-lora','model_kind':'image'},
     'MiniMax H3':{'arch': 'minimax-h3', 'area': 'video', 'lora_kind': 'video-lora', 'model_kind': 'video'},
     'LTXV 2.5': {'arch': 'ltx25', 'area': 'video', 'lora_kind': 'video-lora', 'model_kind': 'video'},
 }
@@ -50,6 +52,7 @@ KREA2_HIDDEN = 6144    # Krea 2 single-stream DiT (blocks.N.attn.wq / transforme
 KREA2_FAMILIES = ['krea-2', 'krea-2-turbo']
 ZIMAGE_HIDDEN = 3840   # Z-Image single-stream DiT (layers.N.attention, cap_embedder.1 3840 x 2560)
 ZIMAGE_FAMILIES = ['z-image', 'z-image-turbo']
+MOSS_FAMILIES = ['moss-image', 'moss-image-base', 'moss-image-turbo']
 LTX_AUDIO_HIDDEN = 2048  # LTX 2.5 audio stream (audio_attn1.to_q, audio_adaln_single)
 
 _lock = threading.RLock()
@@ -313,13 +316,18 @@ def warm_indexes() -> None:
             _listing(kind, 'Most Downloaded', area, True)
 
 
-def version_turbo(model: dict, version: dict, settings: dict | None = None) -> bool | None:
+def version_turbo(model: dict, version: dict, settings: dict | None = None, file: dict | None = None) -> bool | None:
     """Turbo or not for one version: the base model tag, then the version name, then the page settings
     (8 steps at CFG 1 is a Turbo model), then the model name. None when nothing tells."""
     base = BASE_MODELS.get(version.get('baseModel')) or {}
     if base.get('arch') == 'minimax-h3':
         from .civitai_settings import video_variant
-        return video_variant(model, version)
+        return video_variant(model, version, file)
+    if file:
+        from .civitai_files import image_file_type
+        named = image_file_type(model, version, file)
+        if named is not None:
+            return named
     if base.get('arch')=='flux3-klein':
         name=version.get('name','')
         if re.search(r'\bdistilled\b|\bsd\b',name,re.I):return True
@@ -427,7 +435,7 @@ def find_scheduler(text: str) -> str | None:
 
 
 # Words a page uses to name an architecture in a settings heading ("ZIT Usage", "For Krea 2:").
-ARCH_WORDS = {'flux3-klein': r'flux[ ._-]*3|klein', 'z-image': r'\bzit\b|\bzib\b|z[ _-]?image', 'krea-2': r'krea', 'qwen-image-2.1': r'qwen',
+ARCH_WORDS = {'moss-image': r'\bmoss\b', 'flux3-klein': r'flux[ ._-]*3|klein', 'z-image': r'\bzit\b|\bzib\b|z[ _-]?image', 'krea-2': r'krea', 'qwen-image-2.1': r'qwen',
               'ltx25': r'\bltx', 'minimax-h3': r'\bh3\b|minimax'}
 # Architectures the app does not run; a page paragraph about one of them is not about the model's own versions.
 OTHER_ARCH_WORDS = r'\bsdxl\b|\bpony\b|\bflux\b|\bklein\b|\bernie\b|\blongcat\b|illustrious|\bsd ?1\.5\b|hidream|chroma|\bwan\b|hunyuan'
@@ -586,8 +594,12 @@ def detect_turbo(version_name: str, settings: dict) -> bool | None:
         return False
     if re.search(r'turbo|lightning|distill|hyper|\b[48][ -]?steps?\b', version_name, re.I):
         return True
+    if settings.get('steps') and settings['steps'] >= 14:
+        # Many steps is a base model even at CFG 1 (Qwen 2.1 Standard runs CFG 1 without a negative prompt):
+        # REDQW21 v1 (20 steps, CFG 1) holds 4% of the official Turbo weight change, Turbo merges about 56%.
+        return False
     if settings.get('cfg') is not None and settings['cfg'] <= 1.5:
-        return True  # guidance off (CFG 1) is a distilled model; a base model needs CFG 2.5 or more
+        return True  # guidance off (CFG 1) with few steps is a distilled model
     if settings.get('steps'):
         return settings['steps'] <= 10
     return None
@@ -635,12 +647,12 @@ def ltx_variant(model_name: str, version_name: str, settings: dict, text: str, f
     return 'distilled' if distilled and not dev else 'dev' if dev and not distilled else None
 
 
-def ltx_problem(model: dict, version: dict, settings: dict, text: str) -> str | None:
+def ltx_problem(model: dict, version: dict, settings: dict, text: str, file: dict | None = None) -> str | None:
     if model.get('type') != 'Checkpoint' or version.get('baseModel') != 'LTXV 2.5':
         return None
-    variant = ltx_variant(model['name'], version['name'], settings, text)
+    variant = ltx_variant(model['name'], version['name'], settings, text, file)
     if variant is None:
-        if any(ltx_variant('', '', {}, '', file) for file in version.get('files', [])):
+        if file is None and any(ltx_variant('', '', {}, '', item) for item in version.get('files', [])):
             return None
         return 'This version does not identify a distilled or dev LTX 2.5 checkpoint. Choose a version that identifies its model type.'
     if variant == 'distilled' and settings.get('steps') not in (None, 8):
@@ -654,13 +666,21 @@ def recommended_vae(text: str) -> str | None:
     return None
 
 
+def moss_family(turbo, version_name: str, file_name: str = '') -> str:
+    """MOSS Image type: Turbo merges (8 steps, CFG 1), the undistilled Base, or the SFT model OpenMOSS recommends for images."""
+    if turbo:
+        return 'moss-image-turbo'
+    return 'moss-image-base' if re.search(r'(?<![a-z])base(?![a-z])', f'{version_name} {file_name}', re.I) else 'moss-image'
+
+
 def image_defaults(turbo: bool, settings: dict, url: str, arch: str = 'qwen-image-2.1') -> dict:
     from . import models
-    if arch in ('krea-2', 'z-image','flux3-klein'):
+    if arch in ('krea-2', 'z-image','flux3-klein','moss-image'):
         # The official settings (Krea 2 Turbo: 8 steps, CFG 1, mu 1.15; Raw: 52 steps, CFG 4.5, size-based mu.
         # Z-Image Turbo: 8 steps, CFG 1; Base: 30 steps, CFG 4; res_multistep, shift 3). Neither has a fixed
         # sigma list, so the page's steps, CFG, sampler and scheduler all apply.
-        template = {'krea-2': ('krea2-turbo-fp8', 'krea2-raw-fp8'), 'z-image': ('zimage-turbo-bf16', 'zimage-base-bf16'),'flux3-klein':('flux3-klein-int8','flux3-base-int8')}[arch]
+        template = {'krea-2': ('krea2-turbo-fp8', 'krea2-raw-fp8'), 'z-image': ('zimage-turbo-bf16', 'zimage-base-bf16'),'flux3-klein':('flux3-klein-int8','flux3-base-int8'),
+                    'moss-image':('moss-sft-turbo-int8','moss-sft-int8')}[arch]
         defaults = dict(models.entry(template[0] if turbo else template[1])['generation_defaults'], source=url)
         if settings:
             defaults.update({key: settings[key] for key in ('steps', 'cfg', 'sampler', 'scheduler') if key in settings})
@@ -726,12 +746,33 @@ def details(model_id: int) -> dict:
                 f['generation_defaults']=h3_defaults(model,version,models.entry('h3-ref-base-int8' if file_ref else 'h3-int8'),sampling['source'],f)
         if sampling and usable and (info or {}).get('arch')=='minimax-h3':
             sampling=sorted(usable,key=rank)[0]['generation_defaults']
+        for f in files:
+            raw = next(item for item in version.get('files', []) if item['id']==f['id'])
+            file_problem = ltx_problem(model, version, version_settings(model, version, raw),
+                                       version_text+'\n'+description, raw) if (info or {}).get('arch')=='ltx25' else problem
+            f.update(supported=bool(info) and _usable_file(model['type'], f) and not file_problem, problem=file_problem)
+            if not f['supported']:
+                f['problem'] = file_problem or 'This file is an attachment or uses an unsupported format.'
+            if info and info['area']=='image' and model['type']=='Checkpoint' and _usable_file(model['type'], f):
+                raw = next(item for item in version.get('files', []) if item['id']==f['id'])
+                advice = version_settings(model, version, raw)
+                file_turbo = version_turbo(model, version, advice, raw)
+                f.update(turbo_hint=bool(file_turbo), turbo_known=file_turbo is not None,
+                         author_settings=advice or None,
+                         family=moss_family(file_turbo, version['name'], f['name']) if info['arch']=='moss-image' else
+                                info['arch']+('-base' if info['arch']=='flux3-klein' and file_turbo is False else
+                                              '-turbo' if info['arch']!='flux3-klein' and file_turbo else ''),
+                         generation_defaults=image_defaults(bool(file_turbo),advice,
+                             f"{SITE}/models/{model['id']}?modelVersionId={version['id']}",info['arch']))
+        available = [f for f in usable if f['supported']]
+        if available:
+            problem = None
         versions.append({'id': version['id'], 'name': version['name'], 'base_model': version.get('baseModel', ''),
                          'area': info['area'] if info else None, 'problem': problem,
                          'ltx_variant': ltx_variant(model['name'], version['name'], settings, version_text + '\n' + description) if version.get('baseModel') == 'LTXV 2.5' and model['type'] == 'Checkpoint' else None,
-                         'supported': bool(info) and bool(usable) and not problem,
+                         'supported': bool(available),
                          'trained_words': trained_words(version, model),
-                         'description': version_text, 'files': files, 'default_file': (sorted(usable, key=rank)[0]['id'] if usable else None),
+                         'description': version_text, 'files': files, 'default_file': (sorted(available or usable, key=rank)[0]['id'] if usable else None),
                          'suggested_strength': lora_advice['strength'],
                          'turbo_hint': bool(turbo), 'turbo_known': turbo is not None, 'turbo_source': source,
                          'author_settings': settings or None,
@@ -751,7 +792,7 @@ def _file_format(file: dict) -> str:
 
 
 def _file_precision(file: dict) -> str:
-    value=(file.get('metadata') or {}).get('fp')
+    value=(file.get('metadata') or {}).get('fp') or file.get('precision')
     # Civitai has no six-bit metadata choice; W6A8 files often say INT8 there.
     # An explicit precision suffix in the author's filename is more specific.
     named=re.findall(r'(int[2-8]|w[2-8]a[24816]+)(?=[_. -]|$)',file.get('name',''),re.I)
@@ -772,14 +813,14 @@ CHECKPOINT_ORDER = {'fp8': 0, 'fp8_scaled': 0, 'mxfp8': 1, 'nvfp4': 2, 'bf16': 3
 
 
 def _best_quality(model_type: str, info: dict | None) -> bool:
-    """Qwen-Image-2.1, Krea 2 and Z-Image checkpoints: choose by quality, not by the page's primary file."""
+    """Apply the app's default file preference for these image architectures."""
     return model_type != 'LORA' and bool(info) and info['arch'] in ('qwen-image-2.1', 'krea-2', 'z-image')
 
 
 def _file_rank(file: dict, best_quality: bool = False):
     if best_quality:
-        # The best file for a 32 GB RTX 5090: FP8 (near BF16 quality, native and fast, fits next to the
-        # text encoder), then NVFP4, BF16, INT8, INT4; GGUF last. The primary file is often INT4.
+        # A default selection preference, not a quality or VRAM guarantee.
+        # Precision alone cannot establish memory use or visual quality.
         gguf = file.get('format') == 'GGUF' or file.get('name', '').lower().endswith('.gguf')
         # Within one precision the larger file keeps more weights at full precision (a mislabeled small file is 4-bit).
         return (gguf, CHECKPOINT_ORDER.get((file['precision'] or '').lower(), 8), not file['primary'], -file['bytes'])
@@ -800,7 +841,11 @@ def resolve_link(link: str) -> dict:
 
 def inspect(path: Path) -> dict:
     """Classify a downloaded file from its tensor names and shapes."""
-    shapes = _gguf_shapes(path) if path.suffix.lower() == '.gguf' else _safetensors_shapes(path)
+    return inspect_shapes(_gguf_shapes(path) if path.suffix.lower() == '.gguf' else _safetensors_shapes(path))
+
+
+def inspect_shapes(shapes: dict) -> dict:
+    """Classify a file from its tensor names and shapes (a local file, or a remote header read before download)."""
     names = list(shapes)
     lora = any(re.search(r'lora_(?:A|B|up|down)\b|\.lora\.|\.alpha$', name) for name in names)
     arch = 'unknown'
@@ -808,6 +853,12 @@ def inspect(path: Path) -> dict:
     if flux3:
         return {'kind':'lora' if lora else 'model','arch':'flux3-klein','tensors':len(names),
                 'variant':None if lora else ('distilled' if any('ref_time_in' in name for name in names) else 'base')}
+    # MOSS Image: shared_block_modulation and layers.N.proj.ffn_up_gate in a model (ComfyUI model_detection);
+    # LoRAs on layers.N.proj.{q,k,v,o,qkv,ffn_up_gate,ffn_down} or text_embedder.blocks (native, Diffusers, bare or Kohya names).
+    if any(re.search(r'(^|\.)shared_block_modulation\.weight$', name) for name in names) and any(re.search(r'layers\.\d+\.proj\.ffn_up_gate\.weight$', name) for name in names):
+        return {'kind':'model','arch':'moss-image','tensors':len(names)}
+    if lora and any(re.search(r'(^|[._])layers[._]\d+[._]proj[._](q|k|v|o|qkv|ffn_up_gate|ffn_down)[._]', name) for name in names):
+        return {'kind':'lora','arch':'moss-image','tensors':len(names)}
     for name, shape in shapes.items():
         if not shape:
             continue
@@ -893,6 +944,26 @@ def unregister(model_id: str) -> None:
     (PREVIEWS / f'{model_id}.jpg').unlink(missing_ok=True)
 
 
+def download_file(version_id: int, file_id: int | None) -> dict:
+    """Resolve one concrete file before starting a download or assigning its progress."""
+    version = _get(f'/api/v1/model-versions/{int(version_id)}')
+    model = version.get('model') or {}
+    if not model.get('type'):
+        model = _get(f"/api/v1/models/{version['modelId']}")
+    info = BASE_MODELS.get(version.get('baseModel'))
+    if not info:
+        raise ValueError(f"This app does not support {version.get('baseModel') or 'this architecture'}.")
+    choices = [f for f in version.get('files', []) if (file_id is None or f['id']==file_id)
+               and _usable_file(model['type'], {'type':f.get('type','Model'),'format':_file_format(f)})]
+    if not choices:
+        raise ValueError('The selected file is not a model or LoRA that this app can load.')
+    file = min(choices,key=lambda f:_file_rank(
+        {'primary':bool(f.get('primary')),'precision':_file_precision(f),'bytes':f.get('sizeKB',0),
+         'format':_file_format(f),'name':f['name']},_best_quality(model['type'],info)))
+    return {'id':file['id'],'name':file['name'],'precision':_file_precision(file),'format':_file_format(file),
+            'bytes':int(file.get('sizeKB',0)*1024)}
+
+
 def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict:
     """Download, verify and register one Civitai file. `progress(done, total, stage)` reports bytes."""
     from . import models
@@ -904,9 +975,6 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     if not base:
         raise ValueError(f"This version is for {version.get('baseModel')}, which this app cannot run yet. Supported: {', '.join(BASE_MODELS)}.")
     page_text = _text(version.get('description')) + '\n' + _text(model.get('description'))
-    problem = ltx_problem(model, version, author_settings(_text(version.get('description')), _text(model.get('description'))), page_text)
-    if problem:
-        raise ValueError(problem)
     files = [f for f in version.get('files', []) if file_id is None or f['id'] == file_id]
     candidates = [f for f in files if _usable_file(model['type'], {'type': f.get('type', 'Model'), 'format': _file_format(f)})]
     if not candidates:
@@ -923,16 +991,13 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
         if variant=='distilled' and selected_settings.get('steps') not in (None,8):
             raise ValueError('This file requires a different sampling schedule. Choose a model that supports the official 8-step distilled workflow.')
     lora = model['type'] == 'LORA'
-    entry_id = f"civitai-{'lora' if lora else 'model'}-{version['id']}"
-    existing=next((item for item in user_catalog() if item['id']==entry_id),None)
-    if existing and existing.get('civitai',{}).get('file_id') not in (None,file['id']):
-        entry_id += f"-file-{file['id']}"
-    directory = f"civitai/{'loras' if lora else 'models'}"
-    name = re.sub(r'[^A-Za-z0-9._-]+', '_', file['name'])
-    relative = f"{version['id']}_{name}"
-    target = MODELS_DIR / directory / relative
-    target.parent.mkdir(parents=True, exist_ok=True)
+    from .civitai_files import entry_location, resume_path
+    entry_id, directory, relative = entry_location(user_catalog(), version['id'], file, lora)
+    relative = resume_path(MODELS_DIR / directory, relative, version['id'], file, version.get('files', []))
     total = int(file.get('sizeKB', 0) * 1024)
+    from .models import download_target
+    target = download_target({'directory': directory, 'kind': 'image-lora' if lora else 'image'}, {'path': relative, 'bytes': total}, MODELS_DIR / directory / relative)
+    target.parent.mkdir(parents=True, exist_ok=True)
     expected = ((file.get('hashes') or {}).get('SHA256') or '').lower()
     _download(file['downloadUrl'], target, total, expected, progress)
     info = inspect(target)
@@ -943,8 +1008,8 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     description = _text(version.get('description')) + '\n' + _text(model.get('description'))
     # Civitai's "Krea 2" holds both Raw and Turbo merges; without page settings the example images tell which.
     from .civitai_settings import version_settings, h3_defaults, h3_capabilities, ltx_defaults
-    settings = version_settings(model, version)
-    detected = version_turbo(model, version, settings)
+    settings = version_settings(model, version, file)
+    detected = version_turbo(model, version, settings, file)
     turbo = turbo if detected is None else detected  # the type the user chose when the page does not say
     size = target.stat().st_size
     entry = {'id': entry_id, 'title': model['name'] if len(model.get('modelVersions', [])) < 2 else f"{model['name']} · {version['name']}",
@@ -985,6 +1050,20 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
                      generation_defaults=ltx_defaults(model,version,entry['civitai']['url'],file),settings_version=SETTINGS_VERSION)
         if dev:
             entry['distill_lora_strength'] = entry['generation_defaults']['distill_lora_strength']
+    elif lora and base['arch'] == 'moss-image':
+        # LoRAs trained on Base also work on SFT (OpenMOSS); all three types share one architecture.
+        entry.update(kind='image-lora', format='LoRA', families=list(MOSS_FAMILIES),
+                     trained_words=trained_words(version, model),
+                     default_strength=suggested_strength(description) or 1.0, summary=description[:400])
+    elif base['arch'] == 'moss-image':
+        # MOSS Image uses its own Qwen3.5 9B encoder and the FLUX.2 small decoder (an all-in-one file loads only its DiT).
+        gguf = target.suffix.lower() == '.gguf'
+        entry.update(kind='image', family=moss_family(turbo, version['name'], file.get('name', '')),
+                     format='GGUF' if gguf else (_file_precision(file) or 'SafeTensor').upper(),
+                     dependencies=['moss-encoder-int8', 'moss-vae-small'], text_encoder='moss-encoder-int8', recommended_vae='moss-vae-small',
+                     generation_defaults=image_defaults(turbo, settings, entry['civitai']['url'], 'moss-image'), settings_version=SETTINGS_VERSION)
+        if not gguf:
+            entry['layout'] = 'comfy'
     elif base['arch']=='flux3-klein':
         families=['flux3-klein','flux3-klein-base']
         if lora:
@@ -1033,7 +1112,7 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
         gguf = target.suffix.lower() == '.gguf'
         family = 'qwen-image-2.1-turbo' if turbo else 'qwen-image-2.1'
         entry.update(kind='image', family=family, format='GGUF' if gguf else (_file_precision(file) or 'SafeTensor').upper(),
-                     dependencies=['encoder-int8' if gguf else 'encoder-bf16', 'vae'],
+                     dependencies=['encoder-int8', 'vae'],
                      generation_defaults=image_defaults(turbo, settings, entry['civitai']['url']), settings_version=SETTINGS_VERSION)
         vae_id = _install_vae(version, model, progress) or recommended_vae(description)
         if vae_id:
@@ -1046,7 +1125,14 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
         entry.update(lora_author=advice, trained_words=advice['trained_words'],
                      default_strength=advice['strength'] if advice['strength'] is not None else 1.0,
                      summary=advice['description'][:400])
+        # The base it was trained on, speed LoRAs, and the strength of the author's own example graphs.
+        from .lora_author import describe
+        describe(entry, target)
     if not lora:
+        if target.suffix.lower() == '.safetensors':
+            from .lora_author import plain_fp8
+            if plain_fp8(target):
+                entry['fp8_plain'] = True
         precision=_file_precision(file) or entry['format']
         entry['quantization']=precision
         entry['title'] += ' \u00b7 '+precision
@@ -1060,7 +1146,7 @@ def install(version_id: int, file_id: int | None, turbo: bool, progress) -> dict
     return entry
 
 
-SETTINGS_VERSION = 8  # Partition-scoped H3 settings; reject non-inference step counts.
+SETTINGS_VERSION = 10  # 10: example captions and training notes are not settings; 14+ steps is a base model.
 
 
 def _known_vae(name: str) -> str | None:
@@ -1085,7 +1171,8 @@ def _install_vae(version: dict, model: dict, progress) -> str | None:
     if models.is_installed(entry_id) if any(i['id'] == entry_id for i in user_catalog()) else False:
         return entry_id
     relative = f"{file['id']}_{re.sub(r'[^A-Za-z0-9._-]+', '_', file['name'])}"
-    target = MODELS_DIR / 'civitai/vae' / relative
+    target = models.download_target({'directory': 'civitai/vae', 'kind': 'vae'}, {'path': relative, 'bytes': int(file.get('sizeKB', 0) * 1024)},
+                                    MODELS_DIR / 'civitai/vae' / relative)
     target.parent.mkdir(parents=True, exist_ok=True)
     _download(file['downloadUrl'], target, int(file.get('sizeKB', 0) * 1024), ((file.get('hashes') or {}).get('SHA256') or '').lower(), progress)
     reference = models.entry('vae')
@@ -1112,7 +1199,7 @@ def repair_entries() -> list[str]:
     Uses the page again; changes only the settings."""
     fixed = []
     for item in user_catalog():
-        required_version = SETTINGS_VERSION if item.get('family') in ('minimax-h3','minimax-h3-ref2va') else 7
+        required_version = SETTINGS_VERSION
         if item.get('kind') not in ('image','video','reference-video') or 'civitai' not in item or item.get('settings_version', 0) >= required_version:
             continue
         try:
@@ -1125,10 +1212,11 @@ def repair_entries() -> list[str]:
         attach_workflows([version])
         arch = (BASE_MODELS.get(version.get('baseModel')) or {}).get('arch')
         from .civitai_settings import version_settings, h3_defaults, h3_capabilities, ltx_defaults
-        settings = version_settings(model, version)
-        selected_file = next((file for file in version.get('files',[]) if any(
-            file.get('hashes',{}).get('SHA256','').lower() == saved.get('sha256') and saved.get('sha256')
-            or saved['path'].endswith(re.sub(r'[^A-Za-z0-9._-]+','_',file['name'])) for saved in item['files'])), None)
+        from .civitai_files import saved_file
+        selected_file = saved_file(item, version.get('files', []))
+        if not selected_file:
+            continue  # Do not assign another file's settings to an ambiguous legacy entry.
+        settings = version_settings(model, version, selected_file)
         if selected_file:
             item['civitai'].update(file_id=selected_file['id'],file_name=selected_file['name'])
             item['quantization']=_file_precision(selected_file) or item['format']
@@ -1152,13 +1240,19 @@ def repair_entries() -> list[str]:
                 else:item.pop('distill_lora_strength',None)
             _register(item);fixed.append(item['id'])
             continue
-        own = next((family for family in ('flux3-klein','krea-2','z-image') if item.get('family','').startswith(family)),None)
-        if own:
-            # A Krea 2 or Z-Image entry keeps the type it was installed as; only the page settings are read again.
-            turbo = item['family']=='flux3-klein' if own=='flux3-klein' else item['family'].endswith('-turbo')
-            item.update(generation_defaults=image_defaults(turbo, settings, item['civitai']['url'], own), settings_version=SETTINGS_VERSION)
+        own = next((family for family in ('flux3-klein','krea-2','z-image','moss-image') if item.get('family','').startswith(family)),None)
+        if own=='moss-image':
+            detected = version_turbo(model, version, settings, selected_file)
+            turbo = item['family']=='moss-image-turbo' if detected is None else detected
+            item.update(family=moss_family(turbo, version['name'], selected_file.get('name', '')),
+                        generation_defaults=image_defaults(turbo, settings, item['civitai']['url'], own), settings_version=SETTINGS_VERSION)
+        elif own:
+            detected = version_turbo(model, version, settings, selected_file)
+            turbo = (item['family']=='flux3-klein' if own=='flux3-klein' else item['family'].endswith('-turbo')) if detected is None else detected
+            family = ('flux3-klein' if turbo else 'flux3-klein-base') if own=='flux3-klein' else own+('-turbo' if turbo else '')
+            item.update(family=family, generation_defaults=image_defaults(turbo, settings, item['civitai']['url'], own), settings_version=SETTINGS_VERSION)
         else:
-            detected = detect_turbo(version['name'], settings)
+            detected = version_turbo(model, version, settings, selected_file)
             turbo = item.get('family') == 'qwen-image-2.1-turbo' if detected is None else detected
             item.update(family='qwen-image-2.1-turbo' if turbo else 'qwen-image-2.1',
                         generation_defaults=image_defaults(turbo, settings, item['civitai']['url']), settings_version=SETTINGS_VERSION)

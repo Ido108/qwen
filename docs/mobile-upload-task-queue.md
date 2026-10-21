@@ -1,5 +1,65 @@
 # Qwen delivery queue
 
+## Swap and output actions, 2026-10-21
+
+98. [x] Restore the full Swap scene-preservation prompt. Retain all saved versions. Keep style-mode instructions additive. Verify the compiled prompt without inference.
+99. [x] Show the selected Realistic / Non-realistic mode clearly on desktop and mobile.
+100. [x] Add a shared Use as menu to image outputs and previews. Route to every image-input workflow and open it immediately. Preserve other draft inputs and settings.
+101. [x] Add durable per-model Save default actions, including Swap. Keep save and reset separate. Verify persistence, model isolation, restored jobs and local/remote delivery.
+
+Items 98-101 are delivered and verified locally and through Moise. See `swap-output-defaults.md` for the exact changes and evidence. Item 96 visual comparisons still require the pending permission. No QA generation is authorized.
+
+## Compact LoRA controls and current execution check (2026-10-20)
+
+89. [x] Reduce LoRA row height. Keep the strength slider, numeric value, bypass and prompt editor. Add a searchable replacement picker on each row, preserving its slot and strength.
+90. [x] Remove the four-LoRA limit from all image/video selection paths and server schemas. Preserve compatibility checks and reference-image limits.
+91. [x] Explain the reported weak style effect from current source and available saved runs. Separate earlier loader faults, runtime execution and visual style fidelity. Do not run QA inference.
+92. [x] Verify replacement, more than four selections, bypass, prompt ownership, desktop/mobile layout, request validation and guarded live delivery.
+93. [x] Show the saved actual sampler and schedule under results and in Details/Copy details, including fixed Turbo schedules. Preserve unknown values in older records.
+94. [x] Move all preview text and controls outside the image. Inspect Studio Image's viewer pattern. Verify long prompts, zoom, navigation, desktop/mobile/landscape geometry and local/remote delivery.
+95. [x] Correct Civitai file-level choices within each version. Verify the reported Qwen 2.1 FinalCut files and all import paths. Keep each file's format, size, support, saved identity, selected settings and download progress distinct. Preserve active downloads and installed variants. Use exact author/file evidence for settings; do not infer different steps from quantization alone. Verify desktop/mobile selection, request identity, concurrent downloads, installed state and guarded delivery.
+96. [ ] Reopen the unresolved LoRA style-effect defect. Audit actual installed LoRA files and recent inference records against current ComfyUI, Diffusers, Qwen and exact Civitai author sources. Trace format conversion, layer mapping, alpha/rank scaling, quantized patch execution, resident model reuse, conditioning and injected prompt text. Fix verified faults. Expose valid sampler and scheduler controls for Turbo models and record the actual choices. Verify math and application paths; keep visual quality claims separate from structural checks. Preserve active jobs and downloads.
+97. [x] Add a reset button for each generation setting. Restore the selected model's current defaults, including sampler, schedule, sizes, steps and guidance. Restore tool and LoRA defaults in their own controls. Cover image, Swap and video paths. Verify that reset changes only the chosen setting and keeps user inputs.
+
+Current item 96 status: source research, installed-weight checks, sampling corrections, loader corrections and live delivery are complete. The visible style comparison remains open. The prior no-QA-generation instruction is still active. A concrete four-image Standard/Turbo, LoRA-off/on comparison is prepared at `E:/AI/qwen-image-studio/validation/sampling-resets/proposed-style-comparison.json`. The user input request is pending. Do not generate these images until the user permits it. The unrelated game-quality message was withdrawn; it adds no Qwen task.
+
+Delivery evidence for 96-97, 2026-10-20:
+
+- Compact per-field reset controls cover image and Swap sampling, output dimensions, seed, VAE, negative text, tool options, LoRA strength, all video pages, Orbit, upscaling and training settings. Model sampling fields reset to automatic selection, so they follow the selected model. Dimensions, seed, folders and other fields without published model values use the existing workflow defaults; they are not presented as author recommendations. Training resets wait for the current model/dataset advice. A reset does not clear the prompt or inputs. Coupled controls, such as seed/random and quality/steps, return together to their valid default state.
+- Turbo sampling choices now reach Qwen, Krea, Z-Image and FLUX.3 inference. Qwen keeps its trained sigma schedule when only the sampler changes. An explicit schedule replaces it. Reset Schedule restores the trained schedule. Z-Image and FLUX.3 no longer ignore explicit choices. Actual sampler/schedule metadata remains separate from requested automatic values. This does not claim every custom sampler/schedule has equal image quality.
+- Diffusers PEFT metadata alpha/rank and rsLoRA scaling now reach the checked loader. Existing alpha tensors take priority. This closes a general format gap; the checked NiceGirls, Lenovo, GrainScape, Analog and Casual Snapshot files do not contain a hidden metadata scale, so that correction does not explain their reported weak style. Z-Image and FLUX.3 now also reject missing or invalid adapter targets instead of silently accepting unchecked loads. See `lora-author-audit.md` for fresh source and tensor evidence.
+- 68 distinct focused Python tests pass. Checks cover actual CPU LoRA math, fused/split targets, GGUF logical shapes, stacking, metadata scale, Turbo sampler dispatch, API values, model defaults and Civitai file identity. TypeScript and production build pass. The existing bundle-size warning remains. One old FLUX catalog test lacked any file identity; its fixture now uses an exact file, as required by the earlier per-file repair. Production code did not weaken that repair.
+- Local and authenticated Moise browser checks pass in Chromium 1440x1000 and iPhone WebKit 390x844 and 320x740. They verify model changes, independent sampler/schedule resets, LoRA strength, Swap negative text, all video pages, upscale audio, training advice, preserved prompts and no horizontal overflow. Four Turbo-family generation requests per browser are intercepted; no QA image is generated. No page errors occur. Physical iPhone hardware remains untested.
+- The guarded launcher restarted only after a fresh idle/no-download check. Server PID 52604 serves the update. Local and remote JavaScript/CSS bytes match `index-DgyuAHVt.js` and `index-DKVchAEe.css`; the setup fingerprint matches. New user jobs arrived after delivery and continue without interruption. Their requests are not QA requests.
+- One post-update user run, `804e2b60f0114625b86f94eb04e80e76`, succeeds with 224 of 224 runtime adapter parts executed and 20 model calls. First-layer samples show nonzero applied RMS changes in attention, MLP input and MLP output. These measurements verify numerical contribution in this run, not the visible style or other models. No user image was opened for this check.
+- Evidence: `E:/AI/qwen-image-studio/validation/sampling-resets/{local.json,remote.json,delivery.json}`, browser screenshots, `check_sampling_resets.py` in the parent validation directory, and the fresh author audit in `validation/lora-author-pages/2026-10-20/`.
+
+Clarification: the LoRA picker must be an anchored dropdown with a scrollable list on desktop and mobile, not a large dialog. `res_2m` and `res_2s` remain installed; all 82 pinned source hashes pass a fresh read-only check. Turbo can use LoRAs; author examples with different sampling settings do not establish that Turbo blocks style adapters.
+
+Delivery evidence for 89-94:
+
+- LoRA rows measure 68 px on desktop and 94 px on phones. The anchored list supports search, same-slot replacement, bypass, strength and the per-LoRA prompt editor. Replacement keeps strength and bypass but does not carry the old adapter's prompt addition. Browser checks keep ten selected LoRAs and send nine enabled choices in an intercepted request. All four request schemas accept 100 choices; reference-image and strength bounds remain.
+- The full-image viewer now uses a header, image area, zoom bar and compact details strip. The prompt appears once. Expanded text and loading messages stay outside the image. Studio Image's source shows the same separation pattern. The pattern was inspected, not copied as a component.
+- Chromium 1440x1000 and WebKit 390x844, 320x740 and 844x390 pass local geometry, long-prompt, zoom, navigation, settings restore and metadata-copy checks. Chromium 1440x1000 and WebKit 390x844 pass the same preview and LoRA flows through Moise. Final runs report no page, console or HTTP errors. The Browser plugin is absent; installed Python Playwright runs the checks. Physical iPhone hardware is untested. Fixture data and intercepted generation requests avoid AI inference and user data changes.
+- Fifty-two affected Python tests, seven CPU LoRA math/loading tests, twelve JavaScript tests, TypeScript and production build pass. The actual sampler/schedule are saved by image/video engines and read from each result. Older unknown values stay unknown. No new style-quality A/B generation is claimed.
+- The guarded restart ran with no jobs/downloads. The first remote check overlapped relay replacement (409 then temporary 503); the relay recovered. A separate browser fixture initially used local preview URLs on the remote host; matching Moise's URL prefix and ending the simulated job before reload resolved that test-only failure. Local/remote assets match `index-Ds5RCCAQ.js` and `index-Dhv0BVgx.css`. Both live schemas have no LoRA count cap. Civitai remains connected; idle release remains 600 seconds. Evidence: `E:/AI/qwen-image-studio/validation/compact-loras/`.
+
+## Terminal closure stops Qwen (2026-10-20)
+
+86. [x] Bind the server lifetime to its Qwen terminal tabs. Closing either tab or the terminal window must stop the server and its worker tree, including active work. Browser closure remains separate. Keep the 10-minute idle policy.
+87. [x] Verify real Windows close/exit handling, worker descendants, server restart, duplicate launch and unrelated process preservation without AI inference.
+88. [x] Apply the change after existing work finishes. Open the connected terminal tabs and verify the local and remote app. Correct the previous terminal instructions.
+
+Delivery: [Terminal shutdown](terminal-shutdown.md). Seventy-four tests pass; the optional Electron test is skipped. A real Windows Terminal `WM_CLOSE` stops an isolated busy server and its CPU worker. Either tab closure, owner loss, new sessions, duplicate launch and unrelated processes pass. No AI inference or model download ran. The guarded restart ran only after jobs/downloads finished. Both production tabs now hold their current owner-session connection. Local and Moise routes pass with the unchanged frontend and 600-second idle policy. This replaces the earlier behavior where log-tab closure left Qwen running.
+
+## Idle memory release (2026-10-20)
+
+83. [x] Release the image worker after 600 seconds without an active or waiting job. Retain reuse before the deadline. Prevent background warm-up from loading an old model on startup or after release.
+84. [x] Test the deadline, new jobs, active and waiting jobs, manual release, shutdown and process exit without model inference. Explain the separate terminal viewer and server.
+85. [x] Deliver through the idle job/download guards. Verify local and remote status, memory policy and process state. Preserve other applications and saved files.
+
+Delivery: [Idle memory release](idle-memory-release.md). Sixty CPU/API/process checks pass. The optional Electron test is skipped because its binary is absent; normal Windows server lifecycle checks pass. The controlled-clock test covers the exact 600-second deadline and real worker exit/restart without AI inference. The guarded background owner restarted only with no active/waiting jobs or downloads. Local and Moise routes report `idle_release_seconds=600`, no loaded image model and connected Civitai. The existing frontend `index-BXlQ034p.js` remains unchanged. Windows reports no image worker and about 36.5 GB free RAM at the final snapshot. Evidence: `E:/AI/qwen-image-studio/validation/idle-memory/`.
+
 ## Required sampler dependencies (2026-10-19)
 
 79. [x] Audit the exact RES4LYF sampler code, dependencies and connected Civitai sampler settings. Pin a compatible source revision and install required runtime files without changing active jobs or downloading model weights.
@@ -296,3 +356,21 @@ The sections below record earlier states. The current checklist and delivery evi
 - Check the queue again before any restart. Do not stop a running job.
 
 - The new live activity viewer opens separately. Automatic approval review rejected closing old viewer PID 37176 with only "blocked by policy". Do not retry closing it by another mechanism. The server and downloads stay running.
+
+
+## Civitai file identity delivery, 2026-10-20
+
+- Item 95 complete. Each file has exact type, precision, format, size, installed state, supported state, sampling profile, download ID, progress and cancellation. New file IDs/paths cannot collide; existing installed IDs/paths and unambiguous old partial downloads stay in place. Both checkpoints and LoRAs expose their files. Shared quantization variants retain shared author settings unless explicit file/type instructions differ. Mixed image Base/Turbo, H3 partitions and LTX dev/distilled are scoped per file.
+- FinalCut exact version 3390745 exposes NVFP4 file 3280828 (4,101,174,822 bytes), FP8 3280147 (7,115,156,456), INT8 3282512 (7,183,949,080) and FP32 3282658 (28,460,530,000). All retain the author's 25-step recommendation. The user's FP32 download completed before restart. Its legacy installed ID remains civitai-model-3390745.
+- 57 affected Python tests pass. Production build passes with the existing chunk-size notice. Browser interactions use intercepted install/cancel calls, not model downloads: local Chromium 1440 and WebKit 390/320; remote Chromium 1440 and WebKit 390. Tests cover independent simultaneous progress, exact payload/cancel, exact installed model use, file-specific settings, LoRA files and overflow.
+- Guarded restart found no active jobs or downloads. Local and remote assets match the build (index-CcY5aBN8.js / index-CIAZXMkp.css). Real FinalCut detail APIs and cancel schemas pass on both URLs. All 31 existing user catalog IDs and paths stay intact. Auth remains connected. An initial remote 503 during relay handover cleared; later browser and API checks pass. No QA generation, training or model-weight download ran.
+- Evidence: E:/AI/qwen-image-studio/validation/civitai-files/{local-ui.json,remote-ui.json,live-delivery.json,finalcut-model.json,finalcut-version.json}. Active next item: 96, unresolved LoRA style effects and Turbo sampling controls.
+
+## Swap and model-default delivery, 2026-10-21
+
+- Items 98-101 complete. The full scene-preserving prompt is saved for all three Swap tools. All prior versions remain. Realistic and Non-realistic share that base; Non-realistic adds its style instructions. The active radio control has a visible fill and outline.
+- Use as appears in results, full-screen previews, Gallery, desktop Recent and mobile thumbnails. Ten destinations set the input and open the target immediately. Existing draft text and other inputs remain. No generation starts.
+- Set as default persists each setting by model. Swap-specific controls also use the Swap type. Seed, image dimensions and sampling values are shared between Create and Swap for that model. Reset uses the saved value. Use recommended default removes the override. Restoring a result keeps its snapshot.
+- 29 focused Python tests and the production build pass. Local and authenticated remote Chromium 1440 and WebKit 390/320 checks pass. Each viewport verifies ten destinations and 52 save/remove actions. The final runs report no page errors, console errors or horizontal overflow. Save writes and media requests use isolated fixtures. The real persistence module receives the browser payloads; real HTTP endpoints are also covered by isolated tests.
+- The live API and three prompt versions are checked on both URLs. Assets match `index-Azi0eNI6.js` and `index-Bok462yL.css`. The setup fingerprint matches. The backend restart occurred only with no active jobs or downloads. The final frontend-only change required no second restart. The temporary Vite server was stopped.
+- The first remote opening caught the relay reconnecting after restart. Later checks passed. A test-only request for a nonexistent input image initially returned 400; the final test supplies its face-data fixture and reports no error. No QA inference, training or model download ran. Item 96 remains pending the already-requested permission for the four-image quality comparison.

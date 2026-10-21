@@ -1,5 +1,25 @@
 # Installed LoRA author audit — 2026-10-19
 
+## Fresh verification and remaining limit, 2026-10-20
+
+The fresh audit covers 27 installed entries: 24 public pages respond, two entries are local training outputs, and Civitai version 3395802 returns HTTP 404. Earlier evidence for that page stays available below, but it is not described as a successful current fetch. Raw responses are in `E:/AI/qwen-image-studio/validation/lora-author-pages/2026-10-20/raw.json`.
+
+The five reported Qwen style files (NiceGirls, Lenovo, GrainScape, 2000s Analog and Casual Snapshot) each contain 192 adapter pairs: 128 attention and 64 MLP pairs. Their up/B matrices contain finite, nonzero values. Their alpha/rank scale is 1. This excludes the specific all-zero MLP-up training fault described in [ai-toolkit issue 1075](https://github.com/ostris/ai-toolkit/issues/1075) for these installed files. It does not test visual style. The two short local FLUX training checks contain some zero up matrices; they are not the reported Qwen style adapters. Evidence: `all-weight-values.json` in the parent author-audit directory.
+
+The source comparison includes the [Viggle runtime implementation](https://huggingface.co/Viggle/Qwen-Image-2.1-viggle-turbo/blob/main/comfyui/viggle_turbo.py), [Comfy fused-MLP issue 16944](https://github.com/Comfy-Org/ComfyUI/issues/16944), [Qwen 2.1 Diffusers documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/qwenimage21), and the [Diffusers Qwen 2.1 training guide](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_qwenimage21.md). Every local image architecture runs through Comfy. Diffusers-format adapter files are converted for Comfy; a separate Diffusers inference pipeline is not used.
+
+The checked loader now reads PEFT `lora_adapter_metadata`, preserves `alpha/rank`, handles rsLoRA's `alpha/sqrt(rank)`, and gives explicit alpha tensors priority. This is a format correction for files that supply those values. The reported style files have no missing metadata scale, so this is not claimed as their root cause. Existing native/Kohya/fused/GGUF and separate runtime-branch corrections remain intact. Z-Image and FLUX.3 now use the same checked loading path.
+
+The author descriptions retain architecture boundaries. Lenovo's Krea Turbo strength advice does not become a Qwen recommendation. The Analog author's Krea Turbo warning is not a blanket Qwen Turbo restriction. The [High Resolution author](https://civitai.red/models/2436859?modelVersionId=3396843) explicitly describes Qwen 2.1 Turbo use. The checked Analog author profile remains 0.7, CFG 3.5, res_2m/beta on Standard. No undocumented activation sentence is injected.
+
+Confirmed application faults in this pass: the UI and request validator excluded Turbo sampling controls; Qwen Turbo always used Euler; Z-Image and FLUX.3 ignored explicit sampler/scheduler values. These paths now honor the selected values. A sampler-only Qwen Turbo override retains the trained sigma schedule. An explicit schedule replaces it; resetting restores it. These controls allow author setups to be selected but do not prove quality for arbitrary combinations.
+
+The new runtime report samples up to 1024 values from the first output row for each adapter/operation group. It records the base, adapter branch and applied output change. Sampling happens before flattening, to avoid copying full noncontiguous fused output tensors. Reductions remain on the GPU until the final report. The measurements are narrow diagnostic samples, not a percentage of image style.
+
+A real user run after delivery, `804e2b60f0114625b86f94eb04e80e76`, completed with 224/224 adapter parts executed and 20 model calls. At strength 0.7, its sampled applied RMS change was 0.004630 in attention, 0.002631 in the MLP input, and 0.004748 in the MLP output. The corresponding base RMS values were 1.570471, 0.212322 and 0.407195. This proves a nonzero numerical contribution in that run. It does not prove that its visible style matches the author. The user initiated the run; no QA inference or user-image viewing was used.
+
+The remaining style comparison requires permission under the user's earlier no-test-generation instruction. Four exact 1024-square teapot requests are prepared: Standard and Turbo, each with and without 2000s Analog at 0.7, with one prompt and seed. No model download is required. The request is pending, and these images were not generated. Do not mark the visible-style issue resolved from patch counts, changed pixels or the CPU math checks.
+
 ## Runtime correction
 
 The existing merged-weight path rounds each LoRA update into the base weight format. A CPU check on a full 4096 × 4096 FP8 attention layer from the selected RedCraft model found quantization error larger than several intended small adapter updates. The [Viggle author's implementation](https://huggingface.co/Viggle/Qwen-Image-2.1-viggle-turbo/blob/main/comfyui/viggle_turbo.py) describes the same limitation and uses a separate runtime branch.

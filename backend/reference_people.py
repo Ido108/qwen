@@ -8,10 +8,13 @@ import threading
 import urllib.request
 from pathlib import Path
 
-from .common import APP_DIR, MODELS_DIR
+from .common import APP_DIR, LIBRARY_DIR, MODELS_DIR
 
 DETECTOR = APP_DIR / 'reference' / 'face_detection_yunet_2023mar.onnx'
-RECOGNIZER = MODELS_DIR / 'face-recognition-sface-2021dec.onnx'
+# The model library's onnx folder when it has the file or the app uses a library, else the data folder.
+_RECOGNIZERS = [path for path in ((LIBRARY_DIR / 'onnx' / 'face-recognition-sface-2021dec.onnx') if LIBRARY_DIR and LIBRARY_DIR.is_dir() else None,
+               MODELS_DIR / 'face-recognition-sface-2021dec.onnx') if path]
+RECOGNIZER = next((path for path in _RECOGNIZERS if path.is_file()), _RECOGNIZERS[0])
 RECOGNIZER_URL = ('https://media.githubusercontent.com/media/opencv/opencv_zoo/main/'
                   'models/face_recognition_sface/face_recognition_sface_2021dec.onnx')
 RECOGNIZER_SHA256 = '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79'

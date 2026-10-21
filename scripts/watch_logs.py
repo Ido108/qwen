@@ -113,7 +113,7 @@ def render_activity(job,snapshot,rows,online=True,now=None,history_limit=None,hi
         parts.extend([Text('Ready',style='bold green'),Text('No job is running. Stage times and progress appear here when a job starts.',style='dim')])
     downloads=[r for r in rows if r['units']=='bytes']
     if downloads:parts.extend([Text('Downloads',style='bold'),render_rows(downloads,snapshot,online)])
-    parts.append(Text('Server tab: technical messages and errors. Closing this window leaves Qwen running.',style='dim'))
+    parts.append(Text('Closing a Qwen terminal tab stops Qwen and active jobs. Closing the browser does not.',style='dim'))
     return Panel(Group(*parts),title='Activity',border_style='cyan',padding=(1,1))
 
 class LogTail:
@@ -204,9 +204,9 @@ def render_rows(rows,snapshot,online=True):
     return Group(table if rows else Text('Qwen activity',style='bold'),Text(footer,style='yellow' if not online else 'dim'))
 
 
-def viewer_name(data_dir,channel):
+def viewer_name(data_dir,channel,session=''):
     identity=hashlib.sha256(str(data_dir.resolve()).lower().encode()).hexdigest()[:24]
-    return 'Local\\Qwen-viewer-'+identity+'-'+channel
+    return 'Local\\Qwen-viewer-'+identity+'-'+channel+('-'+session if session else '')
 
 
 def activity_console():
@@ -291,23 +291,37 @@ def watch(url,data_dir,*,once=False,stop_event=None,server_messages=True):
             else:time.sleep(.6)
 
 
-def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--url',default='http://127.0.0.1:47821');parser.add_argument('--data-dir',type=Path,required=True);parser.add_argument('--once',action='store_true');parser.add_argument('--channel',choices=('activity','server'),default='activity');args=parser.parse_args()
+def main(argv=None):
+    parser=argparse.ArgumentParser();parser.add_argument('--url',default='http://127.0.0.1:47821');parser.add_argument('--data-dir',type=Path,required=True);parser.add_argument('--once',action='store_true');parser.add_argument('--channel',choices=('activity','server'),default='activity')
+    parser.add_argument('--owner-session',default='')
+    parser.add_argument('--owner-pid',type=int)
+    args=parser.parse_args(argv)
     instance=None
+    owner=None
     try:
         if os.name=='nt' and not args.once:
-            from windows_processes import Instance
-            instance=Instance(viewer_name(args.data_dir,args.channel))
+            from windows_processes import Instance, open_process, close_handle, wait_handle, set_event
+            if bool(args.owner_session) != bool(args.owner_pid):
+                raise ValueError('The Qwen terminal needs both its server session and owner.')
+            if args.owner_pid:
+                owner=open_process(0x100000,False,args.owner_pid)
+                if not owner or wait_handle(owner,0)!=258:
+                    return
+            instance=Instance(viewer_name(args.data_dir,args.channel,args.owner_session))
             if not instance.acquire():return
-        print(f'Qwen | {args.url}\nClosing this tab leaves the server, downloads, and queue running.\n',flush=True)
+            if args.owner_session:
+                set_event(instance.focus)
+        print(f'Qwen | {args.url}\nClosing this tab stops Qwen and its active jobs.\n',flush=True)
         class Stop:
-            def is_set(self):return bool(instance and instance.stopped())
+            def is_set(self):
+                return bool(instance and instance.stopped() or owner and wait_handle(owner,0)!=258)
             def wait(self,seconds):time.sleep(seconds)
         if args.channel=='server':watch_server(args.url,args.data_dir,once=args.once,stop_event=Stop())
         else:watch(args.url,args.data_dir,once=args.once,stop_event=Stop(),server_messages=False)
     finally:
         if instance:instance.close()
+        if owner:close_handle(owner)
 
 if __name__=='__main__':
     try:main()
-    except KeyboardInterrupt:print('\nActivity viewer closed. Qwen keeps running.')
+    except KeyboardInterrupt:print('\nQwen terminal closed. Stopping Qwen.')

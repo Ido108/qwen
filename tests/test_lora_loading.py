@@ -26,6 +26,49 @@ def tearDownModule():
 
 
 class LoraLoadingTests(unittest.TestCase):
+    def test_diffusers_metadata_scaling_matches_peft_and_preserves_explicit_alpha(self):
+        import json
+        from backend.lora_loading import metadata_scaling, load_model_lora
+        from backend.comfy_engine import split_fused_mlp
+        weights=self.weights()
+        root='diffusion_model.transformer_blocks.0.img_mlp.gate_up'
+        for config,expected in [
+            ({'transformer.lora_alpha':.25,'transformer.r':1},.25),
+            ({'transformer.lora_alpha':1,'transformer.alpha_pattern':{'img_mlp.gate_up':.5}},.5),
+        ]:
+            scaled=metadata_scaling(weights,{'lora_adapter_metadata':json.dumps(config)})
+            model,info=load_model_lora(self.model(True),split_fused_mlp(scaled),1,'Ink')
+            for key in model.patches:model.patch_weight_to_device(key,device_to=torch.device('cpu'))
+            self.assertTrue(torch.equal(model.model.diffusion_model.transformer_blocks[0].img_mlp.gate_up.weight,
+                                        weights[root+'.lora_B.weight']@weights[root+'.lora_A.weight']*expected))
+        explicit=dict(weights);explicit[root+'.alpha']=torch.tensor(.75)
+        self.assertEqual(float(metadata_scaling(explicit,{'lora_adapter_metadata':'{"lora_alpha": 2}'})[root+'.alpha']),.75)
+        rank4={root+'.lora_A.weight':torch.ones(4,3),root+'.lora_B.weight':torch.ones(4,4)}
+        scaled=metadata_scaling(rank4,{'lora_adapter_metadata':'{"lora_alpha": 2, "use_rslora": true}'})
+        self.assertEqual(float(scaled[root+'.alpha']),4.)
+        self.assertNotIn(root+'.alpha',weights)
+
+    def test_turbo_sampling_uses_requested_algorithm_and_schedule(self):
+        from backend.image_sampling import sample_qwen
+        import comfy.sample,comfy.samplers
+        defaults={'sigmas':[1.,.8,.4,0.], 'sampler':'euler'}
+        request={'steps':3,'seed':17,'sampler':'heun'}
+        with patch.object(comfy.sample,'sample_custom',return_value='custom') as custom, \
+             patch.object(comfy.sample,'sample',return_value='normal') as normal:
+            self.assertEqual(sample_qwen(None,None,request,defaults,1,None,None,None,None),'custom')
+            self.assertEqual(custom.call_args.args[3].sampler_function,comfy.samplers.k_diffusion_sampling.sample_heun)
+            self.assertTrue(torch.allclose(custom.call_args.args[4],torch.tensor(defaults['sigmas'])))
+            normal.assert_not_called()
+            request['scheduler']='beta'
+            self.assertEqual(sample_qwen(None,None,request,defaults,1,None,None,None,None),'normal')
+            self.assertEqual(normal.call_args.args[4:6],('heun','beta'))
+            request.update(sampler=None,scheduler=None,steps=5)
+            sample_qwen(None,None,request,defaults,1,None,None,None,None)
+            self.assertEqual(custom.call_args.args[3].sampler_function,comfy.samplers.k_diffusion_sampling.sample_euler)
+            sigmas=custom.call_args.args[4]
+            self.assertEqual(len(sigmas),6)
+            self.assertEqual(float(sigmas[-1]),0.)
+
     def model(self,fused):
         class TinyQwen(comfy.model_base.QwenImage):
             def __init__(self):
@@ -150,6 +193,41 @@ class LoraLoadingTests(unittest.TestCase):
             self.assertTrue(torch.allclose(actual,torch.tensor([[16.,32.,48.,64.]])))
             self.assertTrue(all(not layer.weight.patches and not layer._forward_hooks for layer in layers))
 
+    def test_lokr_runtime_branch_matches_merged_weights_without_changing_base(self):
+        from backend.lora_loading import load_model_lora
+        from backend.lora_runtime import KEY
+        from comfy.patcher_extension import WrapperExecutor, WrappersMP
+        root='diffusion_model.transformer_blocks.0.img_mlp.gate_layer'
+        full={root+'.lokr_w1':torch.tensor([[1.],[-2.]]),root+'.lokr_w2':torch.tensor([[.5,1.,1.5]])}
+        factorized={root+'.lokr_w1':torch.tensor([[1.],[-2.]]),root+'.lokr_w2_a':torch.tensor([[2.]]),
+                    root+'.lokr_w2_b':torch.tensor([[.25,.5,.75]]),root+'.alpha':torch.tensor(.5)}
+        for weights in (full,factorized):
+            base=self.model(False)
+            mlp=base.model.diffusion_model.transformer_blocks[0].img_mlp
+            for p in mlp.parameters():p.data.fill_(.1)
+            original=mlp.gate_layer.weight.clone()
+            runtime,check=load_model_lora(base,weights,.5,'Grain',runtime=True)
+            self.assertEqual(check['application'],'runtime')
+            self.assertFalse(runtime.patches)
+            x=torch.tensor([[1.,2.,3.],[-1.,0.,4.]])
+            actual=WrapperExecutor(mlp.gate_layer,base.model.diffusion_model,runtime.get_wrappers(WrappersMP.DIFFUSION_MODEL,KEY),0).execute(x)
+            self.assertTrue(torch.equal(mlp.gate_layer.weight,original))
+            merged,check=load_model_lora(base,weights,.5,'Grain')
+            self.assertEqual(check['application'],'merged')
+            for key in merged.patches:merged.patch_weight_to_device(key,device_to=torch.device('cpu'))
+            expected=mlp.gate_layer(x)
+            merged.unpatch_model(device_to=torch.device('cpu'))
+            self.assertFalse(torch.allclose(expected,torch.nn.functional.linear(x,original)))
+            self.assertTrue(torch.allclose(actual,expected,rtol=1e-5,atol=1e-6),(actual,expected))
+
+    def test_bias_diff_on_a_sliced_weight_targets_the_same_bias_slice(self):
+        # Upstream ComfyUI PR 17239: diff_b on a fused/sliced target patches that bias slice, not a nonexistent key.
+        target=('diffusion_model.final_layer.video_out.weight',(0,0,2))
+        self.assertEqual(comfy.lora.bias_key(target),('diffusion_model.final_layer.video_out.bias',(0,0,2)))
+        self.assertEqual(comfy.lora.bias_key('a.proj.weight'),'a.proj.bias')
+        patches=comfy.lora.load_lora({'head.diff_b':torch.ones(2)},{'head':target},log_missing=False)
+        self.assertEqual(list(patches),[('diffusion_model.final_layer.video_out.bias',(0,0,2))])
+
     def test_qwen_prefix_cache_resets_at_each_sampling_run(self):
         from unittest.mock import Mock
         holder=SimpleNamespace(diffusion_model=SimpleNamespace(reset_prefix_cache=Mock()))
@@ -191,6 +269,8 @@ class LoraLoadingTests(unittest.TestCase):
             reports=execution_report(second)
             self.assertEqual({r['title'] for r in reports},{'Ink','Paper'})
             self.assertTrue(all(r['expected']==r['executed'] and r['model_calls']==1 for r in reports))
+            self.assertTrue(all(r['layer_effects'] and all(s['branch_rms']>0 and s['applied_rms']>0
+                                for s in r['layer_effects']) for r in reports))
             merged,_=load_model_lora(base,weights,.75,'Expected')
             for key in merged.patches:merged.patch_weight_to_device(key,device_to=torch.device('cpu'))
             expected=block.img_mlp(x)

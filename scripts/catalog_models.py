@@ -34,9 +34,9 @@ for model_id,name,title,precision,kind in [
     catalog.append({'id':model_id,'title':title,'kind':kind,'format':precision,'repo':repo,'revision':revision,'directory':'abenzerps-GGUF','files':[{'path':name,'bytes':item.size,'sha256':item.lfs.sha256}],'bytes':item.size,'dependencies':[]})
 for item in catalog:
     if item['kind']=='image':
-        item['generation_defaults']={'steps':25,'source':'https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json',
+        item['generation_defaults']={'steps':40,'source':'https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_t2i.json',
             'edit_source':'https://github.com/Comfy-Org/workflow_templates/blob/371a7b7171bbd11e9cc92ef615ba5ad223d7e5b4/templates/image_qwen_image_2_1_image_edit.json',
-            'note':'Official ComfyUI workflows use 25 steps with Euler/simple. Diffusers examples use 40; this app runs the ComfyUI workflow.'}
+            'note':'The model card uses 40 steps (num_inference_steps=40). The ComfyUI template starts at 25 and notes that the official pipeline uses about 40-50.'}
 (ROOT/'reference'/'model-catalog.json').write_text(json.dumps(catalog,indent=2),encoding='utf-8')
 installed={}
 original=json.loads((DATA/'model-manifest.json').read_text())

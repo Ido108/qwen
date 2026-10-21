@@ -107,7 +107,7 @@ def variant_section(text, turbo):
         heading = line.strip(' \t•*-:')
         if len(heading) > 65:
             continue
-        if re.match(r'^(?:non[- ]?distilled|standard|base)(?:\s|$)', heading, re.I):
+        if re.match(r'^(?:non[- ]?distilled|standard|base|dev)(?:\s|$)', heading, re.I):
             markers.append((i, False))
         elif re.match(r'^(?:turbo(?:\s*\(distilled\))?|distilled)(?:\s|$)', heading, re.I):
             markers.append((i, True))
@@ -170,14 +170,38 @@ def version_settings(model, version, file=None):
     info = BASE_MODELS.get(version.get('baseModel'), {})
     own, page = _text(version.get('description')), _text(model.get('description'))
     if info.get('area') != 'video':
-        found = author_settings(own, page, arch=info.get('arch'))
-        origin = 'author' if found else 'examples'
-        found = found or example_settings(version)
+        # A1111 generation data pasted from an example ("Steps: 10, Sampler: Euler a, CFG scale: 2, Seed: ...,
+        # Model hash: ...") records one image, often from an older version on another architecture; not a recommendation.
+        # A training paragraph ("noisify the training image to the highest step of the 8-step schedule") is not one either.
+        infotext = lambda text: '\n'.join(line for line in text.split('\n') if not (re.search(r'\bsteps\s*:\s*\d', line, re.I)
+                                          and re.search(r'\b(?:seed|model hash)\s*:\s*\w', line, re.I)) and not (
+                                          re.search(r'\btraining\b', line, re.I) and re.search(r'σ|\bsigma\b|\bnois|\bloss\b', line, re.I)))
+        own, page = infotext(own), infotext(page)
+        from .civitai_files import file_section, image_file_type
+        from .civitai import version_turbo
+        chosen_type = image_file_type(model, version, file)
+        if chosen_type is None:
+            chosen_type = version_turbo(model, version, {})
+        selected_own = file_section(variant_section(own, chosen_type), file) if file else own
+        selected_page = file_section(variant_section(version_section(page, version), chosen_type), file) if file else page
+        found = author_settings(selected_own, selected_page, arch=info.get('arch'))
+        named = step_settings((file or {}).get('name', '').replace('_', ' '))
+        if named:
+            found.update(named, quote=(file or {})['name'])
+        origin = 'file' if named or found and (selected_own != own or selected_page != page) else 'author' if found else 'examples'
+        variants = {image_file_type(model, version, f) for f in version.get('files', [])} - {None}
+        # Example settings cannot identify a file on a mixed Base/Turbo release.
+        found = found or (example_settings(version) if len(variants) < 2 else {})
         return {**found, 'settings_origin': origin} if found else {}
     turbo = video_variant(model, version, file)
+    if info.get('arch') == 'ltx25':
+        from .civitai import ltx_variant
+        variant = ltx_variant(model.get('name',''),version.get('name',''),{},own+'\n'+page,file)
+        turbo = None if variant is None else variant == 'distilled'
     reference,_=h3_capabilities(model,version,file)
-    selected_page = partition_section(variant_section(version_section(page,version), turbo),reference)
-    own_values = _video_values(partition_section(variant_section(own, turbo),reference))
+    from .civitai_files import file_section
+    selected_page = file_section(partition_section(variant_section(version_section(page,version), turbo),reference),file)
+    own_values = _video_values(file_section(partition_section(variant_section(own, turbo),reference),file))
     page_values = _video_values(selected_page)
     workflows=[w for w in version.get('_workflow_settings',[]) if w.get('reference')==reference
                and video_variant(model,version,{'name':w.get('checkpoint','')}) in (None,turbo)]
@@ -260,7 +284,9 @@ def ltx_defaults(model,version,url,file=None):
     strength = 0.5
     strength_source = 'workflow'
     if variant == 'dev':
-        for text in (_text(version.get('description')),version_section(_text(model.get('description')),version)):
+        from .civitai_files import file_section
+        for text in (file_section(variant_section(_text(version.get('description')),False),file),
+                     file_section(variant_section(version_section(_text(model.get('description')),version),False),file)):
             match = re.search(r'\bdistill(?:ed|ation)?\s+lora\s*(?:strength|weight|at|@|:|=)\s*[:=]?\s*(0(?:\.\d+)?|1(?:\.0+)?)\b', text, re.I)
             if match:
                 strength = float(match[1]);strength_source = 'author';break

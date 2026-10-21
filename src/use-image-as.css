@@ -1,0 +1,8 @@
+.use-image-as{display:inline-flex;flex-direction:column;max-width:100%;vertical-align:middle}
+.use-image-as>label{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border,#dcd8ef);border-radius:9px;background:var(--panel,#fff);padding:0 8px;color:var(--accent,#6551cc)}
+.use-image-as select{width:102px!important;min-width:0;min-height:38px;border:0!important;background:transparent!important;color:inherit;font:inherit;cursor:pointer;padding:6px 2px!important}
+.use-image-as option{color:#201b35;background:#fff}
+.use-image-as small{max-width:260px;color:#b44124}
+.use-image-as.compact>label{padding:0 3px}.use-image-as.compact select{width:66px!important;font-size:11px;min-height:28px}
+.use-image-as.compact svg{display:none}
+@media(max-width:640px){.use-image-as select{min-height:44px}.mobile-result-card>.use-image-as{position:absolute;bottom:5px;left:5px;z-index:2}.mobile-result-card>.use-image-as select{min-height:32px}.mobile-result-card>.use-image-as small{position:fixed;left:12px;right:12px;bottom:12px;padding:10px;background:white;max-width:none;z-index:20}}

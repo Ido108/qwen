@@ -6,6 +6,7 @@ import hashlib
 import httpx
 import io
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Literal
@@ -44,7 +45,11 @@ pending_jobs: list[str] = []
 recent_jobs: deque[str] = deque(maxlen=20)
 queue_paused = False
 shutting_down = False
-image_warmup_suspended = False
+# Do not reload yesterday's model just because Windows starts the server.
+# A new local image job enables reuse and the existing post-video warm-up.
+image_warmup_suspended = True
+IDLE_MODEL_RELEASE_SECONDS = 10 * 60
+image_idle_since = time.monotonic()
 image_worker = ImageWorker()
 VIDEO_KINDS={'video','reference-video','multi-reference','upscale'}
 # Completed job IDs never change their output. Keep private images in this browser,
@@ -69,9 +74,10 @@ def start_next_locked():
 
 
 def warm_image_worker_locked():
-    """Caller holds active_lock. When the queue is idle and no image model is loaded (after the app starts or
-    after a video job), load the last used image model so the next image starts in about a second."""
+    """Caller holds active_lock. Restore the recent image model after a video job."""
     if image_warmup_suspended or active_job or pending_jobs or queue_paused or shutting_down or cloud.settings()['mode'] != 'local':
+        return
+    if time.monotonic() >= image_idle_since + IDLE_MODEL_RELEASE_SECONDS:
         return
     if os.environ.get('QWEN_NO_WARMUP') or image_worker.status()['loaded']:
         return
@@ -85,6 +91,42 @@ def warm_image_worker_locked():
             image_worker.warm(request, DATA_DIR / 'temp')
     except (OSError, ValueError, KeyError):
         pass  # the next job loads normally
+
+
+def release_idle_image_worker():
+    """Use the scheduler lock so expiry and a new job cannot overlap.
+
+    Closing the process releases CPU models, conditioning caches and its CUDA
+    context. Moving weights to CPU or emptying the CUDA cache would retain RAM.
+    Polling the UI and queue controls never extend the idle deadline.
+    """
+    global image_warmup_suspended
+    with active_lock:
+        if shutting_down or active_job or pending_jobs or active_process is not None:
+            return False
+        if time.monotonic() < image_idle_since + IDLE_MODEL_RELEASE_SECONDS:
+            return False
+        loaded = image_worker.status()['loaded']
+        # Also suspend when there is no worker: resuming an empty queue must
+        # not reload an old model after the deadline.
+        image_warmup_suspended = True
+        if not loaded:
+            return False
+        image_worker.close()
+        print('[Memory] Image model released after 10 minutes without jobs. '
+              'The next image job will load it again.', flush=True)
+        return True
+
+
+def watch_idle_image_worker(stopped):
+    """One low-cost timer per server. No model imports or disk scans."""
+    while not stopped.wait(1):
+        try:
+            release_idle_image_worker()
+        except Exception:
+            logging.exception('Could not release the idle image model; retrying in 10 seconds.')
+            if stopped.wait(10):
+                break
 
 
 def save_queue_locked():
@@ -318,7 +360,7 @@ def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
     write_json(directory / 'status.json', current)
 
 def run_job(job_id):
-    global active_job, active_process, active_remote, image_warmup_suspended
+    global active_job, active_process, active_remote, image_warmup_suspended, image_idle_since
     directory = JOBS_DIR / job_id
     try:
         request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
@@ -371,6 +413,7 @@ def run_job(job_id):
             active_job = None
             active_process = None
             active_remote = None
+            image_idle_since = time.monotonic()
             cancelled_jobs.discard(job_id)
             recent_jobs.appendleft(job_id)
             save_queue_locked()
@@ -452,10 +495,11 @@ def prepare_job_models(job_id,request):
 
 @asynccontextmanager
 async def lifespan(app):
-    global queue_paused, shutting_down, active_job, active_process, image_warmup_suspended
+    global queue_paused, shutting_down, active_job, active_process, image_warmup_suspended, image_idle_since
     with active_lock:
         shutting_down = False
-        image_warmup_suspended = False
+        image_warmup_suspended = True
+        image_idle_since = time.monotonic()
         active_job = None
         active_process = None
         pending_jobs.clear()
@@ -481,20 +525,31 @@ async def lifespan(app):
         start_next_locked()
     # Fix the settings of Civitai models saved by older versions (for example a Base model saved as Turbo).
     threading.Thread(target=civitai.repair_entries, name='civitai-repair', daemon=True).start()
+    from . import model_library
+    # Models the user already keeps in the shared ComfyUI library (D:\models) join the model lists.
+    threading.Thread(target=lambda: (model_library.scan(), model_library.merge_scan()), name='library-scan', daemon=True).start()
     recover_civitai_downloads()
     threading.Thread(target=civitai.warm_indexes, name='civitai-index-warm', daemon=True).start()
     # Remote use from the Moise dashboard (also on the phone), when this PC has the Moise connection settings.
     remote = moise_remote.start(int(os.environ['QWEN_SERVER_PORT'])) if os.environ.get('QWEN_SERVER_PORT', '').isdigit() else None
-    yield
-    if remote:
-        remote.set()
-    with active_lock:
-        shutting_down = True
-        save_queue_locked()
-        if active_process and active_process.poll() is None:
-            stop_worker(active_process)
-            active_process.wait(timeout=30)
-        image_worker.close()
+    idle_stop = threading.Event()
+    idle_thread = threading.Thread(target=watch_idle_image_worker, args=(idle_stop,),
+                                   name='image-idle-release', daemon=True)
+    idle_thread.start()
+    try:
+        yield
+    finally:
+        idle_stop.set()
+        if remote:
+            remote.set()
+        with active_lock:
+            shutting_down = True
+            save_queue_locked()
+            if active_process and active_process.poll() is None:
+                stop_worker(active_process)
+                active_process.wait(timeout=30)
+            image_worker.close()
+        idle_thread.join(timeout=5)
 
 app = FastAPI(title='Qwen', lifespan=lifespan)
 
@@ -526,7 +581,8 @@ def health():
 @app.get('/api/gpu-memory')
 def gpu_memory_status():
     from .gpu_memory import dedicated_memory_snapshot
-    return {**dedicated_memory_snapshot(), 'resident_image': image_worker.status(), 'job_active': bool(active_job)}
+    return {**dedicated_memory_snapshot(), 'resident_image': image_worker.status(), 'job_active': bool(active_job),
+            'idle_release_seconds': IDLE_MODEL_RELEASE_SECONDS}
 
 @app.get('/api/config')
 def config():
@@ -694,7 +750,7 @@ def civitai_disconnect():
 def civitai_search(query: str = '', kind: Literal['LORA', 'Checkpoint'] = 'LORA',
                    sort: Literal['Most Downloaded', 'Highest Rated', 'Newest'] = 'Most Downloaded', cursor: str | None = None,
                    area: Literal['image', 'video'] = 'image', variant: Literal['all', 'standard', 'turbo'] = 'all',
-                   arch: Literal['all', 'qwen-image-2.1', 'krea-2', 'z-image', 'flux3-klein', 'minimax-h3', 'ltx25'] = 'all'):
+                   arch: Literal['all', 'qwen-image-2.1', 'krea-2', 'z-image', 'flux3-klein', 'moss-image', 'minimax-h3', 'ltx25'] = 'all'):
     return civitai_call(civitai.search, query, kind, sort, cursor, True, area, variant, arch)
 
 
@@ -708,7 +764,7 @@ def civitai_resolve(body: CivitaiLink):
     return civitai_call(civitai.resolve_link, body.link)
 
 
-# Civitai downloads run side by side (each file has its own target), one record and Cancel switch per version.
+# Each Civitai file has its own target, progress, recovery request and Cancel switch.
 civitai_downloads: dict[str, dict] = {}
 civitai_cancels: dict[str, threading.Event] = {}
 CIVITAI_PENDING_PATH = DATA_DIR / 'civitai-pending-downloads.json'
@@ -741,14 +797,26 @@ def civitai_download_list() -> list[dict]:
 
 @app.post('/api/civitai/install')
 def civitai_install(body: CivitaiInstall):
-    key = str(body.version_id)
+    from .civitai_files import download_key
+    selected = civitai_call(civitai.download_file, body.version_id, body.file_id)
+    body = body.model_copy(update={'file_id': selected['id']})
+    key = download_key(body.version_id, body.file_id)
     with models.lock:
         if civitai_downloads.get(key, {}).get('status') == 'running':
-            raise HTTPException(409, 'This version is already downloading.')
-        record = civitai_downloads[key] = {'status': 'running', 'stage': 'preparing', 'requested_id': f'civitai:{body.version_id}', 'title': body.title,
-                                           'completed_bytes': 0, 'total_bytes': 0}
+            raise HTTPException(409, 'This file is already downloading.')
+        label = selected['precision'] or selected['format']
+        record = civitai_downloads[key] = {
+            'status': 'running', 'stage': 'preparing', 'requested_id': f'civitai:{key}',
+            'version_id': body.version_id, 'file_id': body.file_id, 'file_name': selected['name'],
+            'precision': selected['precision'], 'format': selected['format'],
+            'title': f'{body.title} · {label}', 'completed_bytes': 0, 'total_bytes': selected['bytes'],
+            'started_at': time.time()}
         cancel = civitai_cancels[key] = threading.Event()
         pending=pending_civitai_downloads()
+        # Replace the old version-only recovery key only for this exact request.
+        legacy = pending.get(str(body.version_id))
+        if legacy and legacy.get('file_id') in (None, body.file_id):
+            pending.pop(str(body.version_id))
         pending[key]=body.model_dump()
         write_json(CIVITAI_PENDING_PATH,pending)
 
@@ -781,13 +849,19 @@ def civitai_install(body: CivitaiInstall):
                 pending.pop(key,None)
                 write_json(CIVITAI_PENDING_PATH,pending)
     threading.Thread(target=run, name=f'civitai-{key}', daemon=True).start()
-    return {'ok': True}
+    return {'ok': True, 'download_id': f'civitai:{key}', 'file_id': body.file_id, 'download': dict(record)}
 
 
 @app.post('/api/civitai/install/{version_id}/cancel')
-def civitai_install_cancel(version_id: int):
+def civitai_install_cancel(version_id: int, file_id: int | None = None):
+    from .civitai_files import download_key
     with models.lock:
-        cancel = civitai_cancels.get(str(version_id))
+        keys = [key for key, item in civitai_downloads.items()
+                if item.get('version_id') == version_id and item['status'] == 'running']
+        if file_id is None and len(keys) > 1:
+            raise HTTPException(409, 'Choose the file to cancel.')
+        key = download_key(version_id, file_id) if file_id is not None else next(iter(keys), str(version_id))
+        cancel = civitai_cancels.get(key)
     if cancel:
         cancel.set()
     return {'ok': True}
@@ -799,6 +873,120 @@ def civitai_preview(entry_id: str):
     if not path.is_relative_to(civitai.PREVIEWS.resolve()) or not path.is_file():
         raise HTTPException(404, 'Preview not found.')
     return FileResponse(path, headers={'Cache-Control': 'private, max-age=86400'})
+
+
+# Hugging Face and ModelScope: the same browsing and download flow as Civitai. Their downloads join the
+# Civitai list, so the download indicator and the details dialog follow them the same way.
+HubSource = Literal['huggingface', 'modelscope']
+
+
+class HubInstall(BaseModel):
+    repo: str = Field(min_length=3, max_length=200, pattern=r'^[\w.-]+/[\w.-]+$')
+    path: str = Field(min_length=1, max_length=500)
+    turbo: bool = False
+    title: str = Field(default='Model', max_length=200)
+
+
+class HubCancel(BaseModel):
+    download_id: str = Field(min_length=3, max_length=800)
+
+
+class HubToken(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+
+
+def hub_call(source, function, *args):
+    try:
+        return function(*args)
+    except (ValueError, ConnectionError, PermissionError) as exc:
+        raise HTTPException(400, str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(502, f"{'Hugging Face' if source == 'huggingface' else 'ModelScope'} is not reachable. Check the internet connection and try again.")
+
+
+@app.get('/api/hub/huggingface/status')
+def hub_hf_status():
+    from . import hf_hub
+    return hf_hub.hf_status()
+
+
+@app.post('/api/hub/huggingface/token')
+def hub_hf_token(body: HubToken):
+    from . import hf_hub
+    return hub_call('huggingface', hf_hub.save_hf_token, body.token)
+
+
+@app.post('/api/hub/huggingface/disconnect')
+def hub_hf_disconnect():
+    from . import hf_hub
+    return hf_hub.forget_hf_token()
+
+
+@app.get('/api/hub/{source}/search')
+def hub_search(source: HubSource, query: str = '', kind: Literal['LORA', 'Checkpoint'] = 'LORA',
+               sort: Literal['Most Downloaded', 'Highest Rated', 'Newest'] = 'Most Downloaded', cursor: str | None = None,
+               area: Literal['image', 'video'] = 'image', variant: Literal['all', 'standard', 'turbo'] = 'all',
+               arch: Literal['all', 'qwen-image-2.1', 'krea-2', 'z-image', 'flux3-klein', 'moss-image', 'minimax-h3', 'ltx25'] = 'all'):
+    from . import hf_hub
+    return hub_call(source, hf_hub.search, source, query, kind, sort, cursor, area, variant, arch)
+
+
+@app.get('/api/hub/{source}/model')
+def hub_details(source: HubSource, repo: str):
+    from . import hf_hub
+    return hub_call(source, hf_hub.details, source, repo)
+
+
+@app.post('/api/hub/resolve')
+def hub_resolve(body: CivitaiLink):
+    from . import hf_hub
+    return hub_call('huggingface', hf_hub.resolve_link, body.link)
+
+
+@app.post('/api/hub/{source}/install')
+def hub_install(source: HubSource, body: HubInstall):
+    from . import hf_hub
+    selected = hub_call(source, hf_hub.selected_file, source, body.repo, body.path)['file']
+    key = f'{source}:{body.repo}:{body.path}'
+    with models.lock:
+        if civitai_downloads.get(key, {}).get('status') == 'running':
+            raise HTTPException(409, 'This file is already downloading.')
+        record = civitai_downloads[key] = {
+            # A negative version id lets the download indicator's Civitai cancel route find this record too.
+            'status': 'running', 'stage': 'preparing', 'requested_id': key, 'source': source, 'repo': body.repo, 'path': body.path,
+            'version_id': -1 - uuid.uuid4().int % 10**9,
+            'file_name': body.path.rsplit('/', 1)[-1], 'precision': selected['precision'], 'format': selected['format'],
+            'title': f"{body.title} · {selected['precision'] or selected['format']}", 'completed_bytes': 0, 'total_bytes': selected['bytes'],
+            'started_at': time.time()}
+        cancel = civitai_cancels[key] = threading.Event()
+
+    def run():
+        def progress(done, total, stage):
+            if cancel.is_set():
+                raise models.DownloadCancelled()
+            with models.lock:
+                record.update(completed_bytes=done, total_bytes=total, stage=stage)
+        try:
+            entry = hf_hub.install(source, body.repo, body.path, body.turbo, progress)
+            with models.lock:
+                record.update(status='succeeded', stage='complete', title=entry['title'], model_id=entry['id'], installed_id=entry['id'], ended_at=time.time())
+        except models.DownloadCancelled:
+            with models.lock:
+                record.update(status='cancelled', message='Download cancelled. Add it again to resume.', ended_at=time.time())
+        except Exception as exc:
+            with models.lock:
+                record.update(status='failed', message=str(exc)[:400], ended_at=time.time())
+    threading.Thread(target=run, name=f'hub-{source}', daemon=True).start()
+    return {'ok': True, 'download_id': key, 'download': dict(record)}
+
+
+@app.post('/api/hub/cancel')
+def hub_cancel(body: HubCancel):
+    with models.lock:
+        cancel = civitai_cancels.get(body.download_id) if body.download_id.startswith(('huggingface:', 'modelscope:')) else None
+    if cancel:
+        cancel.set()
+    return {'ok': True}
 
 
 class PersonBody(BaseModel):
@@ -876,6 +1064,27 @@ def get_models():
 
 class LoraPromptSettings(BaseModel):
     prompt_addition: str = Field(default='', max_length=4000)
+
+
+class ModelDefaultSetting(BaseModel):
+    scope: str
+    field: str
+    value: dict | None
+
+
+@app.get('/api/model-defaults')
+def get_model_defaults():
+    from .model_defaults import read
+    return read()
+
+
+@app.put('/api/model-defaults/{model_id}')
+def put_model_default(model_id: str, body: ModelDefaultSetting):
+    from .model_defaults import save
+    try:
+        return save(model_id, body.scope, body.field, body.value)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @app.get('/api/loras/{model_id}/settings')

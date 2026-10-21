@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from backend.common import UpscaleRequest
 from backend.models import catalog,entry,required_upscale
-from backend.upscale_settings import output_dimensions,seed_memory_options
+from backend.upscale_settings import output_dimensions,seed_memory_options,seed_vae_options
 from backend.stream_upscale import frame_batches,swift
 from backend.seedvr2_cli import H264Writer,publish_chunk
 
@@ -59,6 +59,16 @@ class UpscaleTests(unittest.TestCase):
         low=seed_memory_options(entry('seedvr2-7b-fp16'),request,12)
         self.assertIn('--blocks_to_swap',low)
         self.assertEqual(seed_memory_options(entry('seedvr2-7b-fp16'),{**request,'memory_mode':'gpu'},12),[])
+        # 24 GB or more: 3B FP16 with 21 frames stays on the GPU at 1080p and 2160p; no forced BlockSwap at 4K.
+        self.assertEqual(seed_memory_options(entry('seedvr2-3b-fp16'),{**request,'batch_size':21},28),[])
+        self.assertEqual(seed_memory_options(entry('seedvr2-3b-fp16'),{**request,'resolution':2160},28),[])
+        # The decoder stays tiled at 1080p: untiled it spilled 11 GB to shared memory.
+        self.assertEqual(seed_vae_options(1080,28),['--vae_decode_tiled','--vae_decode_tile_size','768'])
+        self.assertEqual(seed_vae_options(2160,28),['--vae_encode_tiled','--vae_decode_tiled'])
+        self.assertEqual(seed_vae_options(1080,12),['--vae_encode_tiled','--vae_decode_tiled'])
+        self.assertEqual(seed_vae_options(1080,28,conservative=True),['--vae_encode_tiled','--vae_decode_tiled'])
+        self.assertEqual(seed_vae_options(720,28),[])
+        self.assertEqual(UpscaleRequest(source_video='a.mp4',batch_size=121).batch_size,121)
 
     def test_stream_reader_overlap_and_preview_use_real_frames(self):
         from PIL import Image

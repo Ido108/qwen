@@ -3,11 +3,12 @@ from __future__ import annotations
 import gc
 import importlib.util
 import json
+import logging
 import re
 from pathlib import Path
 import sys
 import time
-from .common import APP_DIR, MODELS_DIR
+from .common import APP_DIR
 from .models import entry, local_path, required_image
 from .image_cache import ConditioningCache, PositiveOnlyEncoder, retain_cpu_weights, retain_lora_clone
 
@@ -35,6 +36,23 @@ def split_fused_mlp(weights):
             out[gate] = out[proj] = value
     return out
 
+def plain_fp8(weights, metadata):
+    """FP8 weights saved without scales or quantization metadata (some Civitai files)."""
+    import torch
+    if (metadata or {}).get('_quantization_metadata') or any(key.endswith(('comfy_quant','scale_weight','weight_scale','scale_input')) for key in weights):
+        return False
+    return any(value.dtype in (torch.float8_e4m3fn,torch.float8_e5m2) for value in weights.values())
+
+
+def placement(memory, model, free):
+    """Where each loaded model sat during sampling. offloaded_gb above 0 means parts of the image model ran from system RAM."""
+    GIB=1024**3
+    loaded=[{'model':item.model.model.__class__.__name__,'gpu_gb':round(item.model.loaded_size()/GIB,2),'total_gb':round(item.model.model_size()/GIB,2)}
+            for item in memory.current_loaded_models if item.model is not None]
+    return {'loaded_models':loaded,'offloaded_gb':round((model.model_size()-model.loaded_size())/GIB,2),
+            'dedicated_free_after_gb':None if free is None else round(free/GIB,2)}
+
+
 def generate(request, prompt, images, width, height, progress):
     import torch
     import numpy as np
@@ -51,8 +69,13 @@ def generate(request, prompt, images, width, height, progress):
     args.disable_async_offload=True
     args.disable_pinned_memory=True
     args.disable_dynamic_vram=True
-    from .gpu_memory import configure_video_memory
+    from .gpu_memory import configure_attention, configure_video_memory, dedicated_free_bytes
+    attention=configure_attention(args)
     configure_video_memory(torch, args, progress)
+    # ComfyUI reports weight placement ("loaded partially ... offloaded") at INFO level; without a handler it never reached worker.log.
+    if not logging.getLogger().handlers:
+        logging.basicConfig(stream=sys.stdout, format='%(message)s')
+    logging.getLogger().setLevel(logging.INFO)
     # Initialize only the file-mapping library, not its GPU allocator/hooks.
     # safetensors' copy-on-write mapping reserves the whole file against the
     # Windows commit limit (error 1455). ComfyUI's read-only loader avoids that.
@@ -88,6 +111,10 @@ def generate(request, prompt, images, width, height, progress):
     if _components and _components['key'] != cache_key:
         raise RuntimeError('Start a new image worker when changing model or encoder.')
     reused=bool(_components)
+    if not reused:
+        # Large sequential reads ahead of the mapped loads, in load order (see file_prefetch).
+        from .file_prefetch import prefetch
+        prefetch(local_path(encoder,encoder['files'][0]),*(local_path(selected,f) for f in selected['files'] if f['path'].endswith(('.safetensors','.gguf'))))
     started=time.perf_counter()
     progress(stage='loading_model',message='Using loaded image models.' if reused else 'Loading text encoder and VAE…',
              model_reused=reused,
@@ -165,17 +192,25 @@ def generate(request, prompt, images, width, height, progress):
         model=GGUFModelPatcher.clone(model)
         progress(gguf_norm_vectors_decoded=len(fixed),gguf_quantization=selected['title'].split(' · ')[-1])
     elif selected.get('layout')=='comfy':
-        # Single-file ComfyUI checkpoint (Comfy-Org Turbo BF16).
+        # Single-file ComfyUI checkpoint (Comfy-Org BF16 or INT8, Civitai FP8 and NVFP4).
         weights,metadata=read_weights(local_path(selected,selected['files'][0]))
-        model=comfy.sd.load_diffusion_model_state_dict(weights,model_options={'dtype':torch.bfloat16},metadata=metadata,disable_dynamic=True)
+        options={'dtype':torch.bfloat16}
+        if plain_fp8(weights,metadata):
+            # FP8 weights without scales or quantization metadata: keep them FP8 and use the GPU's FP8 matmul
+            # (ComfyUI's fp8_matrix_mult) instead of an upcast to a 13 GB BF16 copy.
+            options={'fp8_optimizations':True}
+            progress(fp8_matmul=True)
+        model=comfy.sd.load_diffusion_model_state_dict(weights,model_options=options,metadata=metadata,disable_dynamic=True)
         if model is None:
             raise RuntimeError(f"Could not load {selected['title']}.")
     else:
-        index_path=MODELS_DIR/'Qwen-Image-2.1'/'transformer'/'diffusion_pytorch_model.safetensors.index.json'
-        weight_map=json.loads(index_path.read_text())['weight_map']
+        # The Diffusers shards, read where the catalog file is (the model library first, then the data folder).
+        source=selected if any(f['path'].endswith('.index.json') for f in selected['files']) else entry('official-bf16')
+        files={f['path']:f for f in source['files']}
+        weight_map=json.loads(local_path(source,files['transformer/diffusion_pytorch_model.safetensors.index.json']).read_text())['weight_map']
         weights={}
         for shard in sorted(set(weight_map.values())):
-            weights.update(read_weights(index_path.parent/shard)[0])
+            weights.update(read_weights(local_path(source,files['transformer/'+shard]))[0])
         if set(weights)!=set(weight_map):
             raise RuntimeError('The official image model is missing weights.')
         model=comfy.sd.load_diffusion_model_state_dict(weights,model_options={'dtype':torch.bfloat16},disable_dynamic=True)
@@ -204,7 +239,8 @@ def generate(request, prompt, images, width, height, progress):
         for lora_id,strength in stack:
             lora=entry(lora_id)
             if lora_id not in loras:
-                loras[lora_id]=split_fused_mlp(comfy.utils.load_torch_file(str(local_path(lora,lora['files'][0])),safe_load=True))
+                from .lora_loading import read_lora_weights
+                loras[lora_id]=split_fused_mlp(read_lora_weights(local_path(lora,lora['files'][0])))
             from .lora_loading import load_model_lora
             model,check=load_model_lora(model,loras[lora_id],strength,lora['title'],runtime=True)
             lora_checks.append({'id':lora_id,'title':lora['title'],**check})
@@ -218,30 +254,36 @@ def generate(request, prompt, images, width, height, progress):
     # GPU policy keeps the lossless cache in VRAM when its memory checks allow,
     # otherwise recomputes the prefix without host cache transfers.
     model.model_options.setdefault('transformer_options', {})['qwen_image21_cache']={'device':'gpu','dtype':'default'}
-    progress(prefix_cache_device='gpu')
+    progress(prefix_cache_device='gpu',attention=attention)
+    # The prompt is encoded. When the image model does not fit next to the encoder in physical VRAM, move the
+    # encoder off the GPU now: Windows can otherwise spill the model to system RAM in silence, 3 to 12 times slower.
+    free=dedicated_free_bytes(torch)
+    batch=2 if cfg>1 else 1
+    need=model.model_size()-model.loaded_size()+model.model.memory_required([batch,64,height//16,width//16])+memory.minimum_inference_memory()
+    if free is not None and clip.patcher.loaded_size() and free<need:
+        memory.unload_model_and_clones(clip.patcher,unload_additional_models=False)
+        progress(encoder_unloaded_for_sampling=True)
     # Official Qwen 2.1 workflow: 64-channel, 16x spatial latent, Euler + simple.
     latent=torch.zeros((1,64,height//16,width//16),device=memory.intermediate_device())
     noise=comfy.sample.prepare_noise(latent,request['seed'])
-    sampler,scheduler=request.get('sampler') or defaults.get('sampler','euler'),request.get('scheduler') or defaults.get('scheduler','simple')
+    from .image_sampling import resolve, sample_qwen
+    sampler,scheduler=resolve(request,defaults)
+    if scheduler!='turbo-sigmas':
+        # The model's scheduler shifts with the image size (mu 0.5 at 256 tokens to 0.9 at 8192, scheduler_config.json);
+        # ComfyUI keeps its 1024x1024 value 0.69. ModelSamplingFlux uses the same tokens (w*h/256): 0.69355 at 4096.
+        from comfy_extras.nodes_model_advanced import ModelSamplingFlux
+        model=ModelSamplingFlux().patch(model,0.69355,0.5,width,height)[0]
+        retain_lora_clone(model,_components['model'])
+        progress(shift_mu=round(0.5+(0.69355-0.5)/3840*(width*height/256-256),3))
     def callback(step,x0,x,total):
         progress(stage='generating',message='Generating image…',step=step+1,total_steps=total)
-    progress(stage='generating',message='Generating image…',step=0,sampling='turbo-sigmas' if turbo else f'{sampler}-{scheduler}',cfg=cfg)
+    progress(stage='generating',message='Generating image…',step=0,sampling=f'{sampler}/{scheduler}',cfg=cfg,
+             sampler=sampler,scheduler=scheduler)
     with torch.inference_mode():
-        if turbo:
-            import comfy.samplers
-            sigmas=defaults['sigmas']
-            if request['steps']!=len(sigmas)-1:
-                # A custom step count follows the same trained curve, stretched to the new length.
-                sigmas=np.interp(np.linspace(0,1,request['steps']+1),np.linspace(0,1,len(sigmas)),sigmas).tolist()
-            sigmas=torch.tensor(sigmas,dtype=torch.float32)
-            samples=comfy.sample.sample_custom(model,noise,cfg,comfy.samplers.sampler_object(defaults.get('sampler','euler')),sigmas,
-                                               positive,negative_conditioning,latent,callback=callback,seed=request['seed'])
-        else:
-            samples=comfy.sample.sample(model,noise,request['steps'],cfg,sampler,scheduler,positive,negative_conditioning,
-                                        latent,callback=callback,seed=request['seed'])
+        samples=sample_qwen(model,noise,request,defaults,cfg,positive,negative_conditioning,latent,callback)
         del noise,latent
         from .lora_runtime import execution_report
-        progress(lora_execution=execution_report(model))
+        progress(lora_execution=execution_report(model),**placement(memory,model,dedicated_free_bytes(torch)))
         progress(stage='decoding',message='Decoding image…')
         pixels=vae.decode(samples)
     array=(pixels[0].float().cpu().numpy().clip(0,1)*255).round().astype(np.uint8)

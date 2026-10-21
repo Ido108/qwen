@@ -8,7 +8,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parent.parent))
 from backend import models
 
 parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('models',nargs='*',default=['gguf-q8_0','gguf-q4_k_m'])
+parser.add_argument('models',nargs='*',default=['uc-int8-convrot'])
 args=parser.parse_args()
 for model_id in args.models:
     print('Preparing:',models.entry(model_id)['title'],flush=True)

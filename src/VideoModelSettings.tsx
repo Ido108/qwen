@@ -1,3 +1,4 @@
+import {SettingLabel} from './SettingLabel';
 import type {ModelEntry,SamplingProfile} from './ModelSettings';
 import {isLtx} from './videoModels';
 
@@ -28,5 +29,5 @@ export function VideoModelSettings({model,profile,steps,frames,width,height,last
 }
 
 export function VideoStepInput({id,value,defaultSteps,onChange}:{id:string;value:number|null;defaultSteps:number;onChange:(value:number|null)=>void}){
-  return <div className="field"><label htmlFor={id}>Steps</label><input id={id} type="number" min="1" max="60" step="1" aria-describedby={`${id}-help`} value={value??defaultSteps} onChange={e=>onChange(e.target.value===''?null:Number(e.target.value))}/><small id={`${id}-help`}>{value===null?'Uses model settings.':`Custom value. Model default: ${defaultSteps}.`}</small><button className="text-button" type="button" disabled={value===null} onClick={()=>onChange(null)}>Use model settings ({defaultSteps})</button></div>;
+  return <div className="field"><SettingLabel htmlFor={id} label="Steps" value={defaultSteps} onReset={()=>onChange(null)}>Steps</SettingLabel><input id={id} type="number" min="1" max="60" step="1" aria-describedby={`${id}-help`} value={value??defaultSteps} onChange={e=>onChange(e.target.value===''?null:Number(e.target.value))}/><small id={`${id}-help`}>{value===null?'Uses model settings.':`Custom value. Model default: ${defaultSteps}.`}</small></div>;
 }

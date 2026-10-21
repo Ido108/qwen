@@ -88,7 +88,7 @@ class WindowsLifetimeTests(unittest.TestCase):
 
     def test_busy_stop_refuses_before_signalling_owner(self):
         from desktop import stop_server
-        with patch('desktop.read_state',return_value={'url':'http://127.0.0.1:1'}), patch('desktop.matching_server',return_value=True), patch('desktop.get_json',return_value={'active':None,'pending':[{'id':'queued'}]}), patch('desktop.Instance') as instance:
+        with patch('desktop.read_state',return_value={'url':'http://127.0.0.1:1'}), patch('desktop.matching_server',return_value=True), patch('desktop.get_json',return_value={'active':None,'pending_count':1,'downloads':[],'transfer':{'status':'idle'}}), patch('desktop.Instance') as instance:
             with self.assertRaisesRegex(RuntimeError,'Nothing was stopped'):
                 stop_server(Path('C:/test'),Path('C:/test/runtime.json'))
             instance.assert_not_called()
@@ -104,12 +104,35 @@ class WindowsLifetimeTests(unittest.TestCase):
     def test_download_stop_refuses_before_signalling_owner(self):
         from desktop import stop_server
         for catalog in ({'downloads':[{'status':'running'}]}, {'transfer':{'status':'running'}}):
-            with patch('desktop.read_state',return_value={'url':'http://127.0.0.1:1'}), patch('desktop.matching_server',return_value=True), patch('desktop.get_json',side_effect=[{'active':None,'pending':[]},catalog]), patch('desktop.Instance') as instance:
+            activity={'active':None,'pending_count':0,'downloads':[],'transfer':{'status':'idle'},**catalog}
+            with patch('desktop.read_state',return_value={'url':'http://127.0.0.1:1'}), patch('desktop.matching_server',return_value=True), patch('desktop.get_json',return_value=activity), patch('desktop.Instance') as instance:
                 with self.assertRaisesRegex(RuntimeError,'Model downloads are running'):
                     stop_server(Path('C:/test'),Path('C:/test/runtime.json'))
                 instance.assert_not_called()
 
-    def test_independent_server_reuse_restart_browser_close_and_owner_exit(self):
+    def test_stop_check_uses_activity_and_rejects_incomplete_state(self):
+        from desktop import require_idle
+        with patch('desktop.get_json',return_value={'active':None,'pending_count':0,'downloads':[],'transfer':{'status':'idle'}}) as get:
+            require_idle('http://127.0.0.1:1')
+            get.assert_called_once_with('http://127.0.0.1:1/api/activity')
+        with patch('desktop.get_json',return_value={'active':None}):
+            with self.assertRaisesRegex(RuntimeError,'Nothing was stopped'):
+                require_idle('http://127.0.0.1:1')
+
+    def test_old_server_stop_check_falls_back_only_on_missing_endpoint(self):
+        from desktop import require_idle
+        from urllib.error import HTTPError
+        with patch('desktop.get_json',side_effect=[
+            HTTPError('url',404,'missing',{},None),{'active':None,'pending':[]},
+            {'downloads':[],'transfer':{'status':'running'}}]):
+            with self.assertRaisesRegex(RuntimeError,'Model downloads are running'):
+                require_idle('http://127.0.0.1:1')
+        with patch('desktop.get_json',side_effect=HTTPError('url',503,'unavailable',{},None)) as get:
+            with self.assertRaises(HTTPError):
+                require_idle('http://127.0.0.1:1')
+            self.assertEqual(get.call_count,1)
+
+    def test_independent_server_reuse_restart_launcher_exit_and_owner_exit(self):
         with tempfile.TemporaryDirectory(prefix='qwen-lifecycle-') as folder:
             folder=Path(folder); state=folder/'runtime.json'
             with socket.socket() as sock:
@@ -152,14 +175,6 @@ k.FreeConsole()
                 run()
                 self.assertEqual(json.loads(state.read_text())['owner_pid'],old['owner_pid'])
                 self.assertTrue(alive(old['pid']))
-                # The optional Electron client loads the app and closes its own window.
-                electron=APP/'node_modules/electron/dist/electron.exe'
-                self.assertTrue(electron.is_file(),'Install the optional desktop client for this integration test')
-                result=subprocess.run([str(electron),str(APP/'scripts/electron.cjs'),'--url='+old['url'],'--check-close'],cwd=APP,env=env,capture_output=True,text=True,timeout=40,creationflags=subprocess.CREATE_NO_WINDOW)
-                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-                self.assertIn('page loaded',result.stdout)
-                self.assertTrue(ready())
-                self.assertTrue(alive(old['pid']))
                 # Clients can reset sockets without stopping the server.
                 for _ in range(5):
                     connection=socket.create_connection(('127.0.0.1',old['port']))
@@ -177,6 +192,36 @@ k.FreeConsole()
                 self.assertNotIn('_ProactorBasePipeTransport',(folder/'logs/server.err.log').read_text())
             finally:
                 subprocess.run([*args,'--stop'],cwd=APP,env=env,capture_output=True,timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
+
+    @unittest.skipUnless((APP/'node_modules/electron/dist/electron.exe').is_file(),
+                         'Optional Electron client is not installed; normal browser mode is unaffected')
+    def test_optional_electron_close_keeps_server_running(self):
+        with tempfile.TemporaryDirectory(prefix='qwen-electron-lifecycle-') as folder:
+            folder=Path(folder);state=folder/'runtime.json'
+            with socket.socket() as sock:
+                sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
+            args=[sys.executable,'-u',str(APP/'scripts/desktop.py'),'--data-dir',str(folder),
+                  '--runtime-file',str(state),'--port',str(port),'--no-browser','--no-console']
+            env=dict(os.environ,CUDA_VISIBLE_DEVICES='',QWEN_REMOTE='0',QWEN_NO_WARMUP='1')
+            env.pop('ELECTRON_RUN_AS_NODE',None)
+            try:
+                result=subprocess.run(args,cwd=APP,env=env,capture_output=True,text=True,
+                                      timeout=60,creationflags=subprocess.CREATE_NO_WINDOW)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                saved=json.loads(state.read_text())
+                electron=APP/'node_modules/electron/dist/electron.exe'
+                result=subprocess.run([str(electron),str(APP/'scripts/electron.cjs'),
+                                       '--url='+saved['url'],'--check-close'],cwd=APP,env=env,
+                                      capture_output=True,text=True,timeout=40,
+                                      creationflags=subprocess.CREATE_NO_WINDOW)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                self.assertIn('page loaded',result.stdout)
+                self.assertTrue(alive(saved['pid']))
+                with urlopen(saved['url']+'/api/health',timeout=2) as response:
+                    self.assertEqual(response.status,200)
+            finally:
+                subprocess.run([*args,'--stop'],cwd=APP,env=env,capture_output=True,
+                               timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
 
 
 if __name__=='__main__':

@@ -110,7 +110,7 @@ class PromptApiTests(unittest.TestCase):
         self.assertEqual(preview.status_code,200,preview.text)
         self.assertEqual(queued.status_code,202,queued.text)
         self.assertEqual(preview.json()['prompt'],self.queued[-1]['prompt'])
-        self.assertIn('Use <image1> as the base.',self.queued[-1]['prompt'])
+        self.assertIn('Start with <image1> as the base image.',self.queued[-1]['prompt'])
         self.assertIn('Keep the person from <image1> beside the statue from <image2>.',self.queued[-1]['prompt'])
 
     def test_custom_labels_reach_both_reference_video_families(self):

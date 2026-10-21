@@ -42,3 +42,37 @@ class AuthorAdviceTests(unittest.TestCase):
         from backend.civitai import trained_words
         version = {'baseModel':'Qwen 2.1', 'trainedWords':[], 'description':'Tigger words: paperStyle'}
         self.assertEqual(trained_words(version, {}), ['paperStyle'])
+
+
+class TrainedOnTests(unittest.TestCase):
+    QWEN = ['qwen-image-2.1', 'qwen-image-2.1-turbo']
+
+    def advice(self, family, examples):
+        return {'workflow': {'family': family, 'steps': 50, 'cfg': 3.0, 'supported_sampler': 'res_2m',
+                             'supported_scheduler': 'beta', 'examples': examples}}
+
+    def test_author_example_strength_matches_this_file_before_single_lora_graphs(self):
+        from backend.lora_author import example_strength
+        graphs = [{'loras': [{'file': 'a\\lenovo_qwen21.safetensors', 'strength': .7}, {'file': 'a/nicegirls_v2_qwen21.safetensors', 'strength': .6}]},
+                  {'loras': [{'file': 'step-3000.safetensors', 'strength': 1}]}]
+        self.assertEqual(example_strength({'workflow': {'examples': graphs}}, 'nicegirls_v2_qwen21.safetensors'), .6)
+        self.assertEqual(example_strength({'workflow': {'examples': graphs}}, 'other.safetensors'), 1)
+        self.assertIsNone(example_strength({'workflow': {'examples': graphs[:1]}}, 'other.safetensors'))
+
+    def test_standard_trained_style_lora_keeps_author_settings_and_vae(self):
+        from backend.lora_author import trained_on
+        advice = self.advice('qwen-image-2.1', [{'vae': ['qwen_image_2.1_vae_bf16.safetensors']}])
+        found = trained_on(advice, {'ss_base_model_version': 'qwen_image_2'}, ['transformer_blocks.0.attn.to_q.lora_A.weight'],
+                           'GrainScape', 'grainscape_qwen21.safetensors', self.QWEN)
+        self.assertEqual(found['family'], 'qwen-image-2.1')
+        self.assertEqual(found['settings'], {'steps': 50, 'cfg': 3.0, 'sampler': 'res_2m', 'scheduler': 'beta', 'vae_id': 'vae'})
+
+    def test_speed_lora_and_turbo_names(self):
+        from backend.lora_author import accelerator, trained_on
+        keys = ['transformer.time_text_embed.timestep_embedder.linear_1.lora_A.weight']
+        self.assertEqual(accelerator(keys, 'Accelerator', 'qwen-viggle-turbo-4step-lora.safetensors'), {'steps': 4})
+        self.assertIsNone(accelerator(['blocks.0.attn.to_q.lora_A.weight'], 'Style', 'style.safetensors'))
+        turbo = trained_on(None, {}, ['a.lora_A.weight'], 'Turbo Character Swap LoRA', 'swap.safetensors', self.QWEN)
+        self.assertEqual(turbo['family'], 'qwen-image-2.1-turbo')
+        other = trained_on(None, {'ss_base_model_version': 'krea2'}, [], 'Realistic Snapshot (Z-Image-Turbo + Krea2)', 'k.safetensors', ['krea-2', 'krea-2-turbo'])
+        self.assertEqual(other, {'family': None, 'label': 'Krea 2', 'evidence': 'file header', 'settings': None})

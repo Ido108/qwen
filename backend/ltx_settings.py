@@ -41,7 +41,7 @@ class MultiReferenceRequest(ImageLabels):
     # MiniMax H3 Ref2VA only. None follows the model's documented profile.
     steps: int | None = Field(default=None, ge=1, le=60)
     quality: Literal['standard', 'turbo'] | None = None
-    loras: list[LoraChoice] = Field(default_factory=list, max_length=4)
+    loras: list[LoraChoice] = Field(default_factory=list)
     output_dir: str = str(VIDEOS_DIR)
 
     @field_validator('output_dir')

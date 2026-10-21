@@ -24,6 +24,10 @@ AITK_COMMIT = 'dcebc7442df70e5239c68167919fd2909c615769'  # 2026-10-16
 # The versions the ai-toolkit README installs on Windows (CUDA 13.0, which the RTX 50 series needs).
 TORCH = ['torch==2.13.0', 'torchvision==0.28.0', 'torchaudio==2.11.0']
 TORCH_INDEX = 'https://download.pytorch.org/whl/cu130'
+# ConvRot's fused activation-quant kernel and torchao need Triton; the ai-toolkit requirements do not install it on Windows.
+TRITON = 'triton-windows>=3.6,<3.9' if os.name == 'nt' else None
+# A tiny compiled CUDA kernel: an install that does not work with this torch build is removed, and the trainer runs without it.
+TRITON_CHECK = 'import torch; f=torch.compile(lambda x: x*2+1); assert f(torch.ones(8, device="cuda")).sum().item()==24'
 RUNTIME_DIR = Path(os.environ.get('QWEN_RUNTIME_DIR') or DATA_DIR).resolve()
 TRAINER_DIR = RUNTIME_DIR / 'trainer'
 TOOLKIT_DIR = TRAINER_DIR / 'ai-toolkit'
@@ -43,7 +47,8 @@ def setup_status() -> dict:
         stamp = json.loads(SETUP_STAMP.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         stamp = {}
-    ready = stamp.get('commit') == AITK_COMMIT and TRAINER_PYTHON.is_file() and (TOOLKIT_DIR / 'run.py').is_file()
+    # 'triton' is recorded by the current setup; an older installation runs the setup once more to add it.
+    ready = stamp.get('commit') == AITK_COMMIT and (TRITON is None or 'triton' in stamp) and TRAINER_PYTHON.is_file() and (TOOLKIT_DIR / 'run.py').is_file()
     with _setup_lock:
         state = dict(_setup)
     if ready and state.get('status') != 'running':
@@ -118,10 +123,22 @@ def _run_setup() -> None:
             _run(pip + ['-r', str(TOOLKIT_DIR / 'requirements.txt')] + (['--extra-index-url', TORCH_INDEX, '--index-strategy', 'unsafe-best-match'] if uv else []), log, env=env)
             # requirements.txt may move torch; put the pinned CUDA build back if it did.
             _run(pip + TORCH + ['--index-url', TORCH_INDEX], log, env=env)
+            triton = None
+            if TRITON:
+                _step('triton', 'Installing Triton GPU kernels…')
+                try:
+                    _run(pip + [TRITON], log, env=env)
+                    _run([str(TRAINER_PYTHON), '-c', TRITON_CHECK], log)
+                    triton = TRITON
+                except RuntimeError:
+                    log.write('Triton does not work with this PyTorch build; the trainer runs without it.\n')
+                    uninstall = [uv, 'pip', 'uninstall', '--python', str(TRAINER_PYTHON)] if uv else [str(TRAINER_PYTHON), '-m', 'pip', 'uninstall', '-y']
+                    subprocess.run(uninstall + ['triton-windows'], stdout=log, stderr=subprocess.STDOUT, env={**os.environ, **env},
+                                   creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
             _step('checking', 'Checking the trainer…')
             _run([str(TRAINER_PYTHON), '-c', 'import torch, diffusers, transformers, toolkit; assert torch.cuda.is_available(), "CUDA is not available"; '
                   'print("torch", torch.__version__, "cuda", torch.version.cuda, "diffusers", diffusers.__version__)'], log, cwd=TOOLKIT_DIR)
-        write_json(SETUP_STAMP, {'commit': AITK_COMMIT, 'installed_at': time.time(), 'torch': TORCH})
+        write_json(SETUP_STAMP, {'commit': AITK_COMMIT, 'installed_at': time.time(), 'torch': TORCH, 'triton': triton})
         with _setup_lock:
             _setup.clear()
             _setup.update(status='ready', message='The trainer is installed.')
@@ -138,6 +155,8 @@ ARCHS = {
     'flux3-klein-base': {'label':'FLUX.3 Image Klein Base','arch':'flux3',
         'name_or_path':'black-forest-labs/flux-3-image-klein-base','qtype':'convrot8','qtype_te':'convrot8',
         'timestep_type':'shift','guidance':3.5,'sample_steps':28,'model_kwargs':{'match_target_res':True},
+        # Measured on an RTX 5090 (512 px, rank 4): cached embeddings 1.21 s per step, without 0.55 s; this runner reuses the prompt itself.
+        'cache_text_embeddings':False,
         'gate':'https://huggingface.co/black-forest-labs/flux-3-image-klein-base',
         'families':['flux3-klein','flux3-klein-base']},
     'qwen-image-2.1': {'label': 'Qwen-Image-2.1', 'arch': 'qwen_image_2', 'name_or_path': 'Comfy-Org/Qwen-Image-2.1',
@@ -148,17 +167,17 @@ ARCHS = {
                              'assistant_lora_path': 'ostris/qwen_image_2_turbo_training_adapter/qwen_image_2_turbo_training_adapter_v1.safetensors',
                              'qtype': 'convrot8', 'qtype_te': 'convrot8', 'timestep_type': 'shift', 'guidance': 1.0, 'sample_steps': 8,
                              'model_kwargs': {'turbo': True, 'rgba': False}, 'families': ['qwen-image-2.1-turbo']},
-    'krea-2': {'label': 'Krea 2 Raw', 'arch': 'krea2', 'name_or_path': 'krea/Krea-2-Raw', 'timestep_type': 'linear', 'guidance': 4.0,
+    'krea-2': {'label': 'Krea 2 Raw', 'arch': 'krea2', 'name_or_path': 'krea/Krea-2-Raw', 'timestep_type': 'linear', 'guidance': 4.0, 'low_vram': True,
                'sample_steps': 25, 'gate': 'https://huggingface.co/krea/Krea-2-Raw', 'families': ['krea-2']},
-    'krea-2-turbo': {'label': 'Krea 2 Turbo', 'arch': 'krea2', 'name_or_path': 'krea/Krea-2-Turbo', 'timestep_type': 'linear', 'guidance': 1.0,
+    'krea-2-turbo': {'label': 'Krea 2 Turbo', 'arch': 'krea2', 'name_or_path': 'krea/Krea-2-Turbo', 'timestep_type': 'linear', 'guidance': 1.0, 'low_vram': True,
                      'sample_steps': 9, 'gate': 'https://huggingface.co/krea/Krea-2-Turbo',
                      'assistant_lora_path': 'ostris/krea2_turbo_training_adapter/krea2_turbo_training_adapter_v1.safetensors',
                      'families': ['krea-2-turbo']},
-    'z-image-turbo': {'label': 'Z-Image Turbo', 'arch': 'zimage', 'name_or_path': 'Tongyi-MAI/Z-Image-Turbo', 'qtype': 'qfloat8',
+    'z-image-turbo': {'label': 'Z-Image Turbo', 'arch': 'zimage', 'name_or_path': 'Tongyi-MAI/Z-Image-Turbo', 'qtype': 'qfloat8', 'quantize': False,
                       'timestep_type': 'weighted', 'guidance': 1.0, 'sample_steps': 9,
                       'assistant_lora_path': 'ostris/zimage_turbo_training_adapter/zimage_turbo_training_adapter_v2.safetensors',
                       'families': ['z-image-turbo']},
-    'z-image': {'label': 'Z-Image Base', 'arch': 'zimage', 'name_or_path': 'Tongyi-MAI/Z-Image', 'qtype': 'qfloat8', 'timestep_type': 'weighted',
+    'z-image': {'label': 'Z-Image Base', 'arch': 'zimage', 'name_or_path': 'Tongyi-MAI/Z-Image', 'qtype': 'qfloat8', 'quantize': False, 'timestep_type': 'weighted',
                 'guidance': 4.0, 'sample_steps': 30, 'families': ['z-image']},
 }
 # civitai.inspect() names for the trained file, to check it before it is added.
@@ -180,8 +199,10 @@ def build_config(request: dict, dataset_dir: Path, output_dir: Path) -> dict:
     info = ARCHS[request['arch']]
     trigger = request.get('trigger_word') or None
     prompts = request.get('sample_prompts') or []
-    model = {'name_or_path': info['name_or_path'], 'arch': info['arch'], 'quantize': True, 'quantize_te': True,
-             'qtype': info.get('qtype', 'qfloat8'), 'qtype_te': info.get('qtype_te', 'qfloat8'), 'low_vram': True,
+    # 32 GB GPU: only Krea 2 (24.5 GB BF16, quantized while loading) keeps low_vram's CPU-first loading.
+    # Z-Image's 12 GB BF16 transformer trains unquantized; FLUX.3 and Qwen use pre-quantized ConvRot files as they are.
+    model = {'name_or_path': info['name_or_path'], 'arch': info['arch'], 'quantize': info.get('quantize', True), 'quantize_te': True,
+             'qtype': info.get('qtype', 'qfloat8'), 'qtype_te': info.get('qtype_te', 'qfloat8'), 'low_vram': info.get('low_vram', False),
              'model_kwargs': dict(info.get('model_kwargs', {}))}
     if info['arch']=='flux3':
         from .models import entry, local_path
@@ -208,7 +229,8 @@ def build_config(request: dict, dataset_dir: Path, output_dir: Path) -> dict:
         'train': {'batch_size': 1, 'steps': int(request['steps']), 'gradient_accumulation': 1, 'train_unet': True, 'train_text_encoder': False,
                   'gradient_checkpointing': True, 'noise_scheduler': 'flowmatch', 'optimizer': 'adamw8bit', 'timestep_type': info['timestep_type'],
                   'content_or_style': 'balanced', 'optimizer_params': {'weight_decay': 1e-4}, 'unload_text_encoder': False,
-                  'cache_text_embeddings': False, 'lr': float(request['learning_rate']), 'ema_config': {'use_ema': False, 'ema_decay': 0.99},
+                  # Captions are encoded once to disk (with the blank caption for dropout); the text encoder then leaves the GPU.
+                  'cache_text_embeddings': info.get('cache_text_embeddings', True), 'lr': float(request['learning_rate']), 'ema_config': {'use_ema': False, 'ema_decay': 0.99},
                   'skip_first_sample': False, 'disable_sampling': not prompts, 'dtype': 'bf16', 'diff_output_preservation': False,
                   'loss_type': 'mse'},
         'logging': {'log_every': 1, 'use_ui_logger': False},
@@ -321,16 +343,20 @@ def register(job_id: str, request: dict, source: Path) -> dict:
     found = civitai.inspect(source)
     if found['kind'] != 'lora' or found['arch'] != INSPECT_ARCH[info['arch']]:
         raise RuntimeError(f"The trained file is not a {info['label']} LoRA ({found['kind']}, {found['arch']}).")
-    TRAINED_DIR.mkdir(parents=True, exist_ok=True)
     relative = f"{job_id[:8]}_{slug(request['name'])}.safetensors"
-    shutil.copy2(source, TRAINED_DIR / relative)
-    size = (TRAINED_DIR / relative).stat().st_size
+    # The model library's loras/trained folder when its drive has room (models.local_path finds it), else the data folder.
+    target = models.download_target({'directory': 'trained', 'kind': 'image-lora'}, {'path': relative, 'bytes': source.stat().st_size}, TRAINED_DIR / relative)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    size = target.stat().st_size
     entry = {'id': f'trained-lora-{job_id[:12]}', 'title': request['name'], 'kind': 'image-lora', 'format': 'LoRA', 'repo': 'trained',
              'source': 'trained', 'revision': job_id, 'directory': 'trained', 'files': [{'path': relative, 'bytes': size, 'sha256': None}],
              'bytes': size, 'dependencies': [], 'families': list(info['families']), 'made_for': info['label'],
              'trained_words': [request['trigger_word']] if request.get('trigger_word') else [], 'default_strength': 1.0,
              'summary': f"Trained in this app on {info['label']} from {len(request['images'])} images, {request['steps']} steps, rank {request['rank']}.",
              'training_job': job_id}
+    from .lora_author import describe
+    describe(entry, target)
     civitai._register(entry)
     with models.lock:
         saved = models.installed_manifest()

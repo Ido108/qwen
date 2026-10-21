@@ -81,7 +81,9 @@ def load_flash(request, selected, update):
     spec.loader.exec_module(package)
     from qwen_flashvsr import nodes
     import folder_paths
-    folder_paths.add_model_folder_path('flashvsr',str(checkpoint(selected['id']).parent),is_default=True)
+    # The model and its support files can sit on different drives (D:\models library first, the data folder second).
+    for model_id in (selected['id'],'flashvsr-prompt','flashvsr-lq-proj-in','flashvsr-tcdecoder-fp16'):
+        folder_paths.add_model_folder_path('flashvsr',str(checkpoint(model_id).parent),is_default=model_id==selected['id'])
     model=nodes.FlashVSRModelLoader().load(checkpoint(selected['id']).name)[0]
     prompt=nodes.FlashVSRPromptLoader().load(checkpoint('flashvsr-prompt').name)[0]
     lq=nodes.FlashVSRLQLoader().load(checkpoint('flashvsr-lq-proj-in').name,'bf16')[0]
@@ -102,6 +104,14 @@ def flash(request,selected,source,output,update):
     from comfy_extras.nodes_custom_sampler import Guider_Basic
     size=request.get('flash_chunk_size',33)
     overlap=min(8,size-1)
+    from .gpu_memory import dedicated_memory_snapshot
+    # 24 GB or more: attention windows sized from free VRAM (0). The decoder keeps 1-frame groups: on an RTX 5090
+    # (100 frames to 1080x1928) query chunk 0 took the sampling from 309 s to 92 s, while 4-frame decoder groups
+    # took decoding from 13 s to over 398 s with the GPU at 7% (2026-10-21).
+    large=(dedicated_memory_snapshot().get('free_gb') or 0)>=24
+    query_chunk=0 if large else 1
+    output_chunk,decode_batch=1,1
+    update(flash_query_block_chunk=query_chunk,flash_temporal_batch=decode_batch)
     for index,(batch,skip) in enumerate(frame_batches(source,size,overlap),1):
         update(stage='encoding',message=f'Preparing frames · section {index}',step=0,total_steps=0)
         images=torch.from_numpy(batch).float().div_(255)
@@ -110,7 +120,7 @@ def flash(request,selected,source,output,update):
         patched,runtime=nodes.FlashVSRApply().apply(model,lq,prepared,request.get('flash_conditioning',1.0))
         sampler,sigmas=nodes.FlashVSRStreamingSampler().build(runtime,
             request.get('flash_sampling','streaming_faithful_lowvram'),request.get('flash_sparse_ratio',2.0),
-            request.get('flash_local_range',11),query_block_chunk=1,new_latent_frames=2,
+            request.get('flash_local_range',11),query_block_chunk=query_chunk,new_latent_frames=2,
             cache_format=request.get('flash_cache_format','int8'),cache_residency_backend='cpu')
         guider=Guider_Basic(patched)
         guider.set_conds(prompt)
@@ -130,7 +140,7 @@ def flash(request,selected,source,output,update):
                 decoded=nodes.FlashVSRCropFrames().crop(decoded,prepared)[0]
             else:
                 decoded=nodes.FlashVSRTCDecode().decode({'samples':samples.to(memory.intermediate_device())},
-                    decoder,prepared,output_chunk_size=1,temporal_batch_size=1)[0]
+                    decoder,prepared,output_chunk_size=output_chunk,temporal_batch_size=decode_batch)[0]
             if request.get('flash_color','off')!='off':
                 from qwen_flashvsr.color import apply_color_correction
                 decoded=apply_color_correction(decoded,prepared,method=request['flash_color'],chunk_size=1,compute_device='cuda',inplace=True)

@@ -1799,7 +1799,7 @@
     "quantization": "FP16",
     "upscale_defaults": {
       "steps": 1,
-      "batch_size": 5,
+      "batch_size": 21,
       "chunk_size": 100,
       "temporal_overlap": 1,
       "color_correction": "lab",
@@ -1832,7 +1832,7 @@
     "quantization": "FP16",
     "upscale_defaults": {
       "steps": 1,
-      "batch_size": 5,
+      "batch_size": 21,
       "chunk_size": 100,
       "temporal_overlap": 1,
       "color_correction": "lab",
@@ -1865,7 +1865,7 @@
     "quantization": "FP16",
     "upscale_defaults": {
       "steps": 1,
-      "batch_size": 5,
+      "batch_size": 21,
       "chunk_size": 100,
       "temporal_overlap": 1,
       "color_correction": "lab",

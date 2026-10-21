@@ -116,3 +116,28 @@ class ResidentWorkerTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIsNot(process, next_process)
             client.close()
+
+    def test_idle_deadline_exits_real_worker_and_next_job_starts_fresh(self):
+        from backend import server
+        first, code = self.run_job()
+        self.assertEqual(code, 0)
+        clock = unittest.mock.Mock(wraps=time)
+        clock.monotonic.return_value = 1599.99
+        with patch.multiple(server, image_worker=self.worker, active_job=None,
+                            active_process=None, pending_jobs=[], shutting_down=False,
+                            image_idle_since=1000.0, image_warmup_suspended=False, time=clock):
+            self.assertFalse(server.release_idle_image_worker())
+            reused, code = self.run_job()
+            self.assertIs(first, reused)
+            self.assertEqual(code, 0)
+            # The real scheduler resets this only after a job finishes.
+            server.image_idle_since = clock.monotonic.return_value
+            clock.monotonic.return_value += 600
+            self.assertTrue(server.release_idle_image_worker())
+            self.assertEqual(first.poll(), 0)
+            self.assertFalse(self.worker.status()['loaded'])
+            self.assertTrue(server.image_warmup_suspended)
+            next_process, code = self.run_job()
+            self.assertEqual(code, 0)
+            self.assertIsNot(first, next_process)
+            self.assertNotEqual(first.pid, next_process.pid)

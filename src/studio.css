@@ -42,7 +42,7 @@
 .segmented{display:inline-flex;gap:3px;padding:3px;margin:0 24px 12px;background:#f1eff7;border-radius:9px;align-self:flex-start}
 .segmented button{padding:7px 13px;border-radius:7px;font-size:13px;color:#615d78;display:inline-flex;gap:6px;align-items:center}
 .segmented button span{font-size:11px;color:#9894ad}
-.segmented button[aria-selected=true]{background:#fff;color:var(--accent);box-shadow:0 1px 3px #2a1f5414}
+.segmented button[aria-selected=true],.segmented button[aria-checked=true]{background:#fff;color:var(--accent);box-shadow:0 1px 3px #2a1f5414,inset 0 0 0 1px #7864dc55;font-weight:600}
 .recent-inputs .message{margin:0 24px 10px}
 .recent-inputs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;padding:2px 24px 12px;overflow-y:auto;flex:1;min-height:160px}
 .recent-input{position:relative;aspect-ratio:1;padding:0;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:border-color .12s,transform .12s}

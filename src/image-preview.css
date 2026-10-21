@@ -1,0 +1,54 @@
+/* Each viewer area occupies layout space. No text or controls cover the image. */
+dialog.lightbox[open]{display:flex;flex-direction:column;width:min(1440px,96vw);height:94dvh;max-width:96vw;max-height:94dvh;padding:0;background:#f8f7fb;box-sizing:border-box}
+.lightbox .preview-topbar{display:flex;align-items:center;gap:12px;flex:none;min-height:52px;padding:4px 8px;border-bottom:1px solid var(--line);background:#fff}
+.lightbox .preview-navigation{display:flex;align-items:center;gap:4px;flex:none;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.lightbox .preview-navigation .icon-button,.lightbox .preview-close{width:40px;min-height:40px;flex:none}
+.lightbox .preview-close{margin-left:auto}
+dialog.lightbox .preview-actions{position:static;order:0;display:flex;flex:1;min-width:0;gap:6px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;margin:0;padding:0}
+dialog.lightbox .preview-actions>*{flex:none;white-space:nowrap}
+dialog.lightbox .preview-actions .button{min-height:36px;padding:6px 10px;font-size:12px;background:#fff;color:var(--ink)}
+dialog.lightbox .zoom-layout.lightbox-image{display:grid;grid-template-rows:minmax(0,1fr) auto;flex:1;min-width:0;min-height:0;width:100%;height:auto;max-width:100%;max-height:none;background:#19161f}
+dialog.lightbox .zoom-layout>.zoom-view{width:100%;height:100%;min-height:0;min-width:0;overflow:hidden}
+dialog.lightbox .zoom-layout>.zoom-view img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain}
+dialog.lightbox .zoom-layout>.zoom-controls{position:static;display:flex;align-self:stretch;justify-content:center;flex-wrap:wrap;transform:none;border:0;border-top:1px solid var(--line);border-radius:0;padding:0;box-shadow:none;background:#fff}
+dialog.lightbox .zoom-controls button{min-height:32px;min-width:36px;padding:0 8px}
+dialog.lightbox .zoom-controls .image-load-state,dialog.lightbox .zoom-controls .viewer-error{position:static;flex-basis:100%;margin:0;padding:2px 8px;border-radius:0;transform:none;text-align:center;font-size:11px}
+dialog.lightbox .preview-run-details{display:block;order:0;flex:none;min-height:0;max-height:25dvh;overflow:auto;overscroll-behavior:contain;margin:0;padding:6px 14px;background:#fff;border:0;border-top:1px solid var(--line);border-radius:0}
+dialog.lightbox .preview-run-details .run-details{margin:0;font-size:11px}
+dialog.lightbox .preview-run-details .run-details-summary{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;gap:12px;padding-bottom:2px}
+dialog.lightbox .preview-run-details .run-details-summary>span{flex:none}
+dialog.lightbox .preview-run-details .run-model{max-width:230px;white-space:nowrap}
+dialog.lightbox .preview-run-details .run-details-button{flex:none;min-height:28px;margin-left:auto;padding:0 3px}
+dialog.lightbox .preview-run-details .run-loras{margin:2px 0;flex-wrap:nowrap}
+dialog.lightbox .preview-run-details .run-loras dd{white-space:nowrap;overflow-x:auto;scrollbar-width:thin}
+dialog.lightbox .preview-run-details .result-prompt{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"text more copy";align-items:center;column-gap:8px;margin:2px 0 0;padding:2px 0;border:0;border-top:1px solid var(--line);border-radius:0;background:none;font-size:12px}
+dialog.lightbox .preview-run-details .result-prompt-heading{display:contents}
+dialog.lightbox .preview-run-details .result-prompt-heading strong{display:none}
+dialog.lightbox .preview-run-details .result-prompt-heading button{grid-area:copy}
+dialog.lightbox .preview-run-details .result-prompt p{grid-area:text;-webkit-line-clamp:1}
+dialog.lightbox .preview-run-details .result-prompt .result-prompt-expand{grid-area:more;margin:0;padding:0 5px}
+dialog.lightbox .preview-run-details .result-prompt:has(p.expanded){grid-template-areas:"text text text" ". more copy"}
+dialog.lightbox .preview-run-details .result-prompt p.expanded{display:block;max-height:13dvh;overflow:auto}
+dialog.lightbox .preview-run-details .result-prompt button{min-height:30px}
+dialog.lightbox .preview-action-error{position:static;order:0;flex:none;margin:0;padding:6px 12px;font-size:12px}
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){
+ dialog.lightbox[open]{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border:0;border-radius:0;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+ .lightbox .preview-topbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 6px;min-height:44px;padding:0 6px}
+ .lightbox .preview-navigation{grid-column:1;grid-row:1;justify-content:start}
+ .lightbox .preview-navigation .icon-button,.lightbox .preview-close{width:44px;min-height:44px}
+ .lightbox .preview-close{grid-column:2;grid-row:1}
+ dialog.lightbox .preview-actions{grid-column:1/-1;grid-row:2;justify-content:center;gap:6px;padding:0 0 4px}
+ dialog.lightbox .preview-actions .button{min-height:40px;padding:0 10px;font-size:13px}
+ dialog.lightbox .preview-actions .label-full{display:none}
+ dialog.lightbox .preview-actions .label-short{display:inline}
+ dialog.lightbox .zoom-controls button{min-height:44px;min-width:44px}
+ dialog.lightbox .preview-run-details{max-height:24dvh;padding:3px 10px}
+ dialog.lightbox .preview-run-details .run-details-button{min-height:36px}
+ dialog.lightbox .preview-run-details .result-prompt button{min-height:40px}
+}
+@media(max-height:500px){
+ dialog.lightbox .preview-topbar{display:flex;min-height:44px}
+ dialog.lightbox .preview-actions{padding:0;justify-content:start}
+ dialog.lightbox .preview-run-details{max-height:27dvh}
+ dialog.lightbox .preview-run-details .run-loras{display:none}
+}

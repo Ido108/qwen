@@ -11,6 +11,9 @@ from .prompt_mentions import ImageLabels
 APP_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get('QWEN_DATA_DIR', str(Path(os.environ.get('SystemDrive', 'C:') + '/AI/qwen-image-studio')) if os.name == 'nt' else str(Path.home() / 'Library/Application Support/Qwen'))).resolve()
 MODELS_DIR = DATA_DIR / 'models'
+# The shared ComfyUI model folder (for example D:\models). scripts/paths.ps1 sets QWEN_MODELS_LIBRARY from local-settings.json
+# models_library_dir. models.local_path() reads a complete copy there first, then MODELS_DIR (scripts/move_models_to_library.py).
+LIBRARY_DIR = Path(os.environ['QWEN_MODELS_LIBRARY']).resolve() if os.environ.get('QWEN_MODELS_LIBRARY') else None
 JOBS_DIR = DATA_DIR / 'jobs'
 UPLOADS_DIR = DATA_DIR / 'uploads'
 VIDEO_UPLOADS_DIR = UPLOADS_DIR / 'videos'
@@ -64,7 +67,7 @@ class SwapSelection(BaseModel):
 
 
 class GenerationRequest(ImageLabels):
-    model_id: str = 'gguf-q8_0'
+    model_id: str = 'uc-int8-convrot'
     text_encoder: str = 'auto'
     prompt: str = Field(default='', max_length=16000)
     images: list[str] = Field(default_factory=list, max_length=10)
@@ -96,7 +99,7 @@ class GenerationRequest(ImageLabels):
     swap_prompt_template: str | None = Field(default=None, max_length=6000)
     swap_prompt_revision: str | None = Field(default=None, max_length=80)
     # Extra LoRAs, for example ones added from Civitai: [{"id": ..., "strength": ...}].
-    loras: list['LoraChoice'] = Field(default_factory=list, max_length=4)
+    loras: list['LoraChoice'] = Field(default_factory=list)
     # Z-Image image to image: how much of the input image is redrawn (None is the default 0.7).
     denoise: float | None = Field(default=None, ge=0.05, le=1)
 
@@ -138,7 +141,7 @@ class VideoRequest(BaseModel):
     audio: bool = True
     enhance: bool = False
     output_dir: str = str(VIDEOS_DIR)
-    loras: list[LoraChoice] = Field(default_factory=list, max_length=4)
+    loras: list[LoraChoice] = Field(default_factory=list)
 
     @field_validator('prompt')
     @classmethod
@@ -206,7 +209,7 @@ class ReferenceVideoRequest(BaseModel):
     output_audio: Literal['generated', 'source', 'mute'] = 'generated'
     enhance: bool = False
     output_dir: str = str(VIDEOS_DIR)
-    loras: list[LoraChoice] = Field(default_factory=list, max_length=4)
+    loras: list[LoraChoice] = Field(default_factory=list)
 
     @model_validator(mode='after')
     def grouped_references(self):
@@ -238,7 +241,7 @@ class ReferenceVideoRequest(BaseModel):
 
 
 class UpscaleRequest(BaseModel):
-    model_id: str = 'seedvr2-3b-fp8'
+    model_id: str = 'seedvr2-3b-fp16'
     source_video: str
     resolution: int = Field(default=1080, ge=480, le=4320)
     size_mode: Literal['short_side', 'scale'] = 'short_side'
@@ -254,7 +257,7 @@ class UpscaleRequest(BaseModel):
     flash_cache_format: Literal['int8', 'hybrid', 'float'] = 'int8'
     flash_decoder: Literal['tiny', 'full'] = 'tiny'
     flash_color: Literal['off', 'adain', 'wavelet_quarter_res', 'wavelet_full_res'] = 'off'
-    batch_size: int = Field(default=5, ge=5, le=33)
+    batch_size: int = Field(default=5, ge=5, le=121)
     chunk_size: int = Field(default=100, ge=5, le=1000)
     temporal_overlap: int = Field(default=1, ge=0, le=32)
     seed: int = Field(default=100, ge=0, le=2147483647)
@@ -322,11 +325,13 @@ def model_status() -> dict:
     except (FileNotFoundError, ValueError):
         manifest = {}
     status = {}
+    from .models import catalog, local_path
+    items = {item.get('directory'): item for item in catalog()}
     for name in ('Qwen-Image-2.1', 'Qwen-Image-2.1-PE-T2I', 'Qwen-Image-2.1-PE-I2I'):
         entry = manifest.get(name, {})
+        item = items.get(name, {'directory': name, 'kind': 'diffusers'})
         status[name] = bool(entry.get('verified') and all(
-            (MODELS_DIR / name / f['path']).is_file() and
-            (MODELS_DIR / name / f['path']).stat().st_size == f['bytes']
+            local_path(item, f).is_file() and local_path(item, f).stat().st_size == f['bytes']
             for f in entry.get('files', [])
         ))
     return status

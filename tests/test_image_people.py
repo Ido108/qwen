@@ -79,7 +79,7 @@ class ImagePeopleTests(unittest.TestCase):
         self.assertNotIn('x=',prompt)
         self.assertNotIn('4k',prompt.lower())
         self.assertNotIn('sharp details',prompt.lower())
-        for instruction in ('exact framing','camera perspective','visual style of <image1>','overlap with the scene','facial features','<image2>'):
+        for instruction in ('exact framing','camera perspective','visual style of <image1>','depth and occlusion','facial features','<image2>'):
             self.assertIn(instruction,prompt)
 
     def test_style_adaptation_follows_the_chosen_image_for_every_swap(self):
@@ -90,7 +90,7 @@ class ImagePeopleTests(unittest.TestCase):
                         {**self.selection,'assignments':{'face-1':'face-1'}},['scene.png','reference.png'],Path,
                         pose_source=1,style_source=style_source)
                 self.assertIn(f'exact visual style of <image{style_source}>',prompt)
-                self.assertIn('head angle, gaze and expression from <image1>',prompt)
+                self.assertIn('head angle, head rotation, gaze, expression and micro-expressions from <image1>',prompt)
                 self.assertNotIn('<style_source>',prompt)
                 self.assertNotRegex(prompt.lower(),r'\b(?:without|photorealistic|cartoon|anime|illustration)\b')
 

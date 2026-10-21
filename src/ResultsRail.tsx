@@ -1,3 +1,4 @@
+import {UseImageAs} from './UseImageAs';
 import {ArrowUpRight,ChevronsRight,FolderOpen,ImagePlus,Loader2,PanelRightOpen,RotateCcw} from 'lucide-react';
 import type {SavedJob} from './JobQueue';
 import {ModelDownloadProgress} from './ModelDownloadProgress';
@@ -21,7 +22,7 @@ export function ResultsRail({open,onToggle,running,results,selected,onSelect,onU
     {jobs}
     <div className="rail-grid">{results.map(job=><div className={`rail-item ${selected===job.id?'selected':''}`} key={job.id}>
       <button className="rail-thumb checker" onClick={()=>onSelect(job)} title={job.request.prompt}><img src={`/api/jobs/${job.id}/thumbnail`} alt={job.request.prompt} loading="lazy"/></button>
-      <div className="rail-actions"><button onClick={()=>onUseAsInput(job)} title="Use as input" aria-label="Use as input"><ImagePlus size={15}/></button><button onClick={()=>onUseSettings(job)} title="Use settings" aria-label="Use settings"><RotateCcw size={15}/></button></div>
+      <div className="rail-actions"><UseImageAs jobId={job.id} compact/><button onClick={()=>onUseSettings(job)} title="Use settings" aria-label="Use settings"><RotateCcw size={15}/></button></div>
     </div>)}</div>
     {!results.length&&!running.length?<p className="rail-empty">Your images appear here as soon as they finish.</p>:null}
     <div className="rail-foot"><button className="text-button" onClick={onOpenFolder}><FolderOpen size={14}/>Folder</button><button className="text-button" onClick={onOpenGallery}>Gallery<ArrowUpRight size={14}/></button></div>

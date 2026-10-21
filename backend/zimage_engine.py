@@ -49,7 +49,8 @@ def generate(request, prompt, images, width, height, progress):
     args.disable_async_offload = True
     args.disable_pinned_memory = True
     args.disable_dynamic_vram = True
-    from .gpu_memory import configure_video_memory
+    from .gpu_memory import configure_attention, configure_video_memory
+    attention = configure_attention(args)
     configure_video_memory(torch, args, progress)
     import comfy_aimdo.control
     if not comfy_aimdo.control.init():
@@ -75,16 +76,25 @@ def generate(request, prompt, images, width, height, progress):
 
     selected = entry(request['model_id'])
     from .res4lyf_runtime import ensure_sampler
-    ensure_sampler(selected['generation_defaults'].get('sampler', 'res_multistep'))
+    ensure_sampler(request.get('sampler') or selected['generation_defaults'].get('sampler', 'res_multistep'))
     model_id, encoder_id, vae_id = required_image(request)[:3]
     encoder, vae_entry = entry(encoder_id), entry(vae_id)
     cache_key = (selected['id'], encoder_id, vae_id)
     if _components and _components['key'] != cache_key:
-        raise RuntimeError('Start a new image worker when changing model or encoder.')
+        if _components['key'][1:] != cache_key[1:]:
+            raise RuntimeError('Start a new image worker when changing model or encoder.')
+        # Another checkpoint with the same encoder and VAE: keep them and the saved prompt data
+        # (they do not depend on the image model) and replace only the image model.
+        memory.unload_model_and_clones(_components.pop('model'))
+        _components.pop('loras', None)
+        _components['key'] = cache_key
+        gc.collect()
+        memory.soft_empty_cache()
     reused = bool(_components)
+    model_reused = 'model' in _components
     started = time.perf_counter()
     progress(stage='loading_model', message='Using loaded image models.' if reused else 'Loading text encoder and VAE…',
-             model_reused=reused, selected_model=selected['title'], text_encoder_id=encoder_id, vae_id=vae_id, engine='ComfyUI Z-Image')
+             model_reused=reused, selected_model=selected['title'], text_encoder_id=encoder_id, vae_id=vae_id, engine='ComfyUI Z-Image', attention=attention)
     if reused:
         vae, clip = _components['vae'], _components['clip']
     else:
@@ -122,8 +132,8 @@ def generate(request, prompt, images, width, height, progress):
     progress(encoding_seconds=round(time.perf_counter() - started, 3))
 
     started = time.perf_counter()
-    progress(stage='loading_model', message='Using loaded image model.' if reused else 'Loading image model…')
-    if reused:
+    progress(stage='loading_model', message='Using loaded image model.' if model_reused else 'Loading image model…', diffusion_model_reused=model_reused)
+    if model_reused:
         model = _components['model']
     elif selected['format'] == 'GGUF':
         module_dir = APP_DIR / 'vendor' / 'ComfyUI-GGUF'
@@ -156,7 +166,7 @@ def generate(request, prompt, images, width, height, progress):
             raise RuntimeError(f"Could not load {selected['title']}.")
     if type(model.model.model_config) is not comfy.supported_models.ZImage:
         raise RuntimeError(f"{selected['title']} is not a Z-Image model.")
-    if not reused:
+    if not model_reused:
         del weights
         retain_cpu_weights(model)
         _components.update(key=cache_key, clip=clip, vae=vae, model=model)
@@ -165,6 +175,7 @@ def generate(request, prompt, images, width, height, progress):
 
     stack = [(lora['id'], float(lora.get('strength', 1.0))) for lora in request.get('loras') or []]
     applied_loras = None
+    lora_checks = []
     if stack:
         started = time.perf_counter()
         loras = _components.setdefault('loras', {})
@@ -174,18 +185,23 @@ def generate(request, prompt, images, width, height, progress):
         for lora_id, strength in stack:
             lora = entry(lora_id)
             if lora_id not in loras:
-                loras[lora_id] = comfy.utils.load_torch_file(str(local_path(lora, lora['files'][0])), safe_load=True)
-            model, _ = comfy.sd.load_lora_for_models(model, None, loras[lora_id], strength, 0)
+                from .lora_loading import read_lora_weights
+                loras[lora_id] = read_lora_weights(local_path(lora, lora['files'][0]))
+            from .lora_loading import load_model_lora
+            # Quantized bases (INT8, FP8, NVFP4) keep their weights: a merged LoRA would be requantized and mostly lost.
+            model, check = load_model_lora(model, loras[lora_id], strength, lora['title'], runtime=selected['format'] not in ('BF16', 'FP16', 'FP32', 'GGUF'))
+            lora_checks.append({'id': lora_id, 'title': lora['title'], **check})
             applied.append(f"{lora['title']} ({strength:g})")
         retain_lora_clone(model, _components['model'])
         applied_loras = ', '.join(applied)
         progress(lora=applied_loras, lora_strength=stack[0][1], lora_load_seconds=round(time.perf_counter() - started, 3))
+    progress(lora_checks=lora_checks)
 
     # ModelSamplingAuraFlow (official shift 3); it clones the model, so the cached model stays unpatched.
     shift = float(defaults.get('shift', 3.0))
     model = ModelSamplingAuraFlow().patch_aura(model, shift)[0]
-    sampler = defaults.get('sampler', 'res_multistep')
-    scheduler = defaults.get('scheduler', 'simple')
+    sampler = request.get('sampler') or defaults.get('sampler', 'res_multistep')
+    scheduler = request.get('scheduler') or defaults.get('scheduler', 'simple')
     steps = int(request['steps'])
     denoise = zimage_denoise(request, images)
 
@@ -203,7 +219,7 @@ def generate(request, prompt, images, width, height, progress):
 
     def callback(step, x0, x, total):
         progress(stage='generating', message='Generating image…', step=step + 1, total_steps=total)
-    progress(stage='generating', message='Generating image…', step=0, sampling=f'{sampler}-{scheduler}', cfg=cfg, shift=shift,
+    progress(stage='generating', message='Generating image…', step=0, sampling=f'{sampler}-{scheduler}', sampler=sampler, scheduler=scheduler, cfg=cfg, shift=shift,
              denoise=denoise, input_image_used=bool(images))
     started = time.perf_counter()
     with torch.inference_mode():

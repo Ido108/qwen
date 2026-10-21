@@ -1,4 +1,43 @@
 """Release the one-use H3 encoder before the upstream node starts VAE work."""
+import hashlib
+import json
+
+CACHE_ENTRIES = 24
+
+
+def conditioning_key(parts: dict, images: dict) -> str:
+    """Encoder output depends on the encoder and VAE files, the prompt, the size and the keyframe pixels, never the seed."""
+    digest = hashlib.sha256(json.dumps(parts, sort_keys=True).encode('utf-8'))
+    for name in sorted(images):
+        image = images[name]
+        digest.update(f'{name}|{image.mode}|{image.size}'.encode('utf-8'))
+        digest.update(image.tobytes())
+    return digest.hexdigest()
+
+
+def load_conditioning(directory, key):
+    import torch
+    path = directory / f'{key}.pt'
+    try:
+        value = torch.load(path, map_location='cpu', weights_only=True)
+        path.touch()
+        return value
+    except Exception:
+        return None  # Missing, older or damaged entry: encode again.
+
+
+def save_conditioning(directory, key, value) -> None:
+    import torch
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        temp = directory / f'{key}.tmp'
+        torch.save(value, temp)
+        temp.replace(directory / f'{key}.pt')
+        entries = sorted(directory.glob('*.pt'), key=lambda p: p.stat().st_mtime, reverse=True)
+        for stale in entries[CACHE_ENTRIES:]:
+            stale.unlink(missing_ok=True)
+    except Exception:
+        pass  # The cache only saves time; a failed write never stops the job.
 
 
 class SingleUseEncoder:

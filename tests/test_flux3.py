@@ -14,7 +14,8 @@ class Flux3Tests(unittest.TestCase):
         self.assertEqual(models.required('flux3-klein-int8',images=10),
                          ['flux3-klein-int8','flux3-encoder-int8','flux3-vae','flux3-prompt'])
         with self.assertRaises(ValueError):models.required('flux3-klein-int8',images=11)
-        with self.assertRaises(ValueError):models.required('flux3-base-int8')
+        # The INT8 Base file generates images too (NVFP4 Base turned skin grainy), with the same prompt model and encoder.
+        self.assertEqual(models.required('flux3-base-int8',images=1),['flux3-base-int8','flux3-encoder-int8','flux3-vae','flux3-prompt'])
         profile=models.entry('flux3-klein-int8')['generation_defaults']
         self.assertEqual((profile['steps'],profile['cfg'],profile['alpha']),(16,1,16))
 
@@ -62,9 +63,10 @@ class Flux3Tests(unittest.TestCase):
             with self.assertRaises(RuntimeError):flux3_runtime.activate(lambda **_:None)
 
     def test_catalog_repair_preserves_flux3_architecture(self):
-        item={'id':'future-flux','kind':'image','family':'flux3-klein','files':[],
-              'civitai':{'version_id':2,'model_id':1,'url':'url'}}
-        version={'id':2,'name':'Distilled','baseModel':'Flux.3 Klein','files':[]}
+        item={'id':'future-flux','title':'Future FLUX','format':'INT8','kind':'image','family':'flux3-klein','files':[],
+              'civitai':{'version_id':2,'model_id':1,'file_id':3,'url':'url'}}
+        version={'id':2,'name':'Distilled','baseModel':'Flux.3 Klein',
+                 'files':[{'id':3,'name':'flux-distilled-int8.safetensors','type':'Model','metadata':{'fp':'int8'}}]}
         with patch.object(civitai,'user_catalog',return_value=[item]),patch.object(civitai,'_get',side_effect=[version,{'id':1}]),patch.object(civitai,'_register'):
             self.assertEqual(civitai.repair_entries(),['future-flux'])
         self.assertEqual(item['family'],'flux3-klein')
@@ -132,4 +134,4 @@ class Flux3Tests(unittest.TestCase):
         self.assertFalse(civitai.BASE_MODELS['Flux.3 Klein-base']['turbo'])
         a=civitai.image_defaults(True,{},'url','flux3-klein')
         b=civitai.image_defaults(False,{},'url','flux3-klein')
-        self.assertEqual((a['steps'],a['cfg'],b['steps'],b['cfg']),(16,1,50,3.5))
+        self.assertEqual((a['steps'],a['cfg'],b['steps'],b['cfg']),(16,1,50,4.0))

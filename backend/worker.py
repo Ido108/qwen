@@ -61,9 +61,11 @@ def rewrite_prompt(images):
 
 def image_engine(saved):
     """Krea 2 models run in krea_engine, Z-Image models in zimage_engine; Qwen-Image-2.1 models in comfy_engine."""
-    from .models import entry, is_krea, is_zimage, is_flux3
+    from .models import entry, is_krea, is_zimage, is_flux3, is_moss
     item = entry(saved.get('model_id', 'official-bf16'))
-    if is_flux3(item):
+    if is_moss(item):
+        from .moss_engine import generate
+    elif is_flux3(item):
         from .flux3_engine import generate
     elif is_krea(item):
         from .krea_engine import generate
@@ -121,7 +123,8 @@ def run():
     else:
         # Edit tools follow the shape of image 1 (the picture being changed).
         sizing = request
-        if entry(request['model_id']).get('family') == 'krea-2' and not request['custom_size']:
+        # MOSS Image: 1 to 2 MP recommended, 4 MP is extrapolation (Comfy-Org template notes, OpenMOSS USERGUIDE).
+        if entry(request['model_id']).get('family') in ('krea-2', 'moss-image', 'moss-image-base', 'moss-image-turbo') and not request['custom_size']:
             # Krea 2 Raw is trained up to 1K (krea-ai/krea-2 README); Turbo makes 1K to 2K.
             sizing = {**request, 'auto_resolution': min(request.get('auto_resolution', 2048), 1024)}
         # Z-Image redraws image 1, so the output keeps its shape.

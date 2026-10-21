@@ -59,7 +59,7 @@ When the installation is done, Qwen opens in a normal Chrome tab. To open it lat
 
 The first image also downloads the model (about 18 GB). A small download indicator at the bottom left shows the progress, speed and time left on every page, and the download continues when you switch pages. After that, a 1K image takes about 20 seconds with a standard model and about 6 seconds with Turbo (RTX 5090, model already loaded).
 
-When the queue is idle, Qwen loads the last image model you used in the background, also after a video job. So the next image starts in about 2 seconds instead of about 45.
+Qwen keeps the image model loaded between jobs for up to 10 minutes. When no job runs or waits for 10 minutes, Qwen closes the image worker to release its system RAM and GPU memory. The next image job loads the model again from its existing files. Starting the server does not load an old model. After an image job, a video job can still restore that recent image model for reuse within the same idle limit.
 
 To **edit** an image, add it to **Input images** and describe the change, for example `Make it a rainy night with neon reflections`. Ways to add an image:
 
@@ -218,7 +218,7 @@ These are in the `scripts` folder:
 | `Show Qwen Logs.bat` | Shows what Qwen is doing. Use it when something goes wrong. |
 | `Download Models.bat` | Downloads the recommended image models without opening the app. |
 
-Close the browser tab or the optional desktop window at any time. The server and queued jobs continue. Use **`Stop Qwen.bat`** to stop the server after all jobs finish.
+Close either **Qwen - Activity** or **Qwen - Server**, or their terminal window, to stop Qwen. This also stops active generation and downloads. Saved results and waiting jobs remain on disk. Closing the browser or optional desktop window leaves Qwen running. While the terminal stays open, model memory releases after 10 minutes without jobs.
 
 ## Swap (head or body)
 
@@ -244,7 +244,7 @@ While Qwen runs on the PC, it also connects to the Moise server, and the whole a
 
 The server runs in a separate background process. Browser closure or a browser crash does not stop generation. Open **`Start Qwen.bat`** to return to Chrome. Open **`Start Qwen Desktop.bat`** for the optional Electron window. Both clients use the same server and queue.
 
-Normal launch also opens Windows Terminal with two tabs. **Qwen - Activity** shows each running job or download on its own progress row. **Qwen - Server** shows recent server messages and errors. Successful HTTP requests stay hidden. Reopening Qwen reuses these tabs. Closing either tab leaves the server running. **`scripts/Show Qwen Logs.bat`** opens the tabs without restarting the server.
+Normal launch also opens Windows Terminal with two tabs. **Qwen - Activity** shows each running job or download on its own progress row. **Qwen - Server** shows recent server messages and errors. Successful HTTP requests stay hidden. Reopening Qwen reuses these tabs. Closing either tab stops Qwen and closes the other tab. **`scripts/Show Qwen Logs.bat`** opens the connected tabs without restarting the server.
 
 ## Troubleshooting
 

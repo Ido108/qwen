@@ -246,6 +246,22 @@ class QueueTests(unittest.TestCase):
             eventually(lambda: server.active_job is None)
             eventually(lambda: warm.called)
 
+    def test_idle_deadline_resets_after_real_scheduler_completion(self):
+        first = self.add('First image')
+        eventually(lambda: first['id'] in self.started)
+        # An overdue timer must not interrupt the active worker.
+        with patch.object(server, 'image_idle_since', time.monotonic() - 700), \
+                patch.object(server.image_worker, 'close') as close:
+            self.assertFalse(server.release_idle_image_worker())
+            close.assert_not_called()
+            self.assertFalse(self.processes[first['id']].gate.is_set())
+            began = time.monotonic()
+            self.finish(first['id'])
+            eventually(lambda: server.active_job is None)
+            self.assertGreaterEqual(server.image_idle_since, began)
+            self.assertFalse(server.release_idle_image_worker())
+            close.assert_not_called()
+
     def test_restart_restores_waiting_order_and_pause(self):
         self.post('/api/queue/control', {'paused': True})
         first, second = self.add('First'), self.add('Second')

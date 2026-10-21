@@ -8,6 +8,7 @@ import threading
 import time
 from pathlib import Path
 from .common import APP_DIR, DATA_DIR, MODELS_DIR, write_json
+from . import model_library
 
 os.environ['HF_HOME']=str(DATA_DIR/'hf-cache')
 os.environ['HF_XET_CACHE']=str(DATA_DIR/'hf-cache'/'xet')
@@ -54,11 +55,25 @@ def installed_manifest():
     except (FileNotFoundError, ValueError):
         return {}
 
-def local_path(item,file):
-    path=(MODELS_DIR/item['directory']/file['path']).resolve()
-    if not path.is_relative_to(MODELS_DIR.resolve()):
+def store_path(item,file,root=None):
+    """Where the catalog keeps the file (downloads, removal), under root (the data folder by default)."""
+    root=root or MODELS_DIR
+    path=(root/item['directory']/file['path']).resolve()
+    if not path.is_relative_to(root.resolve()):
         raise ValueError('Invalid model path.')
     return path
+
+def local_path(item,file):
+    """The file to read: a complete copy in the shared model library (LIBRARY_DIR) first, else the data folder's file."""
+    return model_library.find(item,file) or store_path(item,file)
+
+def download_target(item,file,legacy=None):
+    """Where a new file goes: the model library when its drive has room, else the data folder (legacy, by default its catalog path).
+    A partial download already in the data folder continues there."""
+    legacy=legacy or store_path(item,file)
+    if any(legacy.with_name(legacy.name+suffix).exists() for suffix in ('','.part',*[f'.part{i}' for i in range(8)])):
+        return legacy
+    return model_library.download_path(item,file,legacy)
 
 def is_installed(model_id):
     item=entry(model_id)
@@ -72,6 +87,11 @@ KREA_ENCODERS=('krea2-encoder-bf16',)
 KREA_STYLE_LORA='krea2-lora-style-reference'
 ZIMAGE_ENCODERS=('zimage-encoder-bf16',)
 FLUX3_ENCODERS=('flux3-encoder-int8',)
+MOSS_ENCODERS=('moss-encoder-int8','moss-encoder-w4a8','moss-encoder-bf16')
+
+def is_moss(item):
+    """MOSS Image (SFT, Base or Turbo): its own DiT, Qwen3.5 9B encoder and FLUX.2 VAE, run by moss_engine."""
+    return item.get('family','').startswith('moss-image')
 
 def is_flux3(item):
     return item.get('family','').startswith('flux3-klein')
@@ -86,16 +106,20 @@ def is_zimage(item):
 
 def own_architecture(item):
     """Models with their own encoder, VAE and LoRAs (not Qwen-Image-2.1)."""
-    return is_krea(item) or is_zimage(item) or is_flux3(item)
+    return is_krea(item) or is_zimage(item) or is_flux3(item) or is_moss(item)
 
 def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
     item=entry(model_id)
     if item['kind']!='image':
         raise ValueError('Select an image model.')
-    if encoder not in ('auto',*QWEN_ENCODERS,*KREA_ENCODERS,*ZIMAGE_ENCODERS,*FLUX3_ENCODERS):
+    if encoder not in ('auto',*QWEN_ENCODERS,*KREA_ENCODERS,*ZIMAGE_ENCODERS,*FLUX3_ENCODERS,*MOSS_ENCODERS):
         raise ValueError('Unknown text encoder.')
     vae=resolve_vae(item,vae)
-    if is_flux3(item):
+    if is_moss(item):
+        if tool_id:raise ValueError('This image tool needs Qwen-Image. Remove the tool to use MOSS Image.')
+        if images:raise ValueError('MOSS Image makes images from text only: remove the input images or choose another model.')
+        ids=[model_id,encoder if encoder in MOSS_ENCODERS else item.get('text_encoder',MOSS_ENCODERS[0]),vae]
+    elif is_flux3(item):
         if tool_id:raise ValueError('This image tool needs Qwen-Image. Remove the tool to use FLUX.3.')
         if images>10:raise ValueError('FLUX.3 supports up to 10 reference images.')
         ids=[model_id,item.get('text_encoder',FLUX3_ENCODERS[0]),vae,'flux3-prompt']
@@ -113,7 +137,9 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0):
             raise ValueError('Z-Image redraws one input image (it has no edit model): add only 1 image.')
         ids=[model_id,item.get('text_encoder',ZIMAGE_ENCODERS[0]),vae]
     else:
-        default_encoder='encoder-int8' if item['format']=='GGUF' else 'encoder-bf16'
+        # The official ComfyUI workflows pair every Qwen-Image-2.1 model with the INT8 encoder. The BF16 encoder (16.3 GB)
+        # next to a BF16 or FP8 model leaves no room on 32 GB: the two swapped in and out of VRAM on every new prompt.
+        default_encoder='encoder-int8'
         ids=[model_id,encoder if encoder in QWEN_ENCODERS else default_encoder,vae]
     if tool_id:
         tool=image_tool(tool_id)
@@ -140,7 +166,7 @@ def resolve_vae(item,vae='auto'):
     if vae!='auto' and family not in entry(vae).get('families',[] if own_architecture(item) else [family]):
         vae='auto'
     if vae=='auto':
-        vae=item.get('recommended_vae') or ('krea2-vae' if is_krea(item) else 'zimage-vae' if is_zimage(item) else 'vae-texture-fix')
+        vae=item.get('recommended_vae') or ('krea2-vae' if is_krea(item) else 'zimage-vae' if is_zimage(item) else 'moss-vae-small' if is_moss(item) else 'vae-texture-fix')
     if entry(vae)['kind']!='vae':
         raise ValueError('Unknown VAE.')
     return vae
@@ -328,7 +354,9 @@ def install(model_id, *, include_dependencies=True):
                 with lock:
                     transfer.update(model_id=model['id'], title=model['title'], stage='checking_access')
                 get_hf_file_metadata(hf_hub_url(model['repo'], model['files'][0]['path'], revision=model['revision']), token=token)
-        if shutil.disk_usage(DATA_DIR).free<total+2*1024**3:
+        targets={(model['id'],file['path']):download_target(model,file) for model in queue for file in model['files']}
+        library=sum(file['bytes'] for model in queue for file in model['files'] if targets[model['id'],file['path']]!=store_path(model,file))
+        if shutil.disk_usage(DATA_DIR).free<total-library+2*1024**3:
             raise RuntimeError('Not enough free space on the model drive.')
         for model in queue:
             if cancel_event.is_set(): raise DownloadCancelled()
@@ -345,7 +373,7 @@ def install(model_id, *, include_dependencies=True):
                         with lock:
                             transfer.update(completed_bytes=min(total,base+int(self.n)),file=file['path'])
                         return result
-                target=local_path(model,file)
+                target=targets[model['id'],file['path']]
                 if model.get('source')=='civitai':
                     from .civitai import _download
                     def report(done,size,stage,base=base):
@@ -356,7 +384,8 @@ def install(model_id, *, include_dependencies=True):
                     model_done+=file['bytes']
                     continue
                 invalid=target.with_name(target.name+'.verification-failed')
-                path=hf_hub_download(model['repo'],file['path'],revision=model['revision'],local_dir=MODELS_DIR/model['directory'],tqdm_class=Progress,force_download=invalid.exists(),token=token)
+                staging=model_library.staging_dir(model) if target!=store_path(model,file) else MODELS_DIR/model['directory']
+                path=hf_hub_download(model['repo'],file['path'],revision=model['revision'],local_dir=staging,tqdm_class=Progress,force_download=invalid.exists(),token=token)
                 with lock:
                     transfer.update(stage='verifying',file=file['path'])
                 if Path(path).stat().st_size!=file['bytes']:
@@ -372,6 +401,7 @@ def install(model_id, *, include_dependencies=True):
                         invalid.write_text('Checksum mismatch; force a fresh download on retry.',encoding='utf-8')
                         raise RuntimeError('Model checksum verification failed. Retry to replace the incomplete file.')
                 invalid.unlink(missing_ok=True)
+                model_library.settle(path,target)
                 model_done+=file['bytes']
                 with lock:
                     transfer.update(stage='downloading',completed_bytes=completed+model_done)
@@ -484,13 +514,16 @@ def remove(model_id):
             raise ValueError('Wait for the download to finish before removing a model.')
         # Only the pinned, allowlisted files can be removed. Generated images never live here.
         for file in item.get('removal_files',item['files']):
-            path=local_path(item,file)
+            model_library.remove(item,file)
+            path=store_path(item,file)
             if path.is_file():
                 path.unlink()
         saved=installed_manifest()
         saved.pop(model_id,None)
         write_json(INSTALL_PATH,saved)
-        if item.get('source') in ('civitai','trained'):
+        if item.get('source') in ('civitai','trained','library'):
             from .civitai import unregister
             unregister(model_id)
+        if item.get('source')=='library':
+            model_library.dismiss(model_id)  # the user's own file stays in the library
     return {'ok':True}

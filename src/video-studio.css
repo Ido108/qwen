@@ -175,7 +175,7 @@ main.video-studio .prompt-label,main.video-studio .msr-prompt-label{font-size:14
 .vs-action-row{flex-wrap:wrap}
 .vs-summary{min-width:120px}
 
-/* The group summary already says "LoRAs N of 4". */
+/* The group summary already shows the saved LoRA count. */
 .vs-loras .lora-head>b,.vs-loras .lora-head>span{display:none}
 .vs-loras .lora-stack{border:0;padding:0;background:none}
 /* Model capability hint under each video model list. */

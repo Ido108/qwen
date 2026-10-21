@@ -5,14 +5,15 @@ import importlib.util
 import logging
 import sys
 import time
-from .common import APP_DIR
+from .common import APP_DIR, DATA_DIR
 from .models import entry, local_path
+
+CONDITIONING_DIR = DATA_DIR / 'cache' / 'h3-conditioning'
 
 
 def generate(request, prompt, images, progress, preview_directory=None):
     progress(stage='initializing_video', message='Initializing video processing…')
     logging.basicConfig(level=logging.INFO, format='%(message)s')
-    import numpy as np
     import torch
     sys.path.insert(0, str(APP_DIR / 'vendor/ComfyUI'))
     import comfy.options
@@ -27,14 +28,12 @@ def generate(request, prompt, images, progress, preview_directory=None):
     if not comfy_aimdo.control.init():
         raise RuntimeError('Could not initialize the model file reader.')
     import comfy.sd
-    import comfy.sample
     import comfy.utils
     import comfy.model_management as memory
-    from .video_timing import gpu_load_stage
-    from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageToVideo, MiniMaxH3ReferenceToVideo, MiniMaxH3AddGuide, MiniMaxH3SigmaShift
-    from comfy_extras.nodes_sparse_attention import BlockSparseAttention
-    from comfy_extras.nodes_model_advanced import ModelAttentionBackend
-    from comfy_extras.nodes_audio import vae_decode_audio
+
+    def path_of(model_id):
+        item = entry(model_id)
+        return local_path(item, item['files'][0])
 
     def read_weights(model_id):
         item = entry(model_id)
@@ -65,9 +64,64 @@ def generate(request, prompt, images, progress, preview_directory=None):
     # Official H3 and FastH3 workflows use BasicGuider (CFG 1). Applying the
     # conventional video CFG 6 burns image-conditioned detail on this model.
     cfg = 1.0
-    progress(stage='loading_encoder', message='Loading the video text encoder…', total_steps=steps,
-             text_encoder_id='h3-encoder', vae_id='h3-video-vae', audio_vae_id='h3-audio-vae',
-             fps=24, frames=request['frames'], width=request['width'], height=request['height'])
+    from .video_conditioning import conditioning_key, load_conditioning
+    from .file_prefetch import prefetch
+    keyframes = {name: image for name, image in images.items() if hasattr(image, 'convert')}
+    # Create video conditioning does not depend on the seed: a repeat reuses the saved
+    # encoder output and skips loading the 32B encoder. Reference video is always encoded.
+    cache_key = None if reference else conditioning_key({'encoder': entry('h3-encoder')['files'][0], 'vae': entry('h3-video-vae')['files'][0],
+        'prompt': prompt, 'width': request['width'], 'height': request['height'], 'frames': request['frames']}, keyframes)
+    cached = load_conditioning(CONDITIONING_DIR, cache_key) if cache_key else None
+    lora_ids = [sampling.get('lora_id')] + (['h3-ref-faceswap' if request['workflow'] == 'faceswap' else 'h3-ref-crossview']
+        if reference and request['workflow'] in ('faceswap', 'crossview') else []) + [choice['id'] for choice in request.get('loras') or []]
+    # Large sequential reads into the file cache, in the order the job needs the files.
+    prefetch(*(path_of(i) for i in ([] if cached is not None else ['h3-encoder']) + (['h3-video-vae'] if images or reference else [])
+               + (['h3-audio-vae'] if reference else [])), path_of(selected['id']), *(path_of(i) for i in lora_ids if i),
+             path_of('h3-video-vae'), path_of('h3-audio-vae'))
+    progress(stage='loading_encoder', message='Using saved prompt and keyframe data.' if cached is not None else 'Loading the video text encoder…',
+             total_steps=steps, text_encoder_id='h3-encoder', vae_id='h3-video-vae', audio_vae_id='h3-audio-vae',
+             conditioning_reused=cached is not None, fps=24, frames=request['frames'], width=request['width'], height=request['height'])
+    decoder = None
+    if cached is not None:
+        from comfy_extras.nodes_minimax_h3 import _empty_av_latent
+        positive, latent, negative = cached, _empty_av_latent(request['width'], request['height'], request['frames'])[0], []
+    else:
+        positive, latent, negative, decoder = _encode(request, prompt, images, reference, keyframes, read_weights, release, progress, cache_key)
+    release()
+    progress(conditioning_cuda_allocated_gb=round(torch.cuda.memory_allocated()/GIB,2),
+             conditioning_cuda_free_gb=round(torch.cuda.mem_get_info()[0]/GIB,2))
+    progress(stage='loading_model', message='Loading the video model…')
+    model = _load_model(selected, fast, read_weights)
+    from .lora_loading import read_lora_weights, load_model_lora
+    checks = []
+    def apply(lora_id, strength):
+        nonlocal model
+        item = entry(lora_id)
+        model, check = load_model_lora(model, read_lora_weights(local_path(item, item['files'][0])), strength, item['title'])
+        checks.append({'id': lora_id, 'title': item['title'], **check})
+    if sampling.get('lora_id'):
+        apply(sampling['lora_id'], 1.0)
+    if reference and request['workflow'] in ('faceswap','crossview'):
+        apply('h3-ref-faceswap' if request['workflow']=='faceswap' else 'h3-ref-crossview', 1.0 if request['workflow']=='faceswap' else 0.8)
+    # The user's LoRAs (for example from Civitai) go on top of the built-in ones.
+    for choice in request.get('loras') or []:
+        apply(choice['id'], float(choice.get('strength', 1.0)))
+        progress(user_lora=choice['id'], user_lora_strength=float(choice.get('strength', 1.0)))
+    progress(lora_checks=checks)
+    return _sample_and_decode(request, selected, fast, sampling, steps, cfg, model, positive, negative, latent, decoder,
+                              reference, read_weights, release, progress, preview_directory)
+
+
+def _encode(request, prompt, images, reference, keyframes, read_weights, release, progress, cache_key):
+    import numpy as np
+    import torch
+    import comfy.sd
+    import comfy.utils
+    import comfy.model_management as memory
+    from .gpu_memory import GIB
+    from .video_timing import gpu_load_stage
+    from .video_conditioning import SingleUseEncoder, ProgressVAE, save_conditioning
+    from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageToVideo, MiniMaxH3ReferenceToVideo, MiniMaxH3AddGuide
     weights, metadata = read_weights('h3-encoder')
     weights, _ = comfy.utils.convert_old_quants(weights, model_prefix='', metadata=metadata)
     clip = comfy.sd.load_text_encoder_state_dicts([weights], clip_type=comfy.sd.CLIPType.MINIMAX,
@@ -82,7 +136,6 @@ def generate(request, prompt, images, progress, preview_directory=None):
     clip.cond_stage_model.memory_estimation_function = lambda tokens, device=None: encoding_scratch
     progress(encoder_working_memory_gb=encoding_scratch/GIB)
     vae = None
-    from .video_conditioning import SingleUseEncoder, ProgressVAE
     if images or reference:
         progress(stage='loading_video_vae', message='Loading the video encoder…')
         weights, _ = read_weights('h3-video-vae')
@@ -91,7 +144,7 @@ def generate(request, prompt, images, progress, preview_directory=None):
             'loading_vae_gpu','Moving video encoder to GPU…',stage,message)
         del weights
     tensors = {name: torch.from_numpy(np.asarray(image.convert('RGB'), dtype=np.float32) / 255).unsqueeze(0)
-               for name, image in images.items() if hasattr(image,'convert')}
+               for name, image in keyframes.items()}
     encoder = SingleUseEncoder(clip, release, progress)
     del clip
     progress(stage='preparing_conditioning', message='Preparing video conditioning…')
@@ -121,11 +174,19 @@ def generate(request, prompt, images, progress, preview_directory=None):
             positive, latent = MiniMaxH3ImageToVideo.execute(encoder, vae, prompt,
                 request['width'], request['height'], request['frames'], **tensors)
         negative = []
+    if cache_key:
+        save_conditioning(CONDITIONING_DIR, cache_key, positive)
+    # Keep the video VAE for decoding instead of reading it from disk again; it waits in RAM, not VRAM.
+    decoder = vae.vae if vae is not None else None
+    if decoder is not None:
+        memory.unload_model_and_clones(decoder.patcher)
     del encoder, tensors, vae, audio_vae
-    release()
-    progress(conditioning_cuda_allocated_gb=round(torch.cuda.memory_allocated()/GIB,2),
-             conditioning_cuda_free_gb=round(torch.cuda.mem_get_info()[0]/GIB,2))
-    progress(stage='loading_model', message='Loading the video model…')
+    return positive, latent, negative, decoder
+
+
+def _load_model(selected, fast, read_weights):
+    import torch
+    import comfy.sd
     if selected['format'] == 'GGUF':
         module_dir = APP_DIR / 'vendor/ComfyUI-GGUF'
         spec = importlib.util.spec_from_file_location('qwen_video_gguf', module_dir / '__init__.py', submodule_search_locations=[str(module_dir)])
@@ -161,23 +222,22 @@ def generate(request, prompt, images, progress, preview_directory=None):
     if model is None:
         raise RuntimeError('This file is not a compatible MiniMax H3 video model.')
     del weights
-    turbo_lora = sampling.get('lora_id')
-    if turbo_lora:
-        lora, _ = read_weights(turbo_lora)
-        model, _ = comfy.sd.load_lora_for_models(model, None, lora, 1.0, 0)
-        del lora
-    if reference and request['workflow'] in ('faceswap','crossview'):
-        lora_id='h3-ref-faceswap' if request['workflow']=='faceswap' else 'h3-ref-crossview'
-        strength=1.0 if request['workflow']=='faceswap' else 0.8
-        lora, _ = read_weights(lora_id)
-        model, _ = comfy.sd.load_lora_for_models(model,None,lora,strength,0)
-        del lora
-    # The user's LoRAs (for example from Civitai) go on top of the built-in ones.
-    for choice in request.get('loras') or []:
-        lora, _ = read_weights(choice['id'])
-        model, _ = comfy.sd.load_lora_for_models(model, None, lora, float(choice.get('strength', 1.0)), 0)
-        del lora
-        progress(user_lora=choice['id'], user_lora_strength=float(choice.get('strength', 1.0)))
+    return model
+
+
+def _sample_and_decode(request, selected, fast, sampling, steps, cfg, model, positive, negative, latent, decoder,
+                       reference, read_weights, release, progress, preview_directory):
+    import torch
+    import comfy.sd
+    import comfy.sample
+    import comfy.samplers
+    import comfy.model_management as memory
+    from .video_timing import gpu_load_stage
+    from comfy_extras.nodes_minimax_h3 import MiniMaxH3SigmaShift
+    from comfy_extras.nodes_sparse_attention import BlockSparseAttention
+    from comfy_extras.nodes_model_advanced import ModelAttentionBackend
+    from comfy_extras.nodes_audio import vae_decode_audio
+    from .gpu_memory import GIB
     video_shift = sampling['video_shift']
     audio_shift = sampling['audio_shift']
     model = MiniMaxH3SigmaShift.execute(model, video_shift, audio_shift)[0]
@@ -233,9 +293,12 @@ def generate(request, prompt, images, progress, preview_directory=None):
         del model, positive, negative, noise, latent
         release()
         progress(stage='loading_video_decoder',message='Preparing video decoder…')
-        weights, _ = read_weights('h3-video-vae')
-        vae = comfy.sd.VAE(sd=weights)
-        del weights
+        if decoder is not None:
+            vae, decoder = decoder, None
+        else:
+            weights, _ = read_weights('h3-video-vae')
+            vae = comfy.sd.VAE(sd=weights)
+            del weights
         video_latent = samples.unbind()[0]
         progress(stage='decoding',message='Decoding video frames…')
         with gpu_load_stage(memory,progress,torch.cuda.synchronize,'loading_decoder_gpu',

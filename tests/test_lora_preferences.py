@@ -19,11 +19,13 @@ class PreferencesTests(unittest.TestCase):
             self.assertEqual(request['loras'][1]['prompt_addition'], 'Saved old text.')
             self.assertEqual(prefs.read()['ink']['prompt_addition'], 'New texture.')
 
-    def test_empty_prompt_needs_image_and_sampling_rejects_fixed_schedule(self):
+    def test_empty_prompt_needs_image_and_sampling_rejects_unknown_choices(self):
         self.assertEqual(GenerationRequest(prompt=' ', images=['image']).prompt, '')
         with self.assertRaises(ValueError): GenerationRequest(prompt=' ')
         validate({'sampler':'res_multistep','scheduler':'beta'}, {'family':'qwen-image-2.1'})
         validate({'sampler':'res_2m','scheduler':'beta'}, {'family':'qwen-image-2.1'})
         validate({'sampler':'res_2s','scheduler':'beta'}, {'family':'krea-2'})
         with self.assertRaises(ValueError): validate({'sampler':'unknown_custom'}, {'family':'qwen-image-2.1'})
-        with self.assertRaises(ValueError): validate({'scheduler':'beta'}, {'family':'qwen-image-2.1-turbo'})
+        # A schedule override replaces Turbo's trained sigmas (image_sampling.resolve); other model types have no controls.
+        validate({'scheduler':'beta'}, {'family':'qwen-image-2.1-turbo'})
+        with self.assertRaises(ValueError): validate({'scheduler':'beta'}, {'family':'minimax-h3'})

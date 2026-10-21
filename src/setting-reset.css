@@ -1,0 +1,20 @@
+.setting-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.setting-heading>label{margin:0;min-width:0}
+.setting-heading{flex-wrap:wrap}.setting-actions{display:inline-flex;align-items:center;gap:2px;margin-left:auto;max-width:100%}
+.setting-save-wrap{display:inline-flex;flex-direction:column;max-width:100%}.setting-save-wrap small{color:#b44124;max-width:200px}
+.setting-save{display:inline-flex;align-items:center;gap:4px;min-height:28px;border:1px solid #c9c0ed;border-radius:6px;padding:3px 6px;background:#f7f5ff;color:#62509c;font:inherit;font-size:11px;cursor:pointer;white-space:nowrap}
+.setting-save.saved{color:#34775d;background:#f3faf6;border-color:#c1ddce}.setting-save:disabled{opacity:.5}.setting-save:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.setting-save-buttons{display:inline-flex;align-items:stretch;gap:2px}.setting-default-menu{position:relative;display:flex}
+.setting-default-menu>summary{list-style:none;display:flex;align-items:center;justify-content:center;min-width:26px;height:100%;padding:0!important;cursor:pointer;border:1px solid #dcd8ef;border-radius:6px}.setting-default-menu>summary::-webkit-details-marker{display:none}
+.setting-default-menu>button{position:absolute;z-index:12;right:0;top:calc(100% + 4px);white-space:nowrap;background:white;border:1px solid #dcd8ef;border-radius:8px;padding:10px;font:inherit;font-size:12px;box-shadow:0 6px 20px #26183c22;cursor:pointer}
+@media(pointer:coarse){.setting-save{min-height:34px}}
+.setting-reset{display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:none;min-height:28px;padding:2px 6px;border:0;border-radius:6px;background:transparent;color:var(--muted,#756d91);font:inherit;font-size:11px;line-height:1.2;cursor:pointer}
+.setting-reset:hover{background:rgba(110,78,230,.09);color:var(--accent,#6946df)}
+.setting-reset:focus-visible{outline:2px solid var(--accent,#6946df);outline-offset:2px}
+.setting-reset:disabled{opacity:.45;cursor:default}
+.setting-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.setting-toggle>.checkbox-label{margin:0;min-width:0}
+.lora-strength-row>.setting-reset{padding:2px;min-width:28px}
+.lora-strength-row>.setting-reset>span{display:none}
+@media(pointer:coarse){.setting-reset{min-height:34px;min-width:40px}}
+@media(max-width:480px){.setting-reset>span{display:none}.setting-reset{min-width:34px}}

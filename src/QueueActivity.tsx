@@ -6,9 +6,11 @@ import './queue-activity.css';
 
 export function stageLabel(job:SavedJob){
   if(job.status==='queued')return 'Waiting';
+  // Upscale stages (encode, upscale, decode frames) have their own progress text from the worker.
+  if(job.kind==='upscale'&&job.message&&job.status==='running')return job.message;
   if(job.stage==='encoding')return job.conditioning_reused?'Reusing prompt and inputs':job.request.images?.length?'Processing prompt and images':'Processing prompt';
-  const labels:Record<string,string>={downloading_models:'Downloading model',waiting_for_download:'Waiting for download',loading:'Loading model',loading_model:'Loading model',rewriting:'Preparing prompt',encoding:'Preparing images',generating:'Generating',upscaling:'Upscaling',training:'Training',captioning:'Writing captions',loading_caption_model:'Loading caption model',downloading_caption_model:'Downloading caption model',saving:'Saving result',muxing_audio:'Adding audio',downloading:'Saving result',uploading:'Sending files',waiting:'Waiting for processing',processing:'Processing',complete:'Finishing'};
-  return labels[job.stage]||'Preparing';
+  const labels:Record<string,string>={downloading_models:'Downloading model',waiting_for_download:'Waiting for download',loading:'Loading model',loading_model:'Loading model',rewriting:'Preparing prompt',encoding:'Preparing images',generating:'Generating',upscaling:'Upscaling',training:'Training',captioning:'Writing captions',loading_caption_model:'Loading caption model',downloading_caption_model:'Downloading caption model',saving:'Saving result',muxing_audio:'Adding audio',downloading:'Saving result',uploading:'Sending files',waiting:'Waiting for processing',processing:'Processing',complete:'Finishing',decoding:'Decoding'};
+  return labels[job.stage]||job.message||'Preparing';
 }
 export function stepLabel(job:SavedJob){
   return ['generating','upscaling','training','captioning'].includes(job.stage)&&job.total_steps>0

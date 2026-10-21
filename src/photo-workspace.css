@@ -101,40 +101,9 @@ dialog.lightbox .dialog-close{width:44px;height:44px;z-index:10}
  dialog.lightbox .zoom-view img{max-height:calc(100% - 90px)}
 }
 @media(hover:none){.input-library .person-actions{display:flex;position:static}.input-library .person-actions button{min-width:36px;min-height:36px}.input-library .person-photos{min-height:44px}}
-/* Phone viewer: the picture has its own area. Actions sit above it, the prompt and the count below it, nothing on top of it.
-   Pinch, double-tap and swipe do the work of the zoom and arrow buttons. */
+/* Gallery controls retain their existing mobile placement. */
 @media(max-width:759px),(max-width:1000px) and (pointer:coarse){
- dialog.lightbox[open]{display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 0 calc(8px + env(safe-area-inset-bottom))}
- dialog.lightbox .preview-actions{position:static;order:-1;flex:none;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 62px 0 10px;padding-bottom:8px}
- dialog.lightbox .preview-actions>*{flex:none;white-space:nowrap}
- dialog.lightbox .preview-actions{gap:6px}
- dialog.lightbox .preview-actions .button{min-height:44px;padding:0 10px;font-size:13px}
- dialog.lightbox .preview-actions .button>svg:not(.spin),dialog.lightbox .preview-actions .label-full{display:none}
- dialog.lightbox .preview-actions .label-short{display:inline}
- dialog.lightbox .dialog-close:focus-visible,dialog.lightbox .zoom-view:focus-visible{outline:none;box-shadow:none}
- dialog.lightbox .preview-saved-prompt,dialog.lightbox .preview-actions .run-details,dialog.lightbox .preview-actions .preview-cfg{display:none}
- dialog.lightbox .preview-run-details{display:block;order:2;flex:none;margin:6px 10px 0;padding:7px 2px 0 12px;border-radius:10px;background:#fff}
- dialog.lightbox .preview-run-details .run-details{margin:0;font-size:12px}
- dialog.lightbox .preview-run-details .run-model{max-width:100%;white-space:normal;overflow-wrap:anywhere}
- dialog.lightbox .preview-run-details .run-details-button{min-height:32px;padding:0 10px}
- dialog.lightbox .preview-run-details .result-prompt{margin:2px 0 0;border:0;border-top:1px solid #eee8f4;border-radius:0;background:transparent}
- dialog.lightbox .preview-run-details .result-prompt{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"text more copy";align-items:center;column-gap:2px;padding:2px 0;font-size:13px;line-height:1.45}
- dialog.lightbox .preview-run-details .result-prompt:has(p.expanded){grid-template-areas:"text text text" ". more copy";padding-top:8px}
- dialog.lightbox .preview-run-details .result-prompt-heading{display:contents}
- dialog.lightbox .preview-run-details .result-prompt-heading strong{display:none}
- dialog.lightbox .preview-run-details .result-prompt-heading button{grid-area:copy}
- dialog.lightbox .preview-run-details .result-prompt p{grid-area:text;-webkit-line-clamp:1}
- dialog.lightbox .preview-run-details .result-prompt p.expanded{max-height:30dvh}
- dialog.lightbox .preview-run-details .result-prompt-expand{grid-area:more;margin:0;padding:0 8px;font-size:13px}
- dialog.lightbox .preview-run-details .result-prompt button{min-height:40px}
- dialog.lightbox .lightbox-count{margin-top:4px;padding:1px 9px}
- dialog.lightbox .zoom-view.lightbox-image{flex:1;min-height:0;height:auto}
- dialog.lightbox .zoom-view img{max-height:100%}
- dialog.lightbox .preview-action-error{position:static;order:1;margin:8px 12px 0}
- dialog.lightbox .preview-saved-prompt{position:static;order:2;flex:none;max-width:none;margin:8px 10px 0}
- dialog.lightbox .lightbox-count{position:static;order:3;transform:none;align-self:center;margin-top:6px}
  dialog.gallery-detail .gallery-detail-media{padding-top:calc(62px + env(safe-area-inset-top))}
- dialog.lightbox .zoom-controls,dialog.lightbox .lightbox-nav,dialog.gallery-detail .zoom-controls,dialog.gallery-detail .gallery-nav{display:none}
+ dialog.gallery-detail .zoom-controls,dialog.gallery-detail .gallery-nav{display:none}
 }
 .preview-actions .label-short{display:none}
-.preview-run-details{display:none}

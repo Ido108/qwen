@@ -70,6 +70,8 @@ All subsequent tests use separate data and authentication directories.
 
 ## Rendered interface and delivery
 
+Update, 2026-10-20: Turbo now exposes the same supported sampler and schedule controls. The prior verification below that Turbo clears manual overrides describes the earlier UI. All image families now preserve and submit an explicit choice. Qwen's sampler reset restores its model sampler; its schedule reset restores the trained sigma list when the model supplies one. Z-Image and FLUX.3 engines now honor request values. Current browser and delivery evidence is in `validation/sampling-resets` and the active delivery queue. Custom combinations are not claimed to match the quality of the model's recommended combination.
+
 The frontend-testing-debugging skill supplied the validation checklist. The
 Browser plugin was absent and the computer tool listed no enabled browser.
 Checks used the installed Python Playwright browsers.
