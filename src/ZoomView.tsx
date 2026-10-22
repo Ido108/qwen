@@ -4,7 +4,12 @@ import {ImageLoadState,useResultImage} from './ProgressiveImage';
 
 /** Image viewer: pinch, wheel, double-tap, pan and explicit zoom controls.
  * At 100%, a one-finger horizontal swipe calls onSwipe; zoomed in, one finger pans. A pinch never swipes. */
-export function ZoomView({src,alt,className,onSwipe,separateControls=false}:{src:string;alt:string;className?:string;onSwipe?:(step:1|-1)=>void;separateControls?:boolean}){
+/** before: a second picture (the input or the picture before an upscale) shown left of a divider over the same
+ *  zoom and pan, so both stay aligned while you zoom in. */
+export function ZoomView({src,alt,className,onSwipe,separateControls=false,before}:{src:string;alt:string;className?:string;onSwipe?:(step:1|-1)=>void;separateControls?:boolean;before?:string|null}){
+  const [split,setSplit]=useState(50);
+  // The before picture sits exactly on the main picture's box, so zoom and pan move both the same way.
+  const [frame,setFrame]=useState<{left:number;top:number;width:number;height:number}|null>(null);
   const box=useRef<HTMLDivElement>(null);
   const img=useRef<HTMLImageElement>(null);
   const [view,setView]=useState({scale:1,x:0,y:0});
@@ -26,6 +31,12 @@ export function ZoomView({src,alt,className,onSwipe,separateControls=false}:{src
     onClick:(e:ReactMouseEvent<HTMLButtonElement>)=>{if(e.detail===0||performance.now()-touchedControl.current>600)action();},
   };}
   useEffect(()=>{setView({scale:1,x:0,y:0});setSwipe(0);pointers.current.clear();gesture.current=null;setFailed(false);},[src]);
+  useEffect(()=>{
+    const el=img.current;if(!before||!el)return;
+    const measure=()=>setFrame({left:el.offsetLeft,top:el.offsetTop,width:el.offsetWidth,height:el.offsetHeight});
+    measure();const observer=new ResizeObserver(measure);observer.observe(el);el.addEventListener('load',measure);
+    return()=>{observer.disconnect();el.removeEventListener('load',measure);};
+  },[before,src,image.url]);
   function bound(next:typeof view){
     const el=box.current,image=img.current;
     if(next.scale<=1)return {scale:1,x:0,y:0};
@@ -61,6 +72,7 @@ export function ZoomView({src,alt,className,onSwipe,separateControls=false}:{src
     <output aria-live="polite">{Math.round(view.scale*100)}%</output>
     <button type="button" aria-label="Zoom in" disabled={view.scale>=8} {...control(()=>zoom(current.current.scale*1.5))}><Plus size={18}/></button>
     <button type="button" aria-label="Fit image" {...control(()=>zoom(1))}><Maximize size={17}/><span>Fit</span></button>
+    {before?<label className="zoom-compare"><span>Before</span><input type="range" min="0" max="100" step="0.5" value={split} aria-label="Divider: before on the left, after on the right" onChange={e=>setSplit(Number(e.target.value))} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight')e.stopPropagation();}}/><span>After</span></label>:null}
     {separateControls?<><ImageLoadState {...image} fullSize={view.scale>1}/>{failed?<p className="viewer-error" role="alert">The image could not load. Close and open it again.</p>:null}</>:null}
   </div>;
   const viewport=<div ref={box} className={`zoom-view ${view.scale>1?'zoomed':''} ${separateControls?'':className||''}`} tabIndex={0} aria-label="Image viewer"
@@ -102,6 +114,8 @@ export function ZoomView({src,alt,className,onSwipe,separateControls=false}:{src
     onPointerCancel={e=>{setSwipe(0);pointers.current.delete(e.pointerId);startGesture();}}
     onDoubleClick={e=>{if(Date.now()-lastTouch.current>500&&!(e.target as Element).closest('button'))zoom(current.current.scale>1?1:2.5,e.clientX,e.clientY);}}>
     <img ref={img} key={image.url} src={image.url} alt={alt} draggable={false} decoding="async" data-quality={image.quality} onLoad={()=>setFailed(false)} onError={()=>setFailed(true)} style={{transform:`translate(${view.x+swipe}px,${view.y}px) scale(${view.scale})`}}/>
+    {before?<><div className="zoom-before" aria-hidden="true" style={{clipPath:`inset(0 ${100-split}% 0 0)`}}><img src={before} alt="" draggable={false} decoding="async" style={{...(frame?{left:frame.left,top:frame.top,width:frame.width,height:frame.height}:{}),transform:`translate(${view.x+swipe}px,${view.y}px) scale(${view.scale})`}}/></div>
+      <div className="zoom-divider" aria-hidden="true" style={{left:`${split}%`}}/><span className="zoom-tag zoom-tag-before">Before</span><span className="zoom-tag zoom-tag-after">After</span></>:null}
     {separateControls?null:<><ImageLoadState {...image} fullSize={view.scale>1}/>{failed?<p className="viewer-error" role="alert">The image could not load. Close and open it again.</p>:null}</>}
     {separateControls?null:controls}
   </div>;

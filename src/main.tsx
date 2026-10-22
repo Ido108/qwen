@@ -382,6 +382,11 @@ function App(){
   const previewIndex=lightbox?previewList.indexOf(lightbox):-1;
   const previewJob=history.find(item=>item.image_url===lightbox);
   const previewInput=previewJob?-1:inputs.findIndex(item=>item.url===lightbox);
+  // Full-screen Compare: an upscale against its source, an edit or swap against its first input picture.
+  const [previewCompare,setPreviewCompare]=useState(false);
+  const previewRequest=previewJob?.request as {source_image?:string;source_job?:string;images?:string[]}|undefined;
+  const previewBefore=!previewJob?null:(previewJob as {kind?:string}).kind==='image-upscale'?(previewRequest?.source_image?`/api/uploads/${previewRequest.source_image}`:previewRequest?.source_job?`/api/jobs/${previewRequest.source_job}/image`:null)
+    :previewRequest?.images?.[0]?`/api/uploads/${previewRequest.images[0]}`:null;
   useResultNeighbors(history.map(item=>item.image_url),result?.image_url,tab==='image'&&!lightbox);
   useResultNeighbors(previewList,lightbox,!!lightbox);
   const stepPreview=(delta:number)=>{const next=previewList[previewIndex+delta];if(previewIndex>=0&&next)setLightbox(next);};
@@ -541,9 +546,10 @@ function App(){
       {lightbox?<header className="preview-topbar">
         <div className="preview-navigation">{previewIndex>=0&&previewList.length>1?<><button type="button" className="icon-button" disabled={previewIndex===0} onClick={()=>stepPreview(-1)} aria-label="Previous image"><ChevronLeft size={20}/></button><span>{previewIndex+1} / {previewList.length}</span><button type="button" className="icon-button" disabled={previewIndex===previewList.length-1} onClick={()=>stepPreview(1)} aria-label="Next image"><ChevronRight size={20}/></button></>:<span>{t('preview')}</span>}</div>
         {previewJob?<div className="preview-actions"><button type="button" className="button secondary" aria-label="Use settings" disabled={locked} onClick={()=>useMobileSettings(previewJob)}><RotateCcw size={17}/><span className="label-full">Use settings</span><span className="label-short">Settings</span></button><a className="button secondary" href={`${previewJob.image_url}?download=true`}><Download size={17}/>Download</a><UseImageAs jobId={previewJob.id} disabled={locked}/><button type="button" className="button secondary" onClick={()=>upscaleResult(previewJob)}>Upscale</button></div>:previewInput>=0&&!inputs[previewInput].id.startsWith('example:')?<div className="preview-actions"><button type="button" className="button secondary" disabled={locked} onClick={()=>upscaleInput(inputs[previewInput],previewInput)}>Upscale</button></div>:null}
+        {previewBefore?<button type="button" className={`button secondary preview-compare ${previewCompare?'active':''}`} aria-pressed={previewCompare} onClick={()=>setPreviewCompare(v=>!v)} title={(previewJob as {kind?:string}|undefined)?.kind==='image-upscale'?'Before and after the upscale':'Input and result'}>Compare</button>:null}
         <button type="button" className="icon-button preview-close" onClick={closeModal} aria-label={t('close')}><X size={21}/></button>
       </header>:null}
-      {lightbox?<ZoomView className="lightbox-image checker" src={lightbox} alt={t('preview')} onSwipe={stepPreview} separateControls/>:null}
+      {lightbox?<ZoomView className="lightbox-image checker" src={lightbox} alt={t('preview')} onSwipe={stepPreview} separateControls before={previewCompare&&previewBefore?previewBefore:null}/>:null}
       {lightbox&&previewError?<p className="preview-action-error" role="alert">{previewError}</p>:null}
       {lightbox&&previewJob?<div className="preview-run-details"><GenerationTiming job={previewJob} models={modelState}/></div>:null}
       {showHelp&&tab==='video'&&videoSection==='create'?<div className="help-content"><h2>Video help</h2><p>Describe the scene, movement, camera and sounds. FastH3 creates video from text. Use first and last frames to control the start and end of a video. Use Image to video to place a referenced person or object in a new scene.</p><p>Steps follow the selected model and generation mode. Video is generated at 24 frames per second. You can change the seed, size and output folder in Advanced settings.</p><p>Missing models download automatically when you add a job. Supporting model files are selected automatically.</p><a href="https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2" target="_blank" rel="noreferrer">FastH3 model details</a><a href="https://huggingface.co/MiniMaxAI/MiniMax-H3" target="_blank" rel="noreferrer">MiniMax H3 model details</a></div>:null}

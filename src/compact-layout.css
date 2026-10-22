@@ -251,3 +251,12 @@ dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12p
 .web-hit-busy{position:absolute;inset:auto 0 0 0;background:#1f1a2ccc;color:#fff;font-size:11px;padding:2px 4px;text-align:center}
 .web-hit-person{font-size:11.5px;padding:2px 0}
 .run-generating{color:var(--accent,#6a4fd6);font-weight:600}
+/* Full-screen Compare: the picture before (left of the divider) over the same zoom and pan */
+.zoom-view{position:relative}
+.zoom-before{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.zoom-before img{position:absolute;display:block;max-width:none;max-height:none;object-fit:contain;transform-origin:50% 50%}
+.zoom-divider{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px #0006;pointer-events:none}
+.zoom-tag{position:absolute;top:10px;padding:2px 8px;border-radius:5px;background:#1f1a2ccc;color:#fff;font-size:12px;pointer-events:none}
+.zoom-tag-before{left:10px}.zoom-tag-after{right:10px}
+.zoom-compare{display:flex;align-items:center;gap:6px;font-size:12px;color:inherit}
+.zoom-compare input{width:160px}
