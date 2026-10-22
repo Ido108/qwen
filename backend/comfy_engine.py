@@ -233,12 +233,12 @@ def generate(request, prompt, images, width, height, progress):
     # Tool LoRA first, then the user's LoRAs; each one is patched onto a clone.
     stack=[]
     if request.get('tool_id'):
-        from .models import image_tool
         tool=image_tool(request['tool_id'])
         stack.append((tool['lora'],float(request.get('lora_strength',1.0))))
-        # The author's few-step LoRA for this family (BFS Qwen swaps on Standard: Pruna 8-step), unless switched off.
-        from .job_plan import speed_lora
-        if speed_lora(tool,selected,request):stack.append((speed_lora(tool,selected,request),float(request.get('speed_lora_strength') or 1.0)))
+    # The few-step LoRA: a tool author's (BFS swaps) or Create's default for Qwen Standard (Pruna 8-step), unless off.
+    from .job_plan import speed_lora
+    speed=speed_lora(image_tool(request['tool_id']) if request.get('tool_id') else None,selected,request)
+    if speed:stack.append((speed,float(request.get('speed_lora_strength') or 1.0)))
     stack+=[(lora['id'],float(lora.get('strength',1.0))) for lora in request.get('loras') or []]
     tool_lora=None
     lora_checks=[]
@@ -297,7 +297,8 @@ def generate(request, prompt, images, width, height, progress):
     from .image_sampling import resolve, sample_qwen
     sampler,scheduler=resolve(request,defaults)
     # The BFS swap workflows (a tool with its author's sampling) have no shift node: the model default 0.69 applies.
-    authored=bool(request.get('tool_id')) and bool(image_tool(request['tool_id']).get('sampling'))
+    from .job_plan import speed_lora as _speed
+    authored=bool(request.get('tool_id')) and bool(image_tool(request['tool_id']).get('sampling')) or bool(_speed(None,selected,request) and not request.get('tool_id'))
     if scheduler!='turbo-sigmas' and not authored:
         # The model's scheduler shifts with the image size (mu 0.5 at 256 tokens to 0.9 at 8192, scheduler_config.json);
         # ComfyUI keeps its 1024x1024 value 0.69. ModelSamplingFlux uses the same tokens (w*h/256): 0.69355 at 4096.

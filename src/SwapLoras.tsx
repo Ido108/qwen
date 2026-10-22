@@ -18,8 +18,8 @@ export function SwapLoras({plan,strength,speedStrength,disabled,onSpeed}:{plan:J
         {/* Set default saves your value for this model; Reset returns to it (or to the factory value). */}
         <ResetButton label="Effect strength" value={strength.fallback} disabled={disabled} onReset={()=>strength.onChange(null)}/></div>:null}
       {strength?.hint?<small className="auto-lora-hint">{strength.hint}</small>:null}</div>:null}
-    {plan.speed_lora?<div className={`auto-lora ${speedOn?'':'off'}`}><div className="auto-lora-head"><strong title={`${speed?.title??'Pruna 8-step LoRA'}: Qwen Standard in 8 steps instead of 40, as in the swap author's setup`}>{speed?.title??'Pruna 8-step LoRA'}</strong><span className="auto-lora-tag">8 steps, not 40</span>
-      <button type="button" className="lora-switch" role="switch" aria-checked={speedOn} aria-label="Use the speed LoRA" disabled={disabled} title="On: 8 steps, CFG 1, deis 2m (the swap author's setup). Off: the model's own 40 steps."
+    {plan.speed_lora?<div className={`auto-lora ${speedOn?'':'off'}`}><div className="auto-lora-head"><strong title={`${speed?.title??'Pruna 8-step LoRA'}: Qwen Standard in 8 steps instead of 40 (about 5x faster), as in the BFS swap author's setup`}>{speed?.title??'Pruna 8-step LoRA'}</strong><span className="auto-lora-tag">8 steps, not 40</span>
+      <button type="button" className="lora-switch" role="switch" aria-checked={speedOn} aria-label="Use the speed LoRA" disabled={disabled} title="On: 8 steps, CFG 1, deis 2m (about 5x faster). Off: the model's own 40 steps."
         onClick={()=>onSpeed(!speedOn,speedStrength)}><span className="lora-switch-track" aria-hidden="true"/><span>{speedOn?'On':'Off'}</span></button></div>
       {speedOn?<div className="auto-lora-strength"><span>Strength <b>{speedStrength.toFixed(2)}</b></span>
         <Nudge label="speed LoRA strength" value={speedStrength} step={0.05} min={0} max={2} disabled={disabled} onChange={value=>onSpeed(true,value)}/>

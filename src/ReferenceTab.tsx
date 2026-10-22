@@ -7,7 +7,7 @@ import {inputImage} from './Gallery';
 import {type VideoLibraryData} from './VideoImageLibrary';
 import {VideoModelSettings,VideoStepInput} from './VideoModelSettings';
 import {useQueuedVideo} from './useQueuedVideo';
-import {SendVideoTo,type SendVideo,type VideoInput} from './SendVideoTo';
+import {SendVideoTo,type SendVideo,type VideoDestination,type VideoInput} from './SendVideoTo';
 import {ReferencePeople} from './ReferencePeople';
 import {migratePeople,personImages,remapPersonTags,type ReferencePerson} from './personReferences';
 import {GenerationTiming} from './GenerationTiming';
@@ -190,7 +190,7 @@ export function ReferenceTab({library,videoInput,api,onSendVideo,token,models,vi
       {busy&&job?<VideoProgress job={job} clock={clock}/>:null}
       {previewMode==='source'&&source?<div className="reference-preview-actions"><button className="button secondary" onClick={playClip}><Film size={15}/>Play selected clip</button><span>Source preview shows the selected input, before generation.</span></div>:null}
       {previewMode==='result'&&result?<GenerationTiming job={result} models={models}/>:null}
-      {result?<div className="result-actions"><SendVideoTo jobId={result.id} onSend={onSendVideo}/><a className="button secondary" href={`${result.video_url}?download=true`}><Download size={15}/>Download MP4</a><a className="text-button" href={`/api/jobs/${result.id}/metadata`}>Download settings</a></div>:null}{replacementJob?<details className="disclosure reference-intermediate"><summary>Subject replacement step</summary><video controls playsInline preload="metadata" src={`/api/jobs/${replacementJob.id}/subject-video`}/><a className="text-button" href={`/api/jobs/${replacementJob.id}/subject-video?download=true`}>Download first-stage video</a><SendVideoTo jobId={replacementJob.id} part="subject" onSend={onSendVideo}/></details>:null}
+      {result?<div className="result-actions"><button type="button" className="button secondary" disabled={locked||busy} onClick={()=>void onSendVideo(result.id,params.workflow as VideoDestination).catch(()=>{})} title="Make this result the source video of this page">Use as source video</button><SendVideoTo jobId={result.id} onSend={onSendVideo}/><a className="button secondary" href={`${result.video_url}?download=true`}><Download size={15}/>Download MP4</a><a className="text-button" href={`/api/jobs/${result.id}/metadata`}>Download settings</a></div>:null}{replacementJob?<details className="disclosure reference-intermediate"><summary>Subject replacement step</summary><video controls playsInline preload="metadata" src={`/api/jobs/${replacementJob.id}/subject-video`}/><a className="text-button" href={`/api/jobs/${replacementJob.id}/subject-video?download=true`}>Download first-stage video</a><SendVideoTo jobId={replacementJob.id} part="subject" onSend={onSendVideo}/></details>:null}
       <details className="disclosure vs-history"><summary>Recent reference videos <span className="summary-hint">{history.length}</span></summary><div className="vs-history-grid">{history.slice(0,12).map(item=><button key={item.id} onClick={()=>{setResult(item);setPreviewMode('result');}}><img src={item.poster_url} alt=""/><span>{item.request.prompt}</span></button>)}</div></details>
       </section>
     </div>

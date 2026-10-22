@@ -85,14 +85,16 @@ export function LoraStack({value,onChange,loras,family,onBrowse,disabled,compact
     <div className="lora-head"><b>LoRAs</b><span>{active.length?`${active.filter(({choice,fit})=>choice.enabled!==false&&fit.usable).length} on · ${active.length} saved`:compact?'':'Optional'}</span>
       <button type="button" className="lora-add" disabled={disabled} onClick={e=>openPicker(e.currentTarget)} title="Add a LoRA" aria-haspopup="dialog" aria-expanded={!!picking&&!picking.replaceId}>+ Add LoRA</button></div>
     {weakBase?<p className="lora-notice">LoRA effect is weaker on NVFP4/FP8 files; an INT8 or BF16 model keeps it.</p>:null}
-    {active.map(({choice,lora,fit})=>{const enabled=choice.enabled!==false;const fits=fit.usable;const lora_=lora as ModelEntry&LoraMeta;return <div className={`lora-control ${enabled?'':'off'} ${fits?'':'unfit'}`} key={choice.id}>
+    {active.map(({choice,lora,fit})=>{const fits=fit.usable;
+      // A LoRA that does not fit this model shows Off and stays locked; your On comes back on a model it fits.
+      const enabled=choice.enabled!==false&&fits;const lora_=lora as ModelEntry&LoraMeta;return <div className={`lora-control ${enabled?'':'off'} ${fits?'':'unfit'}`} key={choice.id}>
       <div className="lora-control-heading">
         <button type="button" className="lora-select" data-lora-id={choice.id} disabled={disabled} onClick={e=>openPicker(e.currentTarget,choice.id)}
           aria-label={`Replace ${lora!.title}`} aria-haspopup="dialog" aria-expanded={picking?.replaceId===choice.id} title={`Replace ${lora!.title}`}>
           {lora!.preview?<img src={lora!.preview} alt="" loading="lazy"/>:<span className="lora-noimg"/>}
           <strong>{lora!.title}</strong><span className="lora-caret" aria-hidden="true">▾</span>
         </button>
-        <button type="button" className="lora-switch" role="switch" aria-checked={enabled} aria-label={`Use ${lora!.title}`} disabled={disabled}
+        <button type="button" className="lora-switch" role="switch" aria-checked={enabled} aria-label={`Use ${lora!.title}`} disabled={disabled||!fits} title={fits?undefined:'Not for this model: off until you choose a model it fits'}
           onClick={()=>onChange(value.map(v=>v.id===choice.id?{...v,enabled:!enabled}:v))}>
           <span className="lora-switch-track" aria-hidden="true"/><span>{enabled?'On':'Off'}</span>
         </button>

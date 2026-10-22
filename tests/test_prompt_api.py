@@ -69,6 +69,19 @@ class PromptApiTests(unittest.TestCase):
             if job['cfg'] is not None:self.assertEqual(job['cfg'],plan['cfg'])
             if job['sampler'] is not None:self.assertEqual(job['sampler'],plan['sampler'])
 
+    def test_create_on_qwen_standard_runs_pruna_by_default(self):
+        """Create on Qwen Standard: Pruna 8-step, 8 steps, CFG 1, deis_2m (as the BFS swaps); off: the model's 40."""
+        body={**self.body,'model_id':'uc-int8-convrot','images':[],'prompt':'A red teapot'}
+        plan=self.post('/api/job-plan',body).json()
+        self.assertEqual(self.post('/api/generate',body).status_code,202)
+        job=self.queued[-1]
+        self.assertEqual((job['steps'],job['cfg'],job['sampler'],job['scheduler']),(8,1.0,'deis_2m','simple'))
+        self.assertEqual((plan['steps'],[l['id'] for l in plan['loras']]),(8,['lora-pruna-8step']))
+        self.assertEqual(self.post('/api/generate',{**body,'speed_lora':False}).status_code,202)
+        self.assertEqual((self.queued[-1]['steps'],self.queued[-1]['sampler']),(40,None))
+        turbo=self.post('/api/job-plan',{**body,'model_id':'turbo-int8-convrot'}).json()
+        self.assertEqual((turbo['steps'],turbo['speed_lora']),(8,None))
+
     def test_all_image_mentions_resolve_before_the_queue(self):
         response=self.post('/api/generate',{**self.body,'prompt':'Use @Image2 in <image 1>.','negative_prompt':'Do not copy @Image2 background.'})
         self.assertEqual(response.status_code,202,response.text)

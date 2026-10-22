@@ -343,7 +343,8 @@ class AppTests(unittest.TestCase):
              patch.object(server,'threading',SimpleNamespace(Thread=Mock())):
             for steps,expected,mode in [(None,24,'model'),(12,12,'custom')]:
                 server.active_job=None
-                response=self.client.post('/api/generate',json={'prompt':'An apple','enhance':False,'steps':steps,'auto_resolution':1024,'output_dir':folder},headers=self.headers)
+                # speed_lora off: the model's own default (on Qwen Standard Create runs Pruna 8-step by default)
+                response=self.client.post('/api/generate',json={'prompt':'An apple','enhance':False,'steps':steps,'auto_resolution':1024,'output_dir':folder,'speed_lora':False},headers=self.headers)
                 self.assertEqual(response.status_code,202,response.text)
                 job=response.json()
                 saved=json.loads((Path(folder)/job['id']/'request.json').read_text())

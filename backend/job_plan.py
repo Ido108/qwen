@@ -16,11 +16,26 @@ def tool_recipe(tool, item):
     return recipe if families is None or _family(item) in families else {}
 
 
+# Create on Qwen Standard runs Pruna 8-step by default, like the BFS swaps: 5x faster (8 steps instead of 40).
+MODEL_RECIPES = {'qwen-image-2.1': {'speed_lora': 'lora-pruna-8step', 'steps': 8, 'cfg': 1.0, 'sampler': 'deis_2m', 'scheduler': 'simple'}}
+
+
+def model_recipe(item, request):
+    """Create's default speed setup for this family; none when the user added the same LoRA by hand."""
+    recipe = MODEL_RECIPES.get(_family(item), {})
+    ids = [c['id'] if isinstance(c, dict) else c.id for c in request.get('loras') or []]
+    return {} if recipe.get('speed_lora') in ids else recipe
+
+
+def recipe_for(tool, item, request):
+    return tool_recipe(tool, item) if tool else model_recipe(item, request)
+
+
 def speed_lora(tool, item, request):
-    """The author's few-step LoRA for this tool and family, unless the user switched it off."""
+    """The few-step LoRA (a tool author's, or Create's default for the family), unless the user switched it off."""
     if request.get('speed_lora') is False:
         return None
-    return tool_recipe(tool, item).get('speed_lora')
+    return recipe_for(tool, item, request).get('speed_lora')
 
 
 def plan(request: dict) -> dict:
@@ -30,7 +45,7 @@ def plan(request: dict) -> dict:
     tool = models.image_tool(request['tool_id']) if request.get('tool_id') else None
     images = int(request.get('image_count', len(request.get('images') or [])))
     # The author's recipe counts only with its speed LoRA when it has one (Pruna's 8 steps need Pruna).
-    recipe = dict(tool_recipe(tool, item))
+    recipe = dict(recipe_for(tool, item, request))
     speed = speed_lora(tool, item, request)
     if recipe.get('speed_lora') and not speed:
         recipe = {}
@@ -55,9 +70,11 @@ def plan(request: dict) -> dict:
         strength = request.get('lora_strength')
         loras.append({'id': tool['lora'], 'title': models.entry(tool['lora'])['title'], 'source': 'tool',
                       'strength': float(strength if strength is not None else tool['strength'])})
-        if speed:
-            loras.append({'id': speed, 'title': models.entry(speed)['title'], 'source': 'speed',
-                          'strength': float(request.get('speed_lora_strength') or 1.0)})
+    if speed:
+        loras.append({'id': speed, 'title': models.entry(speed)['title'], 'source': 'speed',
+                      'strength': float(request.get('speed_lora_strength') or 1.0)})
+    if tool:
+        pass
     elif models.is_krea(item) and images:
         identity = (request.get('krea_reference_mode') or 'identity') == 'identity'
         lora = models.KREA_IDENTITY_LORA if identity else models.KREA_STYLE_LORA
@@ -74,6 +91,6 @@ def plan(request: dict) -> dict:
         loras.append({'id': lora_id, 'title': models.entry(lora_id)['title'], 'source': 'yours',
                       'strength': float(choice['strength'] if isinstance(choice, dict) else choice.strength)})
     return {'steps': int(steps or 1), 'cfg': cfg, 'sampler': sampler, 'scheduler': scheduler, 'loras': loras,
-            'speed_lora': {'id': recipe.get('speed_lora') or tool_recipe(tool, item).get('speed_lora'), 'on': bool(speed)}
-                          if tool_recipe(tool, item).get('speed_lora') else None,
+            'speed_lora': {'id': recipe_for(tool, item, request).get('speed_lora'), 'on': bool(speed)}
+                          if recipe_for(tool, item, request).get('speed_lora') else None,
             'recipe': bool(recipe)}

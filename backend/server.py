@@ -1666,8 +1666,8 @@ def generate(body: GenerationRequest):
         data['execution'] = 'runpod' if remote else 'local'
         defaults = models.entry(body.model_id)['generation_defaults']
         # A tool's card can name its own step count (BFS Krea 2 body swap: 10 steps on Turbo).
-        from .job_plan import tool_recipe, speed_lora
-        recipe = dict(tool_recipe(tool, models.entry(body.model_id)))
+        from .job_plan import recipe_for, speed_lora
+        recipe = dict(recipe_for(tool, models.entry(body.model_id), data))
         # The author's 8 steps, CFG and sampler belong to the speed LoRA; without it the model's own settings apply.
         if recipe.get('speed_lora') and not speed_lora(tool, models.entry(body.model_id), data):
             recipe = {}
@@ -1679,9 +1679,9 @@ def generate(body: GenerationRequest):
             data['reference_resolution'] = tool['reference_resolution']
             # The tool author's sampler, schedule and CFG (their workflow) unless the user set one; a model's own
             # defaults (for example a Civitai merge's euler ancestral / beta) do not replace them.
-            for key in ('sampler', 'scheduler', 'cfg'):
-                if data.get(key) is None and recipe.get(key) is not None:
-                    data[key] = recipe[key]
+        for key in ('sampler', 'scheduler', 'cfg'):
+            if data.get(key) is None and recipe.get(key) is not None:
+                data[key] = recipe[key]
         data['output_dir'] = str(destination)
         if body.randomize_seed:
             data['seed'] = secrets.randbelow(2147483648)

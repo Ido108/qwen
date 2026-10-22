@@ -1034,7 +1034,11 @@
     ],
     "bytes": 335606104,
     "dependencies": [],
-    "note": "Used by the BFS Qwen swaps on Qwen-Image-2.1 Standard, as in the author's workflows: strength 1.0, 8 steps, CFG 1, deis_2m / simple. Card: 1K, up to 3 reference images, no CFG. Qwen Research License."
+    "families": [
+      "qwen-image-2.1"
+    ],
+    "internal": true,
+    "note": "Used by the BFS Qwen swaps on Qwen-Image-2.1 Standard, as in the author's workflows, and on by default for Qwen Standard on Create: strength 1.0, 8 steps, CFG 1, deis_2m / simple. Card: 1K, up to 3 reference images, no CFG. Qwen Research License."
   },
   {
     "id": "lora-bfs-head",

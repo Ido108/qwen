@@ -68,7 +68,7 @@ class CloudTests(unittest.TestCase):
                  patch.object(server.models, 'is_installed', side_effect=AssertionError('local model checked')), \
                  patch.object(server, 'enqueue_locked', side_effect=lambda job, data: captured.append((job, data))), \
                  patch.object(server.shutil, 'disk_usage', return_value=type('Disk', (), {'free': 2**40})()):
-                image = server.generate(GenerationRequest(prompt='A room', enhance=False, output_dir=folder))
+                image = server.generate(GenerationRequest(prompt='A room', enhance=False, output_dir=folder, speed_lora=False))
                 video = server.generate_video(VideoRequest(prompt='Camera move', enhance=False, output_dir=folder))
             self.assertEqual(image['kind'], 'image')
             self.assertEqual(video['kind'], 'video')
