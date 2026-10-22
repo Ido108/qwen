@@ -242,3 +242,12 @@ dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12p
 .lora-stack.lora-controls.compact>.lora-control,.lora-stack.lora-controls.compact>.lora-head{flex:1 1 100%;min-width:0;max-width:100%;box-sizing:border-box}
 .lora-stack.lora-controls .lora-select{overflow:hidden}
 .lora-stack.lora-controls .lora-select>strong{font-size:12.5px}
+/* Library > Web: search the web for pictures */
+.web-search{display:flex;flex-direction:column;gap:8px;min-width:0}
+.web-search-bar{display:flex;gap:6px}
+.web-search-bar input{flex:1;min-width:0;height:34px;padding:4px 8px;border:1px solid #ded8ef;border-radius:7px;font:inherit;font-size:13px;color:#2f2a40;background:#fff}
+.web-hit{display:flex;flex-direction:column;align-items:stretch;gap:2px;min-width:0}
+.web-hit .library-tile{position:relative}
+.web-hit-busy{position:absolute;inset:auto 0 0 0;background:#1f1a2ccc;color:#fff;font-size:11px;padding:2px 4px;text-align:center}
+.web-hit-person{font-size:11.5px;padding:2px 0}
+.run-generating{color:var(--accent,#6a4fd6);font-weight:600}

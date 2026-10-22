@@ -275,7 +275,9 @@ def generate(request, prompt, images, width, height, progress):
     prefix=512+sum((img.width*img.height if reference_resolution==0 else reference_resolution**2)//256 for img in images)
     cache_bytes=batch*2*32*prefix*4096*2 if images else 0
     sampling=model.model.memory_required([batch,64,height//16,width//16])*(target+(prefix if images else 0))/target
-    need=model.model_size()-model.loaded_size()+sampling+memory.minimum_inference_memory()
+    # 4 GB margin: PyTorch reserves more than it allocates (a 2 MP swap: 24.6 GB used, 29.0 GB reserved) and a
+    # run with 21.7 GB free and the encoder kept took 3.9 s per step (2026-10-22).
+    need=model.model_size()-model.loaded_size()+sampling+memory.minimum_inference_memory()+(4*1024**3 if images else 0)
     if free is not None and clip.patcher.loaded_size() and free<need+cache_bytes:
         memory.unload_model_and_clones(clip.patcher,unload_additional_models=False)
         progress(encoder_unloaded_for_sampling=True)

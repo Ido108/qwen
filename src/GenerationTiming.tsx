@@ -34,7 +34,9 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
   const dialog=useRef<HTMLDialogElement>(null),headingId=useId();
   const [copyState,setCopyState]=useState('Copy details');
   useEffect(()=>{dialog.current?.close();setCopyState('Copy details');},[job.id]);
-  if(!['succeeded','failed','cancelled'].includes(job.status))return null;
+  // A job in progress shows its settings at once, with "Generating" where the date and time appear when it ends.
+  const live=job.status==='running'||job.status==='queued';
+  if(!live&&!['succeeded','failed','cancelled'].includes(job.status))return null;
   const elapsed=valid(job.elapsed_seconds)?job.elapsed_seconds:valid(job.started_at)&&valid(job.finished_at)&&job.finished_at>=job.started_at?job.finished_at-job.started_at:null;
   const model=models?.models.find(item=>item.id===job.request.model_id)?.title||job.request.model_id;
   const seed=job.seed_used===false?null:valid(job.seed)?job.seed:job.request.randomize_seed===false&&valid(job.request.seed)?job.request.seed:null;
@@ -87,8 +89,8 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
   return <div className={`run-details${detailsOnly?' run-details-compact':''}`} data-run-id={job.id}>
     {detailsOnly?<button type="button" className="button secondary" onClick={()=>dialog.current?.showModal()} aria-label="View run details">Details</button>:<><div className="run-details-summary" aria-label="Completed run summary">
       <button type="button" className="run-details-button" onClick={()=>dialog.current?.showModal()} aria-label="View run details">Details</button>
-      {resultWhen(job)?<span className="run-when">{resultWhen(job)}</span>:null}
-      <button type="button" className="run-time" title="Time by stage" onClick={()=>dialog.current?.showModal()}><Clock3 size={12}/>{elapsed!==null?`Time ${time(elapsed)}`:'Time unavailable'}{inference!==null?` · Inference ${time(inference)}`:''}</button>
+      {live?<span className="run-when run-generating">Generating</span>:resultWhen(job)?<span className="run-when">{resultWhen(job)}</span>:null}
+      {live?null:<button type="button" className="run-time" title="Time by stage" onClick={()=>dialog.current?.showModal()}><Clock3 size={12}/>{elapsed!==null?`Time ${time(elapsed)}`:'Time unavailable'}{inference!==null?` · Inference ${time(inference)}`:''}</button>}
       {model?<span className="run-model" title={model}>{model}</span>:null}
       {steps?<span>{steps} {countLabel}</span>:null}{cfg!==null?<span>CFG {cfg}</span>:null}{size?<span>{size}</span>:null}{seed!==null?<span>Seed {seed}</span>:null}
       {showSampling?<><span>Sampler {sampling.sampler??'Not saved'}</span><span>Schedule {scheduleLabel(sampling.scheduler)}</span></>:null}

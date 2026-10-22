@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 import uuid
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -1145,6 +1145,67 @@ async def upload(files: list[UploadFile] = File(...)):
             raise HTTPException(400, 'Could not read this image. Choose a JPG, PNG, WebP or HEIC photo.')
         prepared.append((picture, file.filename or 'Image'))
     return [save_upload(picture, name) for picture, name in prepared]
+
+
+@app.get('/api/web-search/status')
+def web_search_status():
+    from . import web_search
+    return {'ready': bool(web_search.key())}
+
+
+class WebSearchKey(BaseModel):
+    key: str = Field(default='', max_length=200)
+
+
+@app.put('/api/web-search/key')
+def web_search_key(body: WebSearchKey):
+    from . import web_search
+    web_search.save_key(body.key)
+    return {'ready': bool(web_search.key())}
+
+
+@app.get('/api/web-search/images')
+def web_search_images(q: str, count: int = 24):
+    from . import web_search
+    if not q.strip():
+        raise HTTPException(400, 'Type what to search for.')
+    try:
+        return {'results': web_search.search(q.strip()[:200], max(1, min(count, 60)))}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(502, 'The web search did not answer. Try again.')
+
+
+class WebImport(BaseModel):
+    url: str = Field(max_length=4000)
+    person_name: str | None = Field(default=None, max_length=80)
+
+
+@app.post('/api/web-search/import')
+def web_search_import(body: WebImport):
+    """Download one web picture into Uploads; with a name, also make it a new person in People."""
+    from . import web_search
+    try:
+        raw = web_search.download(body.url)
+        with Image.open(io.BytesIO(raw)) as source:
+            if source.width * source.height > 64_000_000:
+                raise ValueError('The picture is over 64 megapixels.')
+            picture = ImageOps.exif_transpose(source).convert('RGBA')
+            picture.load()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+        raise HTTPException(400, 'Could not read this picture. Choose another one.')
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except httpx.HTTPError:
+        raise HTTPException(502, 'Could not download this picture. Choose another one.')
+    name = (body.person_name or '').strip()
+    image = save_upload(picture, name or Path(urlparse(body.url).path).name or 'Web picture')
+    if name:
+        image['person'] = people.upsert(name, [image['id']], source='web')
+        # Female or male for the new person, in the background like at start.
+        threading.Thread(target=people.preset_labels, name='people-labels', daemon=True).start()
+    return image
 
 
 def save_upload(picture: Image.Image, name: str) -> dict:

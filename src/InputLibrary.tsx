@@ -2,11 +2,12 @@ import {useEffect,useState} from 'react';
 import {Check,Download,Images,Loader2,Pencil,Search,Star,Trash2,Upload,UserPlus,X} from 'lucide-react';
 import type {Api} from './ModelSettings';
 import {FilePicker} from './FilePicker';
+import {WebSearch} from './WebSearch';
 
 export type InputImage={id:string;name:string;url:string;personId?:string;subjectLabel?:string};
 type Upload={id:string;name:string;url:string;thumb_url:string};
 type Result={id:string;request:{prompt:string}};
-export type LibraryTab='uploads'|'results'|'people';
+export type LibraryTab='uploads'|'results'|'people'|'web';
 export type Person={id:string;name:string;image_id:string;image_ids:string[];thumb_url:string;url:string;label?:string|null};
 
 /** Every image you have used, with a checkmark: checked images are the inputs, in the order you check them. */
@@ -85,6 +86,7 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
       <button role="tab" aria-selected={tab==='people'} onClick={()=>{setTab('people');setDrawer(null);}}>People <span>{people.length}</span></button>
       <button role="tab" aria-selected={tab==='uploads'} onClick={()=>{setTab('uploads');}}>Uploads <span>{total}</span></button>
       <button role="tab" aria-selected={tab==='results'} onClick={()=>setTab('results')}>Results <span>{results.length}</span></button>
+      <button role="tab" aria-selected={tab==='web'} onClick={()=>setTab('web')}>Web</button>
       {swap?<span className="library-replace">Replacing image {Math.min(target,inputs.length-1)+1}</span>:null}
       <FilePicker className="text-button library-upload" disabled={disabled} multiple={!swap} onFiles={onUpload}><Upload size={14}/>Upload</FilePicker>
       {onClose?<button type="button" className="icon-button library-close" onClick={()=>{setDrawer(null);onClose();}} aria-label="Close library" title="Close (Esc)"><X size={15}/></button>:null}
@@ -119,7 +121,8 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
         {n===0?<span className="person-main">Main</span>:<button type="button" className="person-main-set" onClick={()=>makeMain(opened,id)} title="Make this the main photo and avatar"><Star size={10}/>Main</button>}
       </div>;})}</div>
     </div>:null}
-    <div className="library-grid" hidden={tab==='people'}>
+    {tab==='web'?<WebSearch api={api} disabled={disabled} onUse={add} onPeople={onPeople}/>:null}
+    <div className="library-grid" hidden={tab==='people'||tab==='web'}>
       {tab==='uploads'&&selecting?uploads.map(u=>{const on=picked.includes(u.id);return <button key={u.id} type="button" className={`library-tile checker picking ${on?'picked':''}`} onClick={()=>togglePicked(u.id)} title={u.name} aria-pressed={on} aria-label={`${on?'Unselect':'Select'} ${u.name}`}>
         <img src={u.thumb_url} alt="" loading="lazy"/><span className="library-check">{on?'✓':''}</span></button>;}):null}
       {tab==='uploads'&&!selecting?uploads.map(u=>tile(u.id,u.thumb_url,u.name,index(u.id),()=>toggle({id:u.id,name:u.name,url:u.url}))):null}
