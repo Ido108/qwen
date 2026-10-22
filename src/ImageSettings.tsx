@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {SettingLabel} from './SettingLabel';
+import {Nudge,SettingLabel} from './SettingLabel';
 import type {ModelEntry,ModelState} from './ModelSettings';
 
 export type ImageOptions={negative_prompt?:string;custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
@@ -80,10 +80,10 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
     </div>
   </fieldset>;
   if(part==='steps')return <fieldset className={cls} disabled={disabled} aria-label="Steps and CFG">
-    <div className="field slider-field"><SettingLabel htmlFor={`${idPrefix}-steps`} label="Steps" value={defaultSteps} disabled={!defaultSteps} onReset={()=>onChange({steps:null})}>Steps <span className="tool-strength-value">{value.steps??defaultSteps??'…'}</span></SettingLabel><input id={`${idPrefix}-steps`} type="range" min="1" max="80" step="1" disabled={!defaultSteps} value={value.steps??defaultSteps??1} aria-valuetext={`${value.steps??defaultSteps} steps`} title={turbo?`Turbo is trained for ${defaultSteps} steps; other counts stretch its schedule.`:`Default: ${defaultSteps??'…'} steps`} onChange={e=>onChange({steps:Number(e.target.value)})}/>
+    <div className="field slider-field"><SettingLabel htmlFor={`${idPrefix}-steps`} label="Steps" value={defaultSteps} disabled={!defaultSteps} onReset={()=>onChange({steps:null})}>Steps <span className="tool-strength-value">{value.steps??defaultSteps??'…'}</span>{defaultSteps?<Nudge label="steps" value={value.steps??defaultSteps} step={1} min={1} max={80} onChange={steps=>onChange({steps})}/>:null}</SettingLabel><input id={`${idPrefix}-steps`} type="range" min="1" max="80" step="1" disabled={!defaultSteps} value={value.steps??defaultSteps??1} aria-valuetext={`${value.steps??defaultSteps} steps`} title={turbo?`Turbo is trained for ${defaultSteps} steps; other counts stretch its schedule.`:`Default: ${defaultSteps??'…'} steps`} onChange={e=>onChange({steps:Number(e.target.value)})}/>
       {!validSteps?<small>Choose a whole number from 1 to 80.</small>:turbo&&value.steps!==null&&value.steps!==defaultSteps?<small>Turbo is trained for {defaultSteps}.</small>:null}
     </div>
-    <div className="field slider-field"><SettingLabel htmlFor={`${idPrefix}-cfg`} label="CFG" value={defaultCfg} onReset={()=>onChange({cfg:null})}>CFG <span className="tool-strength-value">{(value.cfg??defaultCfg).toFixed(1)}</span></SettingLabel><input id={`${idPrefix}-cfg`} type="range" min="1" max="15" step="0.5" disabled={!defaults} value={value.cfg??defaultCfg} aria-valuetext={`CFG ${value.cfg??defaultCfg}`} title={`${defaults?.cfg?'Default from the model page. ':turbo?'Turbo is trained for CFG 1. ':'1, or 2 with a negative prompt. '}Above 1 runs a second guidance pass, so each step takes about twice as long.`} onChange={e=>onChange({cfg:Number(e.target.value)})}/>
+    <div className="field slider-field"><SettingLabel htmlFor={`${idPrefix}-cfg`} label="CFG" value={defaultCfg} onReset={()=>onChange({cfg:null})}>CFG <span className="tool-strength-value">{(value.cfg??defaultCfg).toFixed(1)}</span>{defaults?<Nudge label="CFG" value={value.cfg??defaultCfg} step={0.5} min={1} max={15} onChange={cfg=>onChange({cfg})}/>:null}</SettingLabel><input id={`${idPrefix}-cfg`} type="range" min="1" max="15" step="0.5" disabled={!defaults} value={value.cfg??defaultCfg} aria-valuetext={`CFG ${value.cfg??defaultCfg}`} title={`${defaults?.cfg?'Default from the model page. ':turbo?'Turbo is trained for CFG 1. ':'1, or 2 with a negative prompt. '}Above 1 runs a second guidance pass, so each step takes about twice as long.`} onChange={e=>onChange({cfg:Number(e.target.value)})}/>
       {!validCfg?<small>Choose a number from 1 to 15.</small>:(value.cfg??defaultCfg)>1?<small>Above 1: about 2x slower per step.</small>:null}
     </div>
   </fieldset>;
@@ -115,7 +115,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
         {field.options?<select id={`tool-${field.key}`} value={options[field.key]??field.default} onChange={e=>onTool({...toolState,tool_options:{...options,[field.key]:e.target.value},lora_strength:null})}>{field.options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
           :<input id={`tool-${field.key}`} value={options[field.key]??''} placeholder={field.placeholder} onChange={e=>onTool({...toolState,tool_options:{...options,[field.key]:e.target.value}})}/>}
       </div>)}
-      <div className="field"><SettingLabel htmlFor="tool-strength" label="Effect strength" value={toolStrength(tool,options)} onReset={()=>onTool({...toolState,lora_strength:null})}>Effect strength <span className="tool-strength-value">{strength.toFixed(2)}</span></SettingLabel>
+      <div className="field"><SettingLabel htmlFor="tool-strength" label="Effect strength" value={toolStrength(tool,options)} onReset={()=>onTool({...toolState,lora_strength:null})}>Effect strength <span className="tool-strength-value">{strength.toFixed(2)}</span><Nudge label="effect strength" value={strength} step={0.05} min={0.2} max={1.5} onChange={lora_strength=>onTool({...toolState,lora_strength})}/></SettingLabel>
         <input id="tool-strength" type="range" min="0.2" max="1.5" step="0.05" value={strength} onChange={e=>onTool({...toolState,lora_strength:Number(e.target.value)})}/></div>
       <a className="tool-source" href={tool.source} target="_blank" rel="noreferrer">About this tool</a>
     </div>:null}

@@ -91,10 +91,13 @@ def patch(model, vae, images, latent, settings=None):
     # The node adds the photo tokens (each photo at the canvas size) inside its forward, so ComfyUI's memory plan
     # counted the canvas alone. At 2 MP with a 12 GB INT8 checkpoint it kept too much of the model in VRAM and the
     # driver spilled into system RAM: 28.7 s per step instead of about 1.4 (2026-10-22). Plan for every token.
+    # Measured sampling memory with one photo (warm, CFG 1): 2.5 GB at 1 MP, about 4.3 GB at 2 MP; ComfyUI's estimate
+    # for canvas plus photo was 1.4 and 2.85 GB (the node's attention bias and its own tensors are not in it). Twice the
+    # area covers the measured use with room to spare.
     photos = len(tensors)
     def plan_reference_tokens(executor, model, noise_shape, conds, *args, **kwargs):
         shape = list(noise_shape)
-        shape[-1] *= 1 + photos
+        shape[-1] *= 2 * (1 + photos)
         return executor(model, shape, conds, *args, **kwargs)
     patched.add_wrapper_with_key(pe.WrappersMP.PREPARE_SAMPLING, 'krea2_reference_memory', plan_reference_tokens)
     return patched

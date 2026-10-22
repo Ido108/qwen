@@ -15,3 +15,11 @@ export function ResetButton({label,value,onReset,disabled=false,withSave=true}:{
 export function SettingLabel({htmlFor,children,label,value,onReset,disabled=false}:{htmlFor?:string;children:ReactNode;label:string;value?:string|number;onReset:()=>void;disabled?:boolean}){
   return <div className="setting-heading"><label htmlFor={htmlFor}>{children}</label><span className="setting-actions"><SaveDefaultButton label={label} disabled={disabled} onRecommended={onReset}/><ResetButton withSave={false} label={label} value={value} onReset={onReset} disabled={disabled}/></span></div>;
 }
+/** Small ▼ ▲ buttons beside a slider's value for one-step changes. */
+export function Nudge({value,step,min,max,onChange,label,disabled=false}:{value:number;step:number;min:number;max:number;onChange:(next:number)=>void;label:string;disabled?:boolean}){
+  const set=(next:number)=>onChange(Number(Math.min(max,Math.max(min,next)).toFixed(2)));
+  return <span className="nudge">
+    <button type="button" aria-label={`Lower ${label}`} title={`Lower ${label}`} disabled={disabled||value<=min} onClick={e=>{e.preventDefault();set(value-step);}}>▼</button>
+    <button type="button" aria-label={`Raise ${label}`} title={`Raise ${label}`} disabled={disabled||value>=max} onClick={e=>{e.preventDefault();set(value+step);}}>▲</button>
+  </span>;
+}

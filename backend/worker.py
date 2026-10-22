@@ -178,6 +178,13 @@ def run():
     if images and entry(request['model_id']).get('family', '').startswith('krea-2') and (request.get('krea_reference_mode') or 'identity') == 'identity':
         # Krea 2 identity edit: the card says generate at 2 MP or less; the photo tokens double the sequence.
         from .krea_edit import identity_size
+        if not request['custom_size'] and request.get('auto_resolution', 2048) <= 1024:
+            # At 1K the photo's own shape (often near square) made Krea crop in close; 3:4 (4:3 for a landscape
+            # photo) leaves room for the body (the user's choice, 2026-10-22).
+            person = images[min(int(request.get('krea_person') or 0), len(images) - 1)]
+            area, portrait = width * height, person.height >= person.width
+            width, height = (int((area * 3 / 4) ** 0.5) // 16 * 16, int((area * 4 / 3) ** 0.5) // 16 * 16) if portrait else \
+                            (int((area * 4 / 3) ** 0.5) // 16 * 16, int((area * 3 / 4) ** 0.5) // 16 * 16)
         width, height = identity_size(width, height)
     render_width = math.ceil(width / 32) * 32
     render_height = math.ceil(height / 32) * 32

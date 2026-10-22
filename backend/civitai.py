@@ -29,6 +29,9 @@ SCOPE = '1'                # UserRead: identity; downloads only need a signed-in
 # Civitai base model -> what this app runs it with. Each file is also checked by its tensor shapes.
 BASE_MODELS = {
     'Qwen 2.1': {'arch': 'qwen-image-2.1', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image'},
+    # Some Qwen-Image-2.1 uploads carry the tag "Qwen 2" (for example "Elusarca's Qwen 2.1 Detail Enhancer"); the
+    # tensor-shape check at install still rejects any file that is not Qwen-Image-2.1.
+    'Qwen 2': {'arch': 'qwen-image-2.1', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image'},
     'Krea 2': {'arch': 'krea-2', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image'},
     'Krea 2 Turbo': {'arch': 'krea-2', 'area': 'image', 'lora_kind': 'image-lora', 'model_kind': 'image', 'turbo': True},
     # Civitai keeps the two Z-Image types apart, so the tag alone tells Turbo from Base.

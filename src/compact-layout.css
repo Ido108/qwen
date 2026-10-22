@@ -143,3 +143,20 @@ dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12p
 }
 .studio-result .section-heading{flex-wrap:wrap;row-gap:4px}
 .studio-result .result-size{white-space:nowrap}
+.swap-advanced>summary{min-height:36px;padding:8px 12px;font-size:13px}
+.swap-advanced[open]{display:flex;flex-direction:column;gap:10px;padding-bottom:12px}
+.swap-advanced>:not(summary){margin-inline:12px}
+.swap-advanced-note{margin:0;font-size:11.5px;color:#6b6585;line-height:1.4}
+
+/* ▼ ▲ beside a slider value. */
+.nudge{display:inline-flex;gap:2px;margin-inline-start:6px;vertical-align:middle}
+.nudge button{display:grid;place-items:center;width:22px;height:20px;padding:0;border:1px solid #ddd6ef;border-radius:5px;background:#fff;color:#5b47a8;font-size:9px;line-height:1;cursor:pointer}
+.nudge button:hover:not(:disabled){background:#f1edfc;border-color:#c9bdf0}
+.nudge button:disabled{opacity:.4;cursor:default}
+@media(pointer:coarse){.nudge{gap:4px}.nudge button{width:32px;height:30px;font-size:11px}}
+/* A slider header with ▼ ▲ keeps its whole label; its "Set default" shows when the field is touched or hovered. */
+.setting-heading>label:has(.nudge){flex:0 0 auto;overflow:visible}
+.field:has(.nudge) .setting-heading .setting-save:not(.saved),.field:has(.nudge) .setting-heading .setting-default-menu{display:none}
+.field:has(.nudge):hover .setting-heading .setting-save,.field:has(.nudge):focus-within .setting-heading .setting-save,
+.field:has(.nudge):hover .setting-heading .setting-default-menu,.field:has(.nudge):focus-within .setting-heading .setting-default-menu{display:inline-flex;opacity:1}
+@media(pointer:coarse){.nudge{gap:3px;margin-inline-start:5px}.nudge button{width:26px;height:28px}}
