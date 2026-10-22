@@ -172,9 +172,13 @@ def run():
         # Edit tools follow the shape of image 1 (the picture being changed).
         sizing = request
         # MOSS Image: 1 to 2 MP recommended, 4 MP is extrapolation (Comfy-Org template notes, OpenMOSS USERGUIDE).
-        if entry(request['model_id']).get('family') in ('krea-2', 'moss-image', 'moss-image-base', 'moss-image-turbo') and not request['custom_size']:
+        family = entry(request['model_id']).get('family')
+        if family == 'krea-2' and not request['custom_size']:
             # Krea 2 Raw is trained up to 1K (krea-ai/krea-2 README); Turbo makes 1K to 2K.
             sizing = {**request, 'auto_resolution': min(request.get('auto_resolution', 2048), 1024)}
+        elif family in ('moss-image', 'moss-image-base', 'moss-image-turbo') and not request['custom_size']:
+            # MOSS: Auto 2K is its 2 MP top (1448 x 1448 area), not 4 MP; Auto 1K stays 1 MP.
+            sizing = {**request, 'auto_resolution': min(request.get('auto_resolution', 2048), 1448)}
         # Z-Image and MOSS redraw image 1, so the output keeps its shape.
         follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith(('z-image','flux3-klein','moss-image')))
         width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if follow_first else rewrite)

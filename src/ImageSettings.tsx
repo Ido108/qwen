@@ -109,7 +109,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
     </div>
     <div className="field"><SettingLabel htmlFor="image-size" label="Output size" value="Auto · 2K" onReset={()=>setSize('auto-2048')}>Output size</SettingLabel>
       <select id="image-size" value={sizeValue} onChange={e=>setSize(e.target.value)} title={followsImage?'Follows the shape of image 1.':value.custom_size?'Exact size in pixels.':'Shape follows the prompt or input image.'}>
-        <option value="auto-1024">Auto · 1K (about 1 MP)</option><option value="auto-2048">Auto · 2K (about {followsImage?'2':'4'} MP)</option>
+        <option value="auto-1024">Auto · 1K (about 1 MP)</option><option value="auto-2048">Auto · 2K (about {followsImage||family.startsWith('moss-image')?'2':family==='krea-2'?'1':'4'} MP)</option>
         {followsImage?null:<><option disabled>──────────</option>{presets.map(([w,h,r])=><option key={`${w}x${h}`} value={`${w}x${h}`}>{w} × {h} · {r}</option>)}<option disabled>──────────</option><option value="custom">Custom…</option></>}
       </select>
     </div>
