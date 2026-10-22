@@ -93,7 +93,7 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
       {live?null:<button type="button" className="run-time" title="Time by stage" onClick={()=>dialog.current?.showModal()}><Clock3 size={12}/>{elapsed!==null?`Time ${time(elapsed)}`:'Time unavailable'}{inference!==null?` · Inference ${time(inference)}`:''}</button>}
       {model?<span className="run-model" title={model}>{model}</span>:null}
       {steps?<span>{steps} {countLabel}</span>:null}{cfg!==null?<span>CFG {cfg}</span>:null}{size?<span>{size}</span>:null}{seed!==null?<span>Seed {seed}</span>:null}
-      {showSampling?<><span>Sampler {sampling.sampler??'Not saved'}</span><span>Schedule {scheduleLabel(sampling.scheduler)}</span></>:null}
+      {showSampling&&!(live&&!sampling.sampler)?<><span>Sampler {sampling.sampler??'Not saved'}</span><span>Schedule {scheduleLabel(sampling.scheduler)}</span></>:null}
     </div>
     {loras!==null?<dl className="run-loras"><dt>LoRAs (strength)</dt><dd>{loras}</dd></dl>:null}
     <ResultPrompt key={job.id} text={prompt||usedPrompt}/></>}
