@@ -160,3 +160,15 @@ dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12p
 .field:has(.nudge):hover .setting-heading .setting-save,.field:has(.nudge):focus-within .setting-heading .setting-save,
 .field:has(.nudge):hover .setting-heading .setting-default-menu,.field:has(.nudge):focus-within .setting-heading .setting-default-menu{display:inline-flex;opacity:1}
 @media(pointer:coarse){.nudge{gap:3px;margin-inline-start:5px}.nudge button{width:26px;height:28px}}
+.swap-slots.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.swap-slots.three .swap-image{height:120px}.swap-slots.three .swap-empty{height:84px}
+.swap-image .swap-pick{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;background:none;cursor:pointer}
+.swap-image .swap-pick img{width:100%;height:100%;object-fit:contain}
+.swap-image .swap-pick:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.swap-image .swap-remove{z-index:2}
+
+/* Recent panel: a running job is a tile with its live preview. */
+.rail-live .rail-thumb{position:relative;border-color:#cfc3f5;background:#f3f0fb}
+.rail-live .rail-thumb img{object-fit:cover}
+.rail-live-state{position:absolute;left:5px;right:5px;bottom:8px;padding:3px 6px;border-radius:6px;background:#211b35c7;color:#fff;font-size:11px;font-weight:600;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-live-bar{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);transition:width .3s}

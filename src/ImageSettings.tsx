@@ -4,7 +4,7 @@ import type {ModelEntry,ModelState} from './ModelSettings';
 
 export type ImageOptions={negative_prompt?:string;custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
 export type ToolField={key:string;label:string;placeholder?:string;default:string;options?:{value:string;label:string;prompt?:string;strength?:number}[]};
-export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;steps?:number;families:string[];tested_on:string[];swap?:boolean;swap_page?:boolean;inputs:{min:number;max:number;labels:string[]};
+export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;steps?:number;families:string[];tested_on:string[];swap?:boolean;swap_page?:boolean;sampling?:{sampler?:string;scheduler?:string;cfg?:number;families?:string[]};inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
 export type ToolState={tool_id:string|null;tool_options:Record<string,string>;lora_strength:number|null};
 
@@ -36,7 +36,10 @@ export function toolDefaults(tool:ImageTool){return Object.fromEntries(tool.fiel
 
 export function ImageSettings({part='main',idPrefix='image',value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled}:{value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
   models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'steps'|'advanced';idPrefix?:string}){
-  const defaults=model?.generation_defaults;const defaultSteps=tool?.steps??defaults?.steps;  // a tool's own steps win, as on the server
+  // A tool's own steps, sampler, schedule and CFG (its author's workflow) win over the model's, as on the server.
+  const recipe=tool?.sampling&&(!tool.sampling.families||tool.sampling.families.includes(model?.family||''))?tool.sampling:null;
+  const modelDefaults=model?.generation_defaults;const defaults=modelDefaults&&recipe?{...modelDefaults,...Object.fromEntries(Object.entries(recipe).filter(([key])=>key!=='families'))}:modelDefaults;
+  const defaultSteps=tool?.steps??defaults?.steps;
   const turbo=!!defaults?.sigmas;
   const page=typeof defaults?.note==='string'&&defaults.note.startsWith('From the Civitai page')?defaults:null;
   const pageText=page?`Author settings: ${page.steps} steps${page.cfg?`, CFG ${page.cfg}`:''}${page.sampler?`, ${page.sampler}`:''}${page.scheduler?` / ${page.scheduler}`:''}.`:'';

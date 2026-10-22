@@ -29,26 +29,27 @@ class ImagePeopleTests(unittest.TestCase):
             self.assertEqual(detector.setInputSize.call_args.args,((320,320),))
 
     def setUp(self):
+        # Picture 1 (the scene) is the only scanned picture; pictures 2 and 3 are one head each.
         self.scene, self.reference = scan(3), scan(2)
-        self.selection = {'scene_image': 'scene.png', 'reference_image': 'reference.png',
-                          'scene_revision': 'a'*24, 'reference_revision': 'a'*24,
-                          'assignments': {'face-1': 'face-2', 'face-2': None, 'face-3': 'face-1'}}
+        self.selection = {'scene_image': 'scene.png', 'reference_image': 'head.png',
+                          'scene_revision': 'a'*24, 'assignments': {'face-1': '3', 'face-2': None, 'face-3': '2'}}
 
     def prompt(self, selection=None, tool='head-swap'):
         with patch.object(image_people, 'analyze_image', side_effect=[self.scene, self.reference]):
             # The app's scene template (selectable in Edit swap prompt; the author's prompt is the default).
             return image_people.build_swap_prompt(models.image_tool(tool), selection or self.selection,
-                                                  ['scene.png', 'reference.png'], Path, 'Keep the earrings.',
+                                                  ['scene.png', 'head.png', 'head2.png'], Path, 'Keep the earrings.',
                                                   template=swap_prompts.default_prompt(models.image_tool(tool)))
 
     def test_crossed_choices_preserve_the_unselected_person(self):
         text = self.prompt()
         self.assertTrue(text.startswith('head_swap:'))
         self.assertIn('person 1 in <image1> on the left', text)
-        self.assertIn('person 2 in <image2> on the center', text)
+        self.assertIn('with that of the person in <image3>', text)
         self.assertIn('Keep person 2 in <image1>', text)
         self.assertIn('person 3 in <image1> on the right', text)
-        self.assertIn('person 1 in <image2> on the left', text)
+        self.assertIn('with that of the person in <image2>', text)
+        self.assertNotIn('in <image2> on the', text)  # head pictures are never described by position
         self.assertIn('x=65.0% to 80.0%', text)
         self.assertIn('take priority over conflicting instructions', text)
         self.assertIn('Keep the earrings.', text)
@@ -57,21 +58,21 @@ class ImagePeopleTests(unittest.TestCase):
         self.assertIn('whole person (face, clothing, body shape and proportions)', body)
 
     def test_invalid_or_stale_choices_never_fall_back_to_a_random_person(self):
-        for update in ({'scene_image': 'different.png'}, {'reference_revision': 'b'*24},
-                       {'assignments': {'face-1': None}}, {'assignments': {'face-9': 'face-1'}},
-                       {'assignments': {'face-1': 'face-9'}}):
+        for update in ({'scene_image': 'different.png'}, {'scene_revision': 'b'*24},
+                       {'assignments': {'face-1': None}}, {'assignments': {'face-9': '2'}},
+                       {'assignments': {'face-1': '4'}}):
             with self.subTest(update=update), self.assertRaises(ValueError):
                 self.prompt({**self.selection, **update})
         self.scene['faces'] = []
-        with self.assertRaisesRegex(ValueError, 'No faces'):
+        with self.assertRaisesRegex(ValueError, 'No face found in picture 1'):
             self.prompt()
 
     def test_pose_and_style_choices_reach_the_authoritative_prompt(self):
         with patch.object(image_people,'analyze_image',side_effect=[self.scene,self.reference]):
             prompt=image_people.build_swap_prompt(models.image_tool('head-swap-expression'),self.selection,
-                ['scene.png','reference.png'],Path,'Keep the earrings.',pose_source=2,style_source=1,
+                ['scene.png','head.png','head2.png'],Path,'Keep the earrings.',pose_source=2,style_source=1,
                 template=swap_prompts.default_prompt(models.image_tool('head-swap-expression')))
-        self.assertIn('expression of person 2 in <image2>',prompt)
+        self.assertIn('expression of the person in <image3>',prompt)
         self.assertIn('exact visual style of <image1>',prompt)
         self.assertIn('background and text of <image1>',prompt)
 
@@ -118,3 +119,21 @@ class ImagePeopleTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SwapPickTests(unittest.TestCase):
+    def build(self, faces, images, assignments):
+        selection={'scene_image':'scene.png','reference_image':'head.png','scene_revision':'a'*24,'assignments':assignments}
+        with patch.object(image_people,'analyze_image',return_value=scan(faces)):
+            return image_people.build_swap_prompt(models.image_tool('head-swap'),selection,images,Path,template=models.image_tool('head-swap')['prompt'])
+
+    def test_one_face_and_one_head_needs_no_choice(self):
+        # No choice sent at all: one scene face and one head picture swap automatically, with the author's prompt alone.
+        text=self.build(1,['scene.png','head.png'],{'face-1':None})
+        self.assertEqual(text,models.image_tool('head-swap')['prompt'])
+
+    def test_saved_jobs_with_a_head_face_id_still_build(self):
+        # Jobs saved before heads stopped being scanned hold a face id of picture 2.
+        text=self.build(2,['scene.png','head.png'],{'face-1':None,'face-2':'face-1'})
+        self.assertIn('with that of the person in <image2>',text)
+

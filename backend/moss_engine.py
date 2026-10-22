@@ -203,8 +203,11 @@ def generate(request,prompt,images,width,height,progress):
         latent=EmptyFlux2LatentImage.execute(width,height,1)[0]['samples']
     noise=comfy.sample.prepare_noise(latent,request['seed'])
     steps=int(request['steps'])
+    from .image_preview import LiveImagePreview
+    preview=LiveImagePreview(model.model.latent_format,progress)
     def callback(step,x0,x,total):
         progress(stage='generating',message='Generating image…',step=step+1,total_steps=total)
+        preview.publish(x0,step,total)
     progress(stage='generating',message='Generating image…',step=0,cfg=cfg,shift=shift,sampling=f'{sampler}/{scheduler}',sampler=sampler,scheduler=scheduler,denoise=denoise,input_image_used=bool(images))
     start=time.perf_counter()
     with torch.inference_mode():

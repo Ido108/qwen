@@ -283,8 +283,11 @@ def generate(request, prompt, images, width, height, progress):
         progress(krea_reference_mode=f"tool: {tool['title']}" if tool else 'identity', grounding_px=grounding, **settings)
     noise = comfy.sample.prepare_noise(latent, request['seed'])
 
+    from .image_preview import LiveImagePreview
+    preview = LiveImagePreview(model.model.latent_format, progress)
     def callback(step, x0, x, total):
         progress(stage='generating', message='Generating image…', step=step + 1, total_steps=total)
+        preview.publish(x0, step, total)
     progress(stage='generating', message='Generating image…', step=0, sampling=f'{sampler}-{scheduler}', sampler=sampler, scheduler=scheduler, cfg=cfg, shift_mu=round(mu, 4))
     started = time.perf_counter()
     weights_before, peak_before = torch.cuda.memory_allocated(), torch.cuda.max_memory_allocated()

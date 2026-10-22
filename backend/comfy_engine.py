@@ -283,8 +283,11 @@ def generate(request, prompt, images, width, height, progress):
         model=ModelSamplingFlux().patch(model,0.69355,0.5,width,height)[0]
         retain_lora_clone(model,_components['model'])
         progress(shift_mu=round(0.5+(0.69355-0.5)/3840*(width*height/256-256),3))
+    from .image_preview import LiveImagePreview
+    preview=LiveImagePreview(model.model.latent_format,progress)
     def callback(step,x0,x,total):
         progress(stage='generating',message='Generating image…',step=step+1,total_steps=total)
+        preview.publish(x0,step,total)
     progress(stage='generating',message='Generating image…',step=0,sampling=f'{sampler}/{scheduler}',cfg=cfg,
              sampler=sampler,scheduler=scheduler)
     with torch.inference_mode():

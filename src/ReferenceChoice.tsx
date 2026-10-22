@@ -2,14 +2,14 @@ import {useLayoutEffect,useId,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Check,ChevronDown,UserRound} from 'lucide-react';
 
-export function ReferenceChoice({personNumber,references,value,onChange,disabled=false,sourceLabel='Source'}:{personNumber:number;references:{id:string;url:string;count?:number}[];value:string|null;onChange:(value:string|null)=>void;disabled?:boolean;sourceLabel?:string}){
+export function ReferenceChoice({personNumber,references,value,onChange,disabled=false,sourceLabel='Source',optionLabel='Person'}:{personNumber:number;references:{id:string;url:string;count?:number}[];value:string|null;onChange:(value:string|null)=>void;disabled?:boolean;sourceLabel?:string;optionLabel?:string}){
   const [open,setOpen]=useState(false);
   const [position,setPosition]=useState({left:0,top:0,width:230});
   const trigger=useRef<HTMLButtonElement>(null);
   const menu=useRef<HTMLDivElement>(null);
   const id=useId();
   const selected=references.findIndex(reference=>reference.id===value);
-  const options=[{id:null,url:'',label:'Keep person',count:0},...references.map((reference,index)=>({...reference,label:`Person ${index+1}`}))];
+  const options=[{id:null,url:'',label:'Keep person',count:0},...references.map((reference,index)=>({...reference,label:`${optionLabel} ${index+1}`}))];
   function choose(next:string|null){onChange(next);setOpen(false);trigger.current?.focus();}
   useLayoutEffect(()=>{
     if(!open)return;
@@ -29,8 +29,8 @@ export function ReferenceChoice({personNumber,references,value,onChange,disabled
   },[open,options.length]);
   return <>
     <button ref={trigger} type="button" className="person-choice" disabled={disabled} aria-label={`Replacement for ${sourceLabel} ${personNumber}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={open?id:undefined} onClick={()=>setOpen(!open)} onKeyDown={event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setOpen(true);}}}>
-      {selected>=0?<img src={references[selected].url} alt={`Selected Person ${selected+1}`}/>:<UserRound size={17}/>}
-      <span>{selected>=0?`Person ${selected+1}`:'Keep person'}</span><ChevronDown size={13}/>
+      {selected>=0?<img src={references[selected].url} alt={`Selected ${optionLabel} ${selected+1}`}/>:<UserRound size={17}/>}
+      <span>{selected>=0?`${optionLabel} ${selected+1}`:'Keep person'}</span><ChevronDown size={13}/>
     </button>
     {open&&!disabled?createPortal(<div ref={menu} id={id} role="listbox" aria-label={`Choose replacement for ${sourceLabel} ${personNumber}`} className="person-choice-menu" style={position} onKeyDown={event=>{
       const buttons=Array.from(menu.current!.querySelectorAll<HTMLButtonElement>('[role="option"]'));

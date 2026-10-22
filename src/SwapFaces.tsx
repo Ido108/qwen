@@ -6,47 +6,54 @@ import './swap-faces.css';
 
 type Face={id:string;box:number[];preview:string};
 type Analysis={faces:Face[];revision:string;width:number;height:number};
-export type SwapSelection={scene_image:string;reference_image:string;scene_revision:string;reference_revision:string;assignments:Record<string,string|null>};
+/** Scene face id -> the picture number of its new head ("2" or "3"), or null to keep that person. */
+export type SwapSelection={scene_image:string;reference_image:string;scene_revision:string;reference_revision?:string|null;assignments:Record<string,string|null>};
 
-export function SwapFaces({api,images,value,onChange,disabled}:{api:Api;images:[string|null,string|null];value:SwapSelection|null;onChange:(value:SwapSelection|null)=>void;disabled:boolean}){
-  const [scans,setScans]=useState<[Analysis,Analysis]|null>(null);
+/** Only picture 1 (the scene) is scanned: each head picture is one person. One face and one head need no choice. */
+export function SwapFaces({api,scene,heads,value,onChange,onFaces,disabled}:{api:Api;scene:string|null;heads:{id:string;url:string}[];value:SwapSelection|null;onChange:(value:SwapSelection|null)=>void;onFaces?:(count:number)=>void;disabled:boolean}){
+  const [scan,setScan]=useState<Analysis|null>(null);
   const [status,setStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');
   const [error,setError]=useState('');const [retry,setRetry]=useState(0);
-  const current=useRef({value,onChange});current.current={value,onChange};
-  const previousChoice=useRef(value);if(value)previousChoice.current=value;
+  const current=useRef({value,onChange,onFaces});current.current={value,onChange,onFaces};
+  const headKey=heads.map(h=>h.id).join('|');
   useEffect(()=>{
-    setScans(null);setError('');
-    if(!images[0]||!images[1]){setStatus('idle');return;}
-    const ids=images as [string,string];const saved=current.current.value||previousChoice.current;
+    setScan(null);setError('');
+    if(!scene){setStatus('idle');current.current.onFaces?.(0);return;}
     let alive=true;const controller=new AbortController();setStatus('loading');
-    Promise.all(ids.map(id=>api(`/api/image-people?image_id=${encodeURIComponent(id)}`,{signal:controller.signal}))).then(results=>{
+    api(`/api/image-people?image_id=${encodeURIComponent(scene)}`,{signal:controller.signal}).then((result:Analysis)=>{
       if(!alive)return;
-      const [scene,reference]=results as [Analysis,Analysis];setScans([scene,reference]);setStatus('ready');
-      const same=saved?.scene_image===ids[0]&&saved?.reference_image===ids[1]&&saved.scene_revision===scene.revision&&saved.reference_revision===reference.revision;
-      const assignments=Object.fromEntries(scene.faces.map(face=>[face.id,
-        same&&reference.faces.some(candidate=>candidate.id===saved.assignments[face.id])?saved.assignments[face.id]:
-        !same&&scene.faces.length===1&&reference.faces.length===1?reference.faces[0].id:null]));
-      current.current.onChange({scene_image:ids[0],reference_image:ids[1],scene_revision:scene.revision,reference_revision:reference.revision,assignments});
+      setScan(result);setStatus('ready');current.current.onFaces?.(result.faces.length);
     }).catch(issue=>{if(alive){setStatus('error');setError(issue.message);}});
     return()=>{alive=false;controller.abort();};
-  },[api,images[0],images[1],retry]);
-  if(!images[0]||!images[1])return <p className="swap-face-hint">Add both pictures to choose which people to replace.</p>;
+  },[api,scene,retry]);
+  // Keep the choices valid for the current heads; one face with one head is chosen automatically.
+  useEffect(()=>{
+    if(!scan||!scene||!heads.length)return;
+    const saved=current.current.value;
+    const same=saved?.scene_image===scene&&saved.scene_revision===scan.revision;
+    const pictures=heads.map((_,index)=>String(index+2));
+    const assignments=Object.fromEntries(scan.faces.map(face=>{
+      const previous=same?saved!.assignments[face.id]:undefined;
+      const kept=previous&&pictures.includes(previous)?previous:previous&&!/^\d+$/.test(previous)?'2':null;
+      return [face.id,scan.faces.length===1&&heads.length===1?'2':kept??null];
+    }));
+    const next={scene_image:scene,reference_image:heads[0].id,scene_revision:scan.revision,assignments};
+    if(JSON.stringify(next)!==JSON.stringify(saved&&{scene_image:saved.scene_image,reference_image:saved.reference_image,scene_revision:saved.scene_revision,assignments:saved.assignments}))current.current.onChange(next);
+  },[scan,scene,headKey]);
+  if(!scene||!heads.length)return <p className="swap-face-hint">Add the scene and a head picture.</p>;
+  if(status==='loading')return <p className="swap-face-status" role="status"><Loader2 size={16} className="spin"/>Finding faces in picture 1…</p>;
+  if(status==='error')return <p className="message error" role="alert">Could not find faces: {error} <button type="button" className="text-button" onClick={()=>setRetry(n=>n+1)}>Scan again</button></p>;
+  if(!scan)return null;
+  if(!scan.faces.length)return <p className="swap-face-hint" role="status">No face found in picture 1. Use a picture with a clear face, or <button type="button" className="text-button" onClick={()=>setRetry(n=>n+1)}>scan again</button>.</p>;
+  if(scan.faces.length===1&&heads.length===1)return null;
   const count=Object.values(value?.assignments||{}).filter(Boolean).length;
-  return <section className="swap-face-picker" aria-label="Face replacements" aria-busy={status==='loading'}>
-    <div className="swap-face-heading"><h3>Choose people to replace</h3><button type="button" className="text-button" disabled={disabled||status==='loading'} onClick={()=>setRetry(n=>n+1)}><RefreshCw size={14}/>Scan again</button></div>
-    {status==='loading'?<p className="swap-face-status" role="status"><Loader2 size={16} className="spin"/>Finding faces in both pictures…</p>:null}
-    {status==='error'?<p className="message error" role="alert">Could not find faces: {error}</p>:null}
-    {scans&&status==='ready'?<>
-      <div className="swap-face-counts"><span>Picture 1: {scans[0].faces.length} {scans[0].faces.length===1?'face':'faces'}</span><span>Picture 2: {scans[1].faces.length} {scans[1].faces.length===1?'face':'faces'}</span></div>
-      {!scans[0].faces.length||!scans[1].faces.length?<p className="swap-face-hint" role="status">No faces found in picture {!scans[0].faces.length?'1':'2'}. Use a picture with a clear face, or scan again.</p>:<>
-        <p className="swap-face-hint">For each person in picture 1, choose a person from picture 2. Leave other people unchanged.</p>
-        <div className="swap-face-rows">{scans[0].faces.map((face,index)=><div className={`swap-face-row ${value?.assignments[face.id]?'is-replaced':''}`} key={face.id}>
-          <div className="swap-face-source"><img src={face.preview} alt={`Face ${index+1} in picture 1`}/><div><strong>Person {index+1}</strong><small>Picture 1</small></div></div>
-          <ArrowRight size={16} aria-hidden="true"/>
-          <ReferenceChoice personNumber={index+1} sourceLabel="Person" disabled={disabled||!value} references={scans[1].faces.map(item=>({id:item.id,url:item.preview}))} value={value?.assignments[face.id]||null} onChange={chosen=>{if(value)onChange({...value,assignments:{...value.assignments,[face.id]:chosen}});}}/>
-        </div>)}</div>
-        <p className="swap-face-status" role="status">{count?`${count} ${count===1?'person':'people'} selected for replacement.`:'Choose a replacement for at least one person.'}</p>
-      </>}
-    </>:null}
+  return <section className="swap-face-picker" aria-label="Face replacements">
+    <div className="swap-face-heading"><h3>{scan.faces.length} people in picture 1: choose a head for each</h3><button type="button" className="text-button" disabled={disabled} onClick={()=>setRetry(n=>n+1)}><RefreshCw size={14}/>Scan again</button></div>
+    <div className="swap-face-rows">{scan.faces.map((face,index)=><div className={`swap-face-row ${value?.assignments[face.id]?'is-replaced':''}`} key={face.id}>
+      <div className="swap-face-source"><img src={face.preview} alt={`Face ${index+1} in picture 1`}/><div><strong>Person {index+1}</strong><small>Picture 1</small></div></div>
+      <ArrowRight size={16} aria-hidden="true"/>
+      <ReferenceChoice personNumber={index+1} sourceLabel="Person" optionLabel="Head" disabled={disabled||!value} references={heads.map((head,i)=>({id:String(i+2),url:head.url}))} value={value?.assignments[face.id]||null} onChange={chosen=>{if(value)onChange({...value,assignments:{...value.assignments,[face.id]:chosen}});}}/>
+    </div>)}</div>
+    <p className="swap-face-status" role="status">{count?`${count} ${count===1?'person':'people'} will get a new head.`:'Choose a head for at least one person.'}</p>
   </section>;
 }

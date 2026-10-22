@@ -219,8 +219,11 @@ def generate(request, prompt, images, width, height, progress):
     latent = comfy.sample.fix_empty_latent_channels(model, latent)
     noise = comfy.sample.prepare_noise(latent, request['seed'])
 
+    from .image_preview import LiveImagePreview
+    preview = LiveImagePreview(model.model.latent_format, progress)
     def callback(step, x0, x, total):
         progress(stage='generating', message='Generating image…', step=step + 1, total_steps=total)
+        preview.publish(x0, step, total)
     progress(stage='generating', message='Generating image…', step=0, sampling=f'{sampler}-{scheduler}', sampler=sampler, scheduler=scheduler, cfg=cfg, shift=shift,
              denoise=denoise, input_image_used=bool(images))
     started = time.perf_counter()

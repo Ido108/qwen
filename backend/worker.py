@@ -228,6 +228,8 @@ def run():
 def execute(folder):
     global directory, job, request
     directory = Path(folder)
+    from . import image_preview
+    image_preview.directory = directory
     job = json.loads((directory / 'status.json').read_text(encoding='utf-8'))
     request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
     try:

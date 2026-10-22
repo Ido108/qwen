@@ -64,9 +64,11 @@ class LoraChoice(BaseModel):
 
 class SwapSelection(BaseModel):
     scene_image: str = Field(max_length=200)
-    reference_image: str = Field(max_length=200)
+    # Kept for jobs saved before head pictures were no longer scanned; picture 2 and 3 are one person each.
+    reference_image: str = Field(default='', max_length=200)
     scene_revision: str = Field(pattern=r'^[a-f0-9]{24}$')
-    reference_revision: str = Field(pattern=r'^[a-f0-9]{24}$')
+    reference_revision: str | None = Field(default=None, pattern=r'^[a-f0-9]{24}$')
+    # Scene face id -> the head's picture number ("2" or "3"), or None to keep that person.
     assignments: dict[str, str | None] = Field(max_length=100)
 
 

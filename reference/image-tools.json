@@ -371,10 +371,11 @@
     ],
     "inputs": {
       "min": 2,
-      "max": 2,
+      "max": 3,
       "labels": [
         "Scene",
-        "Head"
+        "Head",
+        "Head 2"
       ]
     },
     "fields": [],
@@ -382,6 +383,7 @@
     "reference_resolution": 0,
     "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/main/docs/qwen-image-2.1.md",
     "fit_inputs": [
+      "budget",
       "budget",
       "budget"
     ]
@@ -402,10 +404,11 @@
     ],
     "inputs": {
       "min": 2,
-      "max": 2,
+      "max": 3,
       "labels": [
         "Scene",
-        "Head"
+        "Head",
+        "Head 2"
       ]
     },
     "fields": [],
@@ -413,6 +416,7 @@
     "reference_resolution": 0,
     "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/main/docs/qwen-image-2.1.md",
     "fit_inputs": [
+      "budget",
       "budget",
       "budget"
     ]
@@ -433,10 +437,11 @@
     ],
     "inputs": {
       "min": 2,
-      "max": 2,
+      "max": 3,
       "labels": [
         "Scene",
-        "Person"
+        "Person",
+        "Person 2"
       ]
     },
     "fields": [],
@@ -445,6 +450,7 @@
     "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/main/docs/qwen-image-2.1-body.md",
     "fit_inputs": [
       "budget",
+      590000,
       590000
     ]
   },
@@ -730,7 +736,12 @@
       "grounding_px": 512
     },
     "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md",
-    "swap_page": true
+    "swap_page": true,
+    "sampling": {
+      "sampler": "euler",
+      "scheduler": "simple",
+      "cfg": 1.0
+    }
   },
   {
     "id": "krea-body-swap",
@@ -768,7 +779,12 @@
       "grounding_px": 0
     },
     "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md",
-    "swap_page": true
+    "swap_page": true,
+    "sampling": {
+      "sampler": "euler",
+      "scheduler": "simple",
+      "cfg": 1.0
+    }
   },
   {
     "id": "krea-outfit-transfer",

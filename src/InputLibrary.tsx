@@ -21,7 +21,7 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
     if(!multiple){setDrawer(null);onClose?.();}
   }
   const [filter,setFilter]=useState('');const [importing,setImporting]=useState<{state:string;message:string;done?:number;total?:number}|null>(null);const [message,setMessage]=useState('');
-  const [tab,setTab]=useState<LibraryTab>(()=>(localStorage.getItem('qwen-input-tab') as LibraryTab)||'uploads');
+  const [tab,setTab]=useState<LibraryTab>(()=>(localStorage.getItem('qwen-input-tab') as LibraryTab)||'people');
   const [uploads,setUploads]=useState<Upload[]>([]);const [total,setTotal]=useState(0);
   const [resultInputs,setResultInputs]=useState<Record<string,string>>({});const [busy,setBusy]=useState('');
   // Select mode on Uploads: a tap marks a picture for deletion instead of using it.
@@ -81,9 +81,9 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
     </button>;
   return <div className="input-library">
     <div className="library-tabs" role="tablist">
+      <button role="tab" aria-selected={tab==='people'} onClick={()=>{setTab('people');setDrawer(null);}}>People <span>{people.length}</span></button>
       <button role="tab" aria-selected={tab==='uploads'} onClick={()=>{setTab('uploads');}}>Uploads <span>{total}</span></button>
       <button role="tab" aria-selected={tab==='results'} onClick={()=>setTab('results')}>Results <span>{results.length}</span></button>
-      <button role="tab" aria-selected={tab==='people'} onClick={()=>{setTab('people');setDrawer(null);}}>People <span>{people.length}</span></button>
       {swap?<span className="library-replace">Replacing image {Math.min(target,inputs.length-1)+1}</span>:null}
       <FilePicker className="text-button library-upload" disabled={disabled} multiple={!swap} onFiles={onUpload}><Upload size={14}/>Upload</FilePicker>
       {onClose?<button type="button" className="icon-button library-close" onClick={()=>{setDrawer(null);onClose();}} aria-label="Close library" title="Close (Esc)"><X size={15}/></button>:null}

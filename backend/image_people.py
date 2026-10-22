@@ -83,23 +83,31 @@ def face_description(face: dict, picture: int) -> str:
 
 
 def build_swap_prompt(tool: dict, selection: dict, images: list[str], resolve, extra: str = '', pose_source: int = 1, style_source: int = 1, template: str | None = None, image_labels: list[str] | None = None, style_mode: str = 'realistic') -> str:
-    if not tool.get('swap') or len(images) != 2:
-        raise ValueError('Face choices require a Swap tool and both pictures.')
-    if selection['scene_image'] != images[0] or selection['reference_image'] != images[1]:
+    """Picture 1 is the scene; pictures 2 and 3 are heads (one person each, never scanned). Each chosen scene face
+    gets the head of one picture. One face and one head need no choice."""
+    if not tool.get('swap') or not 2 <= len(images) <= 3:
+        raise ValueError('A swap needs the scene picture and one or two head pictures.')
+    if selection['scene_image'] != images[0]:
         raise ValueError('The pictures changed. Review the face choices again.')
     scene = analyze_image(resolve(images[0]))
-    reference = analyze_image(resolve(images[1]))
-    if scene['revision'] != selection['scene_revision'] or reference['revision'] != selection['reference_revision']:
+    if scene['revision'] != selection['scene_revision']:
         raise ValueError('The pictures changed. Scan faces again before creating a swap.')
     sources = {face['id']: face for face in scene['faces']}
-    replacements = {face['id']: face for face in reference['faces']}
-    assignments = selection['assignments']
-    if not sources or not replacements:
-        raise ValueError('No faces found in one of the pictures. Use a picture with a clear face.')
-    if any(key not in sources or value is not None and value not in replacements for key, value in assignments.items()):
+    if not sources:
+        raise ValueError('No face found in picture 1. Use a picture with a clear face.')
+    def head(value):
+        # A picture number ("2", "3"); jobs saved before heads were pictures hold a face id of picture 2.
+        if value is None:
+            return None
+        return int(value) if str(value).isdigit() else 2
+    assignments = {key: head(value) for key, value in selection['assignments'].items()}
+    if len(sources) == 1 and len(images) == 2:
+        assignments = {next(iter(sources)): 2}
+    if any(key not in sources or value is not None and not 2 <= value <= len(images) for key, value in assignments.items()):
         raise ValueError('A selected face is no longer available. Scan faces again.')
     if not any(assignments.values()):
-        raise ValueError('Choose a replacement for at least one face in picture 1.')
+        raise ValueError('Choose a head for at least one person in picture 1.')
+    explicit = len(sources) > 1 or len(images) > 2
     body = tool['id'] == 'body-swap'
     from .swap_prompts import get as saved_prompt, validate, style_instructions
     template = validate(tool, template if template is not None else saved_prompt(tool)['text'])
@@ -111,19 +119,20 @@ def build_swap_prompt(tool: dict, selection: dict, images: list[str], resolve, e
         style_source = 1
     from .prompt_mentions import image_mentions
     directions = []
-    def describe(face, picture, all_faces):
-        return f'the person in <image{picture}>' if len(all_faces) == 1 else face_description(face, picture)
+    def describe(face):
+        return 'the person in <image1>' if len(sources) == 1 else face_description(face, 1)
     for face in scene['faces']:
-        source = describe(face, 1, sources)
+        source = describe(face)
         chosen = assignments.get(face['id'])
+        if not explicit:
+            continue
         if chosen is None:
             directions.append(f'Keep {source} completely unchanged, including their face, hair, clothing and body.')
         else:
-            target = describe(replacements[chosen], 2, replacements)
+            target = f'the person in <image{chosen}>'
             part = 'whole person (face, clothing, body shape and proportions)' if body else 'head (face, hair, eye color and nose structure)'
-            if len(sources) > 1 or len(replacements) > 1:
-                directions.append(f'Replace only the {part} of {source} with that of {target}.')
-                directions.append(f'Keep the exact head angle, gaze and expression of {source if pose_source==1 else target}.')
+            directions.append(f'Replace only the {part} of {source} with that of {target}.')
+            directions.append(f'Keep the exact head angle, gaze and expression of {source if pose_source==1 else target}.')
     prompt = template
     style_source = 1 if style_mode == 'non-realistic' else style_source
     prompt = prompt.replace('<pose_source>', f'<image{pose_source}>').replace('<style_source>', f'<image{style_source}>')
@@ -134,6 +143,6 @@ def build_swap_prompt(tool: dict, selection: dict, images: list[str], resolve, e
         prompt += '\n\n' + ' '.join(directions)
     if extra.strip():
         prompt += '\n\n'+image_mentions(extra.strip(), 2, labels=image_labels or [])
-    if len(sources) > 1 or len(replacements) > 1:
+    if explicit:
         prompt += ' The selected face assignments take priority over conflicting instructions. Keep unselected people unchanged.'
     return prompt

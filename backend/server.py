@@ -1537,9 +1537,10 @@ def generate(body: GenerationRequest):
             body.prompt = build_swap_prompt(tool, body.swap_selection.model_dump(), body.images, resolve_image, body.swap_extra, body.swap_pose_source, body.swap_style_source, body.swap_prompt_template, body.image_labels, body.swap_style_mode)
             from .prompt_mentions import image_mentions
             body.negative_prompt = image_mentions(body.negative_prompt, len(body.images), labels=body.image_labels)
-        elif body.swap_selection:
-            raise ValueError('Face choices apply only to Swap.')
         else:
+            # Face picks left in the settings from a restored Qwen swap belong only to the Qwen swaps; other jobs
+            # (Create, the Krea 2 swaps) ignore them instead of failing.
+            body.swap_selection = None
             from .prompt_mentions import image_mentions
             notation = 'qwen' if models.entry(body.model_id).get('family', '').startswith('qwen-image') else 'plain'
             body.prompt = image_mentions(body.prompt, len(body.images), notation, body.image_labels)
@@ -1584,6 +1585,13 @@ def generate(body: GenerationRequest):
             data['enhance'] = False
             data['lora_strength'] = body.lora_strength if body.lora_strength is not None else tool['strength']
             data['reference_resolution'] = tool['reference_resolution']
+            # The tool author's sampler, schedule and CFG (their workflow) unless the user set one; a model's own
+            # defaults (for example a Civitai merge's euler ancestral / beta) do not replace them.
+            sampling = tool.get('sampling') or {}
+            if sampling.get('families') is None or models.entry(body.model_id).get('family') in sampling['families']:
+                for key in ('sampler', 'scheduler', 'cfg'):
+                    if data.get(key) is None and sampling.get(key) is not None:
+                        data[key] = sampling[key]
         data['output_dir'] = str(destination)
         if body.randomize_seed:
             data['seed'] = secrets.randbelow(2147483648)
@@ -2254,7 +2262,8 @@ def video_result(job_id: str, download: bool = False):
 def live_video_preview(job_id: str):
     job=read_job(job_id)
     path=JOBS_DIR/job_id/'live-preview.webp'
-    if job.get('kind') not in VIDEO_KINDS or not path.is_file():
+    # Videos and images (each sampling step's estimate) share the same preview file.
+    if not path.is_file():
         raise HTTPException(404,'The live preview is not available yet.')
     return Response(path.read_bytes(),media_type='image/webp',headers={'Cache-Control':'no-store'})
 

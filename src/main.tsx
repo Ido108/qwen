@@ -114,6 +114,28 @@ function App(){
   const [upscaleTarget,setUpscaleTarget]=useState<{source:UpscaleSource;preset?:Partial<UpscaleSettings>;key:number}|null>(null);
   const [inputUpscales,setInputUpscales]=useState<InputUpscale[]>(()=>{try{return JSON.parse(localStorage.getItem('qwen-input-upscales')||'[]');}catch{return [];}});
   useEffect(()=>{try{localStorage.setItem('qwen-input-upscales',JSON.stringify(inputUpscales));}catch{/* offers only last this visit */}},[inputUpscales]);
+  // Phones: Download opens the share sheet (Save Image, Save Video) instead of the browser's download page.
+  // Without sharing (plain http) the file opens by itself, to keep with a long press.
+  useEffect(()=>{
+    const touch=window.matchMedia('(pointer:coarse)');
+    async function save(event:MouseEvent){
+      const link=(event.target as Element|null)?.closest?.('a[href*="download=true"]') as HTMLAnchorElement|null;
+      if(!link||!touch.matches)return;
+      event.preventDefault();
+      const plain=link.href.replace(/[?&]download=true/,'');
+      if(navigator.canShare){
+        try{
+          const response=await fetch(plain);const blob=await response.blob();
+          const name=link.href.split('/').slice(-2,-1)[0]+(blob.type.includes('video')?'.mp4':'.png');
+          const file=new File([blob],name,{type:blob.type});
+          if(navigator.canShare({files:[file]})){await navigator.share({files:[file]});return;}
+        }catch(e){if((e as Error).name==='AbortError')return;}
+      }
+      window.open(plain,'_blank');
+    }
+    document.addEventListener('click',save);
+    return()=>document.removeEventListener('click',save);
+  },[]);
   const upscaleInput=(input:InputImage,index:number)=>setUpscaleTarget({source:{image:input.id,inputId:input.id,preview:input.url,label:`Input image ${index+1}`},key:Date.now()});
   const upscaleResult=(saved:{id:string;width?:number;height?:number})=>setUpscaleTarget({source:{job:saved.id,preview:`/api/jobs/${saved.id}/thumbnail`,label:'Result image'},key:Date.now()});
   const [previewError,setPreviewError]=useState('');
@@ -210,7 +232,7 @@ function App(){
       // A swap opens in Swap with its two pictures, strength and extra instructions.
       const tool=swapTools.find(t=>t.id===saved.request.tool_id)!;const images=(saved.request.images||[]).map((id:string,index:number)=>({...inputImage(id),subjectLabel:saved.request.image_labels?.[index]}));const prompt=String(saved.request.prompt||'');
       setParams({...restoredImage,tool_id:null,tool_options:{},lora_strength:null,prompt:''});
-      setSwap({tool:tool.id,slots:[images[0]??null,images[1]??null],strength:saved.request.lora_strength??tool.strength,extra:saved.request.swap_extra??(prompt.startsWith(tool.prompt)?prompt.slice(tool.prompt.length).trim():''),selection:saved.request.swap_selection??null,poseSource:saved.request.swap_pose_source??1,styleSource:saved.request.swap_style_source??1,promptTemplate:saved.request.swap_prompt_template??undefined,promptRevision:saved.request.swap_prompt_revision??undefined,steps:saved.request.steps??null,cfg:saved.request.cfg??null,sampler:saved.request.sampler??null,scheduler:saved.request.scheduler??null,styleMode:saved.request.swap_style_mode??'realistic',...(saved.request.swap_style_mode==='non-realistic'?{nonRealisticNegative:saved.request.source_negative_prompt??saved.request.negative_prompt??''}:{negativePrompt:saved.request.source_negative_prompt??saved.request.negative_prompt??''})});
+      setSwap({tool:tool.id,slots:[images[0]??null,images[1]??null,...(images[2]?[images[2]]:[])],strength:saved.request.lora_strength??tool.strength,extra:saved.request.swap_extra??(prompt.startsWith(tool.prompt)?prompt.slice(tool.prompt.length).trim():''),selection:saved.request.swap_selection??null,poseSource:saved.request.swap_pose_source??1,styleSource:saved.request.swap_style_source??1,promptTemplate:saved.request.swap_prompt_template??undefined,promptRevision:saved.request.swap_prompt_revision??undefined,steps:saved.request.steps??null,cfg:saved.request.cfg??null,sampler:saved.request.sampler??null,scheduler:saved.request.scheduler??null,styleMode:saved.request.swap_style_mode??'realistic',...(saved.request.swap_style_mode==='non-realistic'?{nonRealisticNegative:saved.request.source_negative_prompt??saved.request.negative_prompt??''}:{negativePrompt:saved.request.source_negative_prompt??saved.request.negative_prompt??''})});
       if(saved.status==='succeeded')setResult(saved as Job);setTab('image');setImageSection('swap');window.history.replaceState(null,'','#swap');setNotice('The swap pictures, strength and settings are loaded.');setError('');}
     else{setImageSection('create');setParams({...restoredImage,prompt:saved.request.source_prompt??saved.request.prompt,negative_prompt:saved.request.source_negative_prompt??saved.request.negative_prompt??''});setInputs((saved.request.images||[]).map((id:string,index:number)=>({...inputImage(id),subjectLabel:saved.request.image_labels?.[index]})));if(saved.status==='succeeded')setResult(saved as Job);setTab('image');window.history.replaceState(null,'','#images');setNotice('Original prompt, input images, seed and settings loaded.');setError('');}
   }
@@ -302,11 +324,13 @@ function App(){
     if(!params.randomize_seed&&(!Number.isInteger(params.seed)||params.seed<0||params.seed>2147483647)){setError('Seed must be a whole number from 0 to 2147483647.');return;}
     if(!imageReady||!tool.families.includes(family)){setError('Swap runs on a Qwen-Image-2.1 or Krea 2 Turbo model. Choose one above.');return;}
     if(!swap.slots[0]||!swap.slots[1]){setError(`Add both pictures: 1 ${tool.inputs.labels[0]}, 2 ${tool.inputs.labels[1]}.`);return;}
+    // The scene, the head and, for a Qwen swap with two people, the second head (Krea's swap takes one head).
+    const sent=swap.slots.slice(0,tool.swap_page?2:tool.inputs.max).filter((i):i is InputImage=>!!i);
     if(tool.swap_page){
       // Krea 2 swap: the author's workflow, picture 1 the base and picture 2 the reference, with the author's prompt.
       const prompt=tool.prompt+(swap.extra.trim()?' '+swap.extra.trim():'');
       setSubmitting(true);setError('');setNotice('');setJob(null);
-      try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,...swapSampling,prompt,negative_prompt:swapNegative(swap),tool_id:tool.id,tool_options:{},lora_strength:swap.strength,enhance:false,loras:activeLoras,images:swap.slots.map(i=>i!.id),image_labels:swap.slots.map(i=>subjectLabel(i?.subjectLabel)),denoise:null})});
+      try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,...swapSampling,prompt,negative_prompt:swapNegative(swap),tool_id:tool.id,tool_options:{},lora_strength:swap.strength,swap_selection:null,swap_prompt_template:null,swap_prompt_revision:null,swap_extra:'',enhance:false,loras:activeLoras,images:sent.map(i=>i.id),image_labels:sent.map(i=>subjectLabel(i.subjectLabel)),denoise:null})});
         setJob(created);setPollId(created.id);setNotice('Added to queue.');queue.refresh();}
       catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
       return;
@@ -314,7 +338,7 @@ function App(){
     if(!swap.selection||!Object.values(swap.selection.assignments).some(Boolean)){setError('Choose a replacement for at least one face in picture 1.');return;}
     const prompt=tool.prompt+(swap.extra.trim()?' '+swap.extra.trim():'');
     setSubmitting(true);setError('');setNotice('');setJob(null);
-    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,...swapSampling,prompt,negative_prompt:swapNegative(swap),swap_style_mode:swap.styleMode??'realistic',tool_id:tool.id,tool_options:{},swap_selection:swap.selection,swap_extra:swap.extra,swap_pose_source:swap.poseSource??1,swap_style_source:swap.styleSource??1,swap_prompt_template:swap.promptTemplate??null,swap_prompt_revision:swap.promptRevision??null,lora_strength:swap.strength,enhance:false,loras:activeLoras,images:swap.slots.map(i=>i!.id),image_labels:swap.slots.map(i=>subjectLabel(i?.subjectLabel)),denoise:null})});
+    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,...swapSampling,prompt,negative_prompt:swapNegative(swap),swap_style_mode:swap.styleMode??'realistic',tool_id:tool.id,tool_options:{},swap_selection:swap.selection,swap_extra:swap.extra,swap_pose_source:swap.poseSource??1,swap_style_source:swap.styleSource??1,swap_prompt_template:swap.promptTemplate??null,swap_prompt_revision:swap.promptRevision??null,lora_strength:swap.strength,enhance:false,loras:activeLoras,images:sent.map(i=>i.id),image_labels:sent.map(i=>subjectLabel(i.subjectLabel)),denoise:null})});
       setJob(created);setPollId(created.id);setNotice('Added to queue.');queue.refresh();}
     catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
   }
