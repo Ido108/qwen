@@ -14,7 +14,9 @@ import {displayImageMentions,imageMentionOptions} from './promptMentions';
 
 export type SwapState={tool:string;slots:(InputImage|null)[];strength:number;extra:string;selection:SwapSelection|null;poseSource:1|2;styleSource:1|2;promptTemplate?:string;promptRevision?:string;styleMode?:'realistic'|'non-realistic';negativePrompt?:string;nonRealisticNegative?:string;
   // Swap's own sampling: its defaults are saved per model and swap type, apart from the Create page's.
-  steps?:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
+  steps?:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null;
+  // Swap's own output size, apart from Create's: Auto 1 MP by default (the Pruna 8-step LoRA was trained at 1K).
+  custom_size?:boolean;auto_resolution?:1024|2048;width?:number;height?:number};
 export const nonRealisticNegative='photorealism, photographic face, realistic skin pores, photographic skin texture, individual skin microdetails, photographic hair strands, photographic highlights, mismatched rendering style, pasted-on face';
 export function swapNegative(value:SwapState){return value.styleMode==='non-realistic'?(value.nonRealisticNegative??nonRealisticNegative):(value.negativePrompt??'');}
 export const swapDefaults:SwapState={tool:'head-swap',slots:[null,null],strength:1,extra:'',selection:null,poseSource:1,styleSource:1,styleMode:'realistic',negativePrompt:''};
@@ -71,7 +73,7 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
     </LibraryPopover>
     <div className="swap-row">
     {krea?null:<div className="field" title={value.styleMode==='non-realistic'?'Match the exact shapes, lines, colors, texture and shading of picture 1. Keep the replacement person recognizable in that style.':'Follow the selected picture’s color, light and texture.'}><SettingLabel disabled={disabled} label="Image style" value="Realistic" onReset={()=>onChange({...value,styleMode:'realistic'})}>Image style</SettingLabel><div className="segmented" role="radiogroup" aria-label="Image style">{(['realistic','non-realistic'] as const).map(mode=><button type="button" role="radio" aria-checked={(value.styleMode??'realistic')===mode} key={mode} disabled={disabled} onClick={()=>onChange({...value,styleMode:mode,...(mode==='non-realistic'?{styleSource:1 as const}:{})})}>{mode==='realistic'?'Realistic':'Non-realistic'}</button>)}</div></div>}
-      <div className="field"><SettingLabel disabled={disabled} htmlFor="swap-size" label="Output size" value={'Auto · 2 MP'} onReset={()=>onOptions({custom_size:false,auto_resolution:2048})}>Output size</SettingLabel><select id="swap-size" title="Auto follows picture 1. Custom size changes the output shape." disabled={disabled} value={options.custom_size?'custom':String(options.auto_resolution)} onChange={e=>onOptions(e.target.value==='custom'?{custom_size:true}:{custom_size:false,auto_resolution:Number(e.target.value) as 1024|2048})}>
+      <div className="field"><SettingLabel disabled={disabled} htmlFor="swap-size" label="Output size" value={'Auto · 1 MP'} onReset={()=>onOptions({custom_size:false,auto_resolution:1024})}>Output size</SettingLabel><select id="swap-size" title="Auto follows picture 1. Custom size changes the output shape." disabled={disabled} value={options.custom_size?'custom':String(options.auto_resolution)} onChange={e=>onOptions(e.target.value==='custom'?{custom_size:true}:{custom_size:false,auto_resolution:Number(e.target.value) as 1024|2048})}>
         <option value="1024">Auto · 1 MP</option><option value="2048">Auto · 2 MP</option><option value="custom">Custom size</option></select></div>
     </div>
     {options.custom_size?<fieldset className="swap-output" disabled={disabled}>
