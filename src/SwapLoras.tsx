@@ -1,26 +1,28 @@
+import {Nudge} from './SettingLabel';
 import type {JobPlan} from './ImageSettings';
 
-/** The LoRAs the app adds by itself, listed under the user's LoRAs: a tool's LoRA (its strength has its own control),
- *  a model's own LoRA (Krea 2 identity or style with input photos, a Turbo model's speed LoRA) and a tool author's
- *  speed LoRA with its own switch and strength. */
-export function SwapLoras({plan,strengthNote,speedStrength,disabled,onSpeed}:{plan:JobPlan;strengthNote:string;speedStrength:number;disabled:boolean;onSpeed:(on:boolean,strength:number)=>void}){
-  const added=plan.loras.filter(l=>l.source==='tool'||l.source==='model');const speed=plan.loras.find(l=>l.source==='speed');
+type Strength={label:string;value:number;min:number;max:number;fallback:number;hint?:string;onChange:(value:number|null)=>void};
+
+/** The LoRAs the app adds by itself, listed under the user's LoRAs, each with its own control: a tool's LoRA with its
+ *  strength, a tool author's speed LoRA with a switch and strength, and a model's own LoRA (Krea 2 identity or style
+ *  with input photos, a Turbo model's speed LoRA). */
+export function SwapLoras({plan,strength,speedStrength,disabled,onSpeed}:{plan:JobPlan;strength?:Strength;speedStrength:number;disabled:boolean;onSpeed:(on:boolean,strength:number)=>void}){
+  const tool=plan.loras.find(l=>l.source==='tool');const own=plan.loras.filter(l=>l.source==='model');const speed=plan.loras.find(l=>l.source==='speed');
   const speedOn=!!plan.speed_lora?.on;
-  if(!added.length&&!plan.speed_lora)return null;
-  const note=(l:JobPlan['loras'][number])=>l.source==='tool'?strengthNote
-    :l.id==='krea2-lora-identity-edit'?'Added for the person photo. Its effect: Identity strength'
-    :l.id==='krea2-lora-style-reference'?'Added for the style photos, strength 1'
-    :`Part of this Turbo model, strength ${l.strength}`;
-  return <div className="lora-stack lora-controls compact swap-loras" aria-label="LoRAs added automatically">
-    {added.map(l=><div className="lora-control swap-lora" key={l.id}><div className="lora-control-heading"><strong>{l.title}</strong><span className="swap-lora-tag">{l.source==='tool'?'Tool':'Model'}</span></div>
-      <div className="lora-strength-row"><span>{note(l)}</span></div></div>)}
-    {plan.speed_lora?<div className={`lora-control swap-lora ${speedOn?'':'off'}`}><div className="lora-control-heading"><strong>{speed?.title??'Pruna 8-step LoRA'}</strong><span className="swap-lora-tag">Speed</span>
-      <button type="button" className="lora-switch" role="switch" aria-checked={speedOn} aria-label="Use the speed LoRA" disabled={disabled} title="The tool author's 8-step setup: 8 steps, CFG 1, deis 2m. Off: the model's own steps and CFG."
+  if(!tool&&!own.length&&!plan.speed_lora)return null;
+  return <div className="auto-loras" aria-label="LoRAs added automatically">
+    {tool?<div className="auto-lora"><div className="auto-lora-head"><strong title={tool.title}>{tool.title}</strong><span className="auto-lora-tag">Tool</span></div>
+      {strength?<div className="auto-lora-strength" title={strength.hint}><span>{strength.label} <b>{strength.value.toFixed(2)}</b></span>
+        <Nudge label={strength.label} value={strength.value} step={0.05} min={strength.min} max={strength.max} disabled={disabled} onChange={value=>strength.onChange(value)}/>
+        <input type="range" min={strength.min} max={strength.max} step="0.05" value={strength.value} disabled={disabled} aria-label={strength.label} onChange={e=>strength.onChange(Number(e.target.value))}/>
+        {strength.value!==strength.fallback?<button type="button" className="text-button" disabled={disabled} onClick={()=>strength.onChange(null)} title={`Reset to ${strength.fallback}`}>Reset</button>:null}</div>:null}
+      {strength?.hint?<small className="auto-lora-hint">{strength.hint}</small>:null}</div>:null}
+    {plan.speed_lora?<div className={`auto-lora ${speedOn?'':'off'}`}><div className="auto-lora-head"><strong title={`${speed?.title??'Pruna 8-step LoRA'}: Qwen Standard in 8 steps instead of 40, as in the swap author's setup`}>{speed?.title??'Pruna 8-step LoRA'}</strong><span className="auto-lora-tag">8 steps, not 40</span>
+      <button type="button" className="lora-switch" role="switch" aria-checked={speedOn} aria-label="Use the speed LoRA" disabled={disabled} title="On: 8 steps, CFG 1, deis 2m (the swap author's setup). Off: the model's own 40 steps."
         onClick={()=>onSpeed(!speedOn,speedStrength)}><span className="lora-switch-track" aria-hidden="true"/><span>{speedOn?'On':'Off'}</span></button></div>
-      <p className="swap-lora-note">Speed LoRA: Qwen Standard makes the picture in 8 steps instead of 40 (about 5x faster), as in the swap author's setup. Off: the model's own 40 steps.</p>
-      <div className="lora-strength-row"><span>Strength</span>
-        <input type="range" min="0" max="2" step="0.05" value={speedStrength} disabled={disabled||!speedOn} aria-label="Speed LoRA strength" onChange={e=>onSpeed(true,Number(e.target.value))}/>
-        <input type="number" min="0" max="2" step="0.05" value={speedStrength} disabled={disabled||!speedOn} aria-label="Speed LoRA strength value" title="Strength, 0 to 2. The author uses 1." onChange={e=>onSpeed(true,Math.max(0,Math.min(2,Number(e.target.value)||0)))}/>
-      </div></div>:null}
+      {speedOn?<div className="auto-lora-strength"><span>Strength <b>{speedStrength.toFixed(2)}</b></span>
+        <Nudge label="speed LoRA strength" value={speedStrength} step={0.05} min={0} max={2} disabled={disabled} onChange={value=>onSpeed(true,value)}/>
+        <input type="range" min="0" max="2" step="0.05" value={speedStrength} disabled={disabled} aria-label="Speed LoRA strength" onChange={e=>onSpeed(true,Number(e.target.value))}/></div>:null}</div>:null}
+    {own.map(l=><div className="auto-lora" key={l.id}><div className="auto-lora-head"><strong title={l.title}>{l.title}</strong><span className="auto-lora-tag">{l.id.startsWith('krea2-lora')?'For input photos':'Part of this model'}</span></div></div>)}
   </div>;
 }

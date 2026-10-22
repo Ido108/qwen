@@ -388,7 +388,7 @@ function App(){
   async function copyPrompt(text:string){try{await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1600);}catch(e){setError(String(e));}}
   // Swap keeps its own steps, CFG, sampler and schedule (Swap often needs a higher CFG than Create).
   const swapSampling={steps:swap.steps??null,cfg:swap.cfg??null,sampler:swap.sampler??null,scheduler:swap.scheduler??null};
-  const swapSpeed={speed_lora:swap.speedLora??null,speed_lora_strength:swap.speedStrength??null};
+  const swapSpeed={speed_lora:swap.speedLora??null,speed_lora_strength:swap.speedStrength??null,krea_identity_strength:swap.headBoost??null};
   const swapTool=pageSwapTools.find(t=>t.id===swap.tool)??pageSwapTools[0];
   const swapSize={custom_size:swap.custom_size??false,auto_resolution:swap.auto_resolution??1024,width:swap.width??params.width,height:swap.height??params.height};
   const setSwapSampling=(values:Partial<ImageOptions>)=>setSwap({...swap,...Object.fromEntries(Object.entries(values).filter(([key])=>key in swapSampling))});
@@ -444,8 +444,9 @@ function App(){
           <LoraStack compact value={params.loras} onChange={next=>change('loras',next)} loras={userLoras} family={family} pixels={pixels} prompt={params.prompt} onPrompt={next=>change('prompt',next)} disabled={locked}
             model={chosenModel} onAuthorSettings={applyAuthorSettings} hasModel={f=>!!authorModel(f)}
             onBrowse={()=>{setTab('civitai');window.history.replaceState(null,'','#civitai');}}/>
-          {imageSection==='create'&&createPlan?<SwapLoras plan={createPlan} strengthNote={`Strength ${(params.lora_strength??(activeTool?toolStrength(activeTool,params.tool_options):1)).toFixed(2)}: set with Effect strength below`} speedStrength={1} disabled={locked} onSpeed={()=>{}}/>:null}
-          {imageSection==='swap'&&swapPlan?<SwapLoras plan={swapPlan} strengthNote={`Strength ${swap.strength.toFixed(2)}: set with ${swapPlan.loras.some(l=>l.id.startsWith('krea2'))?'Swap strength':'Keep original face'} below`} speedStrength={swap.speedStrength??1} disabled={locked} onSpeed={(on,strength)=>setSwap({...swap,speedLora:on,speedStrength:strength,steps:null,cfg:null,sampler:null,scheduler:null})}/>:null}
+          {imageSection==='create'&&createPlan?<SwapLoras plan={createPlan} speedStrength={1} disabled={locked} onSpeed={()=>{}} strength={activeTool?{label:'Effect strength',value:params.lora_strength??toolStrength(activeTool,params.tool_options),min:0.2,max:1.5,fallback:toolStrength(activeTool,params.tool_options),onChange:value=>setParams(p=>({...p,lora_strength:value}))}:undefined}/>:null}
+          {imageSection==='swap'&&swapPlan?<SwapLoras plan={swapPlan} speedStrength={swap.speedStrength??1} disabled={locked} onSpeed={(on,strength)=>setSwap({...swap,speedLora:on,speedStrength:strength,steps:null,cfg:null,sampler:null,scheduler:null})}
+            strength={{label:swapPlan.loras.some(l=>l.id.startsWith('krea2'))?'Swap strength':'Keep original face',value:swap.strength,min:0.1,max:2,fallback:swapTool?.strength??1,hint:swapPlan.loras.some(l=>l.id.startsWith('krea2'))?'The author uses 1.0.':"Higher: more of picture 1's face. Lower: more of picture 2's face.",onChange:value=>setSwap({...swap,strength:value??swapTool?.strength??1})}}/>:null}
           {adviceShown?<small className="lora-auto-settings" role="status">{loraAdvice!.note}</small>:null}
           {config&&missingModels.length?<small className="model-missing">Missing model files download automatically when you generate.</small>:null}
         </section>

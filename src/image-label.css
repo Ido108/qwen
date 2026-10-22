@@ -2,3 +2,7 @@
 
 @media(min-width:601px){#root .studio-controls .input-grid:has(.image-label){grid-template-columns:repeat(auto-fill,minmax(100px,1fr));max-height:240px}#root .studio-controls .input-grid .input-thumb:has(.image-label){width:auto}}
 .preview-cfg{align-self:center;white-space:nowrap;padding:5px 8px;border-radius:6px;color:#fff;background:#20192bc9;font-size:12px}
+.image-label-gender{display:flex;gap:3px;padding:2px;background:#f1eff7;border-radius:7px}
+.image-label-gender button{flex:1;min-width:0;padding:3px 4px;border-radius:5px;font-size:11px;color:#615d78;background:none}
+.image-label-gender button[aria-checked=true]{background:#fff;color:var(--accent,#6a4fd6);font-weight:600;box-shadow:inset 0 0 0 1px #7864dc55}
+@media(max-width:600px){.image-label-gender button{min-height:36px;font-size:13px}}

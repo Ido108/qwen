@@ -543,6 +543,13 @@ async def lifespan(app):
     threading.Thread(target=lambda: (model_library.scan(), model_library.merge_scan()), name='library-scan', daemon=True).start()
     recover_civitai_downloads()
     threading.Thread(target=civitai.warm_indexes, name='civitai-index-warm', daemon=True).start()
+    # Female or male for every person in People with no label yet (once, on the CPU, never over a hand-set label).
+    def preset_people_labels():
+        try:
+            people.preset_labels()
+        except Exception:
+            logging.exception('Could not preset People labels')
+    threading.Thread(target=preset_people_labels, name='people-labels', daemon=True).start()
     # Remote use from the Moise dashboard (also on the phone), when this PC has the Moise connection settings.
     remote = moise_remote.start(int(os.environ['QWEN_SERVER_PORT'])) if os.environ.get('QWEN_SERVER_PORT', '').isdigit() else None
     idle_stop = threading.Event()

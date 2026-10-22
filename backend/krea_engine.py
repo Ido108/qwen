@@ -269,7 +269,8 @@ def generate(request, prompt, images, width, height, progress):
         # Added after the LoRAs: the runtime LoRA wrapper stays outside and still runs its hooks.
         from .krea_edit import patch as identity_patch, reference_settings, tool_settings
         settings = tool_settings(tool, len(images)) if tool else reference_settings(len(images))
-        if not tool and request.get('krea_identity_strength') is not None:
+        # Identity strength, or on a Krea swap the head picture's strength (the swap author's ref_boost)
+        if request.get('krea_identity_strength') is not None:
             settings['ref_boost'] = float(request['krea_identity_strength'])
         # The node encodes the photo with the VAE here. ComfyUI runs nodes in inference mode; outside it, VAE weights
         # loaded in inference mode by an earlier decode failed the encode ("Inference tensors cannot be saved for

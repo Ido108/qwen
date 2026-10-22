@@ -113,6 +113,42 @@ def update(person_id: str, name: str | None = None, image_ids: list[str] | None 
     return public(person)
 
 
+def preset_labels() -> int:
+    """Female or male for every person with no label yet, from the largest face in the person's photos (the
+    FairFace model, 0.8 or more sure). Runs in the background; a label set by hand is never changed."""
+    from . import face_gender
+    from .common import resolve_image
+    from .image_people import analyze_image
+    # The model downloads once in the background; wait for it here, never in a request.
+    for _ in range(60):
+        if face_gender.available():
+            break
+        time.sleep(10)
+    else:
+        return 0
+    done = 0
+    for person in load():
+        if person.get('label') in ('woman', 'man') or (person.get('label') or 'person') != 'person':
+            continue
+        for image_id in person['image_ids'][:3]:
+            try:
+                faces = analyze_image(resolve_image(image_id))['faces']
+            except (OSError, ValueError):
+                continue
+            face = max(faces, key=lambda f: f['box'][2] * f['box'][3], default=None)
+            if face and face.get('gender') and (face.get('gender_confidence') or 0) >= 0.8:
+                with _lock:
+                    people = load()
+                    for item in people:
+                        if item['id'] == person['id'] and (item.get('label') or 'person') == 'person':
+                            item['label'] = 'woman' if face['gender'] == 'female' else 'man'
+                            item['updated_at'] = time.time()
+                    _save(people)
+                done += 1
+                break
+    return done
+
+
 def delete(person_id: str) -> None:
     with _lock:
         _save([p for p in load() if p['id'] != person_id])

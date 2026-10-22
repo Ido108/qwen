@@ -70,7 +70,6 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
     onTool(next?{tool_id:next.id,tool_options:toolDefaults(next),lora_strength:null}:{tool_id:null,tool_options:{},lora_strength:null});
   }
   const options=toolState.tool_options;
-  const strength=toolState.lora_strength??(tool?toolStrength(tool,options):1);
   const hintSteps=defaults?.steps??(family.endsWith('turbo')?8:family==='krea-2'?52:family==='z-image'?30:family==='flux3-klein'?16:family==='flux3-klein-base'||family==='moss-image'||family==='moss-image-base'?50:40);const hintCfg:number|null=defaults?.cfg??(family==='krea-2'?4.5:family==='moss-image'||family==='moss-image-base'?3:family==='z-image'?4:family==='flux3-klein-base'?4:family.endsWith('turbo')||family==='flux3-klein'?1:null);
   const hintSampler=defaults?.sampler&&defaults.sampler!=='euler'?defaults.sampler.replace(/_/g,' '):'';const hintScheduler=defaults?.scheduler&&defaults.scheduler!=='simple'?defaults.scheduler.replace(/_/g,' '):'';
   // CFG 1 runs one pass without the negative branch, so a negative prompt changes nothing.
@@ -125,8 +124,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
         {field.options?<select id={`tool-${field.key}`} value={options[field.key]??field.default} onChange={e=>onTool({...toolState,tool_options:{...options,[field.key]:e.target.value},lora_strength:null})}>{field.options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
           :<input id={`tool-${field.key}`} value={options[field.key]??''} placeholder={field.placeholder} onChange={e=>onTool({...toolState,tool_options:{...options,[field.key]:e.target.value}})}/>}
       </div>)}
-      <div className="field"><SettingLabel htmlFor="tool-strength" label="Effect strength" value={toolStrength(tool,options)} onReset={()=>onTool({...toolState,lora_strength:null})}>Effect strength <span className="tool-strength-value">{strength.toFixed(2)}</span><Nudge label="effect strength" value={strength} step={0.05} min={0.2} max={1.5} onChange={lora_strength=>onTool({...toolState,lora_strength})}/></SettingLabel>
-        <input id="tool-strength" type="range" min="0.2" max="1.5" step="0.05" value={strength} onChange={e=>onTool({...toolState,lora_strength:Number(e.target.value)})}/></div>
+      {/* The tool LoRA's Effect strength is on its row under LoRAs. */}
       <a className="tool-source" href={tool.source} target="_blank" rel="noreferrer">About this tool</a>
     </div>:null}
   </fieldset>;

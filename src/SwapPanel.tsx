@@ -17,6 +17,8 @@ export type SwapState={tool:string;slots:(InputImage|null)[];strength:number;ext
   steps?:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null;
   // The author's speed LoRA (Pruna 8-step on Qwen Standard): off only when you switch it off.
   speedLora?:boolean;speedStrength?:number|null;
+  // Krea swap: how strongly the head picture counts (the author's ref_boost; 1 in the workflow, 4 in the author's note).
+  headBoost?:number|null;
   // Swap's own output size, apart from Create's: Auto 1 MP by default (the Pruna 8-step LoRA was trained at 1K).
   custom_size?:boolean;auto_resolution?:1024|2048;width?:number;height?:number};
 export const nonRealisticNegative='photorealism, photographic face, realistic skin pores, photographic skin texture, individual skin microdetails, photographic hair strands, photographic highlights, mismatched rendering style, pasted-on face';
@@ -66,7 +68,7 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
 
   const usesPose=(value.promptTemplate??template).includes('<pose_source>'),usesStyle=(value.promptTemplate??template).includes('<style_source>');
   const roles=ROLES[tool.id]??['',''];
-  const bindings=bindSettings(value,patch=>onChange({...value,...patch}),{'Image style':['styleMode','styleSource'],'Head pose and expression':'poseSource','Color and style':'styleSource','Effect strength':'strength','Extra instructions':'extra',Steps:'steps',CFG:'cfg',Sampler:'sampler',Schedule:'scheduler','Negative prompt':value.styleMode==='non-realistic'?'nonRealisticNegative':'negativePrompt'});
+  const bindings=bindSettings(value,patch=>onChange({...value,...patch}),{'Image style':['styleMode','styleSource'],'Head pose and expression':'poseSource','Color and style':'styleSource','Effect strength':'strength','Head strength':'headBoost','Extra instructions':'extra',Steps:'steps',CFG:'cfg',Sampler:'sampler',Schedule:'scheduler','Negative prompt':value.styleMode==='non-realistic'?'nonRealisticNegative':'negativePrompt'});
   bindings['Negative prompt'].value={negativePrompt:value.negativePrompt??'',nonRealisticNegative:value.nonRealisticNegative??nonRealisticNegative};
   return <ModelDefaultsScope model={modelId} scope={'swap-'+tool.id} bindings={bindings} draftKey="qwen-swap-v1" restoreKey={restoreKey}><section ref={panel} className="panel swap-panel">
     <div className="section-heading"><h2>Swap</h2>{krea?<a className="text-button" href={tool.source} target="_blank" rel="noreferrer" title={tool.prompt}>Author's guide</a>:<SwapPromptEditor key={tool.id} api={api} tool={tool} value={value} onChange={onChange} disabled={disabled}/>}</div>
@@ -80,10 +82,10 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
         <PersonPhotoCycle image={image} people={people} disabled={disabled||uploading!==null} onChange={next=>setSlot(index,next)}/></div>
         :<button type="button" className="swap-empty" title={roles[index]} disabled={disabled||uploading!==null} onClick={()=>setPicking(index)}><span>{uploading===index?'Uploading…':'Add picture '+(index+1)}</span></button>}
       {/* Picture 1 is the scene (no label); picture 2 is one person: woman or man, found automatically. */}
-      {image&&index===1?<div className="swap-gender" role="radiogroup" aria-label="Head picture is a">{(['woman','man'] as const).map(label=><button type="button" role="radio" key={label} aria-checked={image.subjectLabel===label} disabled={disabled}
-        onClick={()=>setLabel(index,label)}>{label==='woman'?'Woman':'Man'}</button>)}</div>:null}
+      {image&&index===1?<div className="swap-gender" role="radiogroup" aria-label="Head picture: person, female or male"><span className="swap-gender-name">Person</span>{(['woman','man'] as const).map(label=><button type="button" role="radio" key={label} aria-checked={image.subjectLabel===label} disabled={disabled}
+        onClick={()=>setLabel(index,label)}>{label==='woman'?'Female':'Male'}</button>)}</div>:null}
     </div>;})}</div>
-    {krea?null:<SwapFaces api={api} scene={value.slots[0]?.id||null} head={value.slots[1]?.id||null} value={value.selection} onChange={selection=>onChange({...latest.current,selection})} disabled={disabled}/>}
+    <SwapFaces api={api} pick={!krea} scene={value.slots[0]?.id||null} head={value.slots[1]?.id||null} value={value.selection} onChange={selection=>onChange({...latest.current,selection})} disabled={disabled}/>
     <LibraryPopover open={picking!==null} onClose={()=>setPicking(null)} anchor={panel}>
       <InputLibrary api={api} inputs={picking!==null&&value.slots[picking]?[value.slots[picking]!]:[]} onChange={next=>{if(picking!==null)setSlot(picking,next[0]??null);setPicking(null);}}
         results={results} people={people} onPeople={onPeople} replace target={0} revision={revision} disabled={disabled} limit={1}
@@ -99,11 +101,10 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
     </fieldset>:null}
     {steps}
     <div className="swap-row">
-    <div className="field swap-strength" title="The swap LoRA's strength. 1.0 is the author's value."><SettingLabel disabled={disabled} htmlFor="swap-strength" label="Effect strength" value={tool.strength} onReset={()=>onChange({...value,strength:tool.strength})}><span title="The swap LoRA's strength">{krea?'Swap strength':'Keep original face'}</span> <b>{value.strength.toFixed(2)}</b><Nudge label="strength" value={value.strength} step={0.05} min={0.1} max={2} disabled={disabled} onChange={strength=>onChange({...value,strength})}/></SettingLabel>
-      <input id="swap-strength" type="range" min="0.1" max="2" step="0.05" value={value.strength} disabled={disabled} onChange={e=>onChange({...value,strength:Number(e.target.value)})}/>
-      {/* Tested on Qwen only (2026-10-22); Krea's direction is not measured yet. */}
-      {krea?<small>The author uses 1.0.</small>:<small>Higher: more of picture 1's face. Lower: more of picture 2's face.</small>}
-</div>
+    {/* The swap LoRA's strength (Keep original face / Swap strength) is on its row under LoRAs. */}
+    {krea?<div className="field swap-strength" title="How strongly the head picture counts (the author's ref_boost). Tested 2026-10-22: 4 gives a little more likeness; the pose always comes from picture 1."><SettingLabel disabled={disabled} htmlFor="swap-head-boost" label="Head strength" value="1.0" onReset={()=>onChange({...value,headBoost:null})}>Head strength <b>{(value.headBoost??1).toFixed(1)}</b><Nudge label="head strength" value={value.headBoost??1} step={0.1} min={0.5} max={4} disabled={disabled} onChange={headBoost=>onChange({...value,headBoost})}/></SettingLabel>
+      <input id="swap-head-boost" type="range" min="0.5" max="4" step="0.1" value={value.headBoost??1} disabled={disabled} onChange={e=>onChange({...value,headBoost:Number(e.target.value)})}/>
+      <small>Higher: more of picture 2's face.</small></div>:null}
     <div className="field swap-seed" title="Turn off Random seed to compare prompt or strength changes with the same seed."><SettingLabel disabled={disabled} htmlFor="swap-seed" label="Seed" value={'Random'} onReset={()=>onOptions({seed:0,randomize_seed:true})}>Seed</SettingLabel><div className="seed-row"><input id="swap-seed" type="number" min="0" max="2147483647" step="1" value={options.seed} disabled={disabled||options.randomize_seed} onChange={e=>onOptions({seed:Number(e.target.value)})}/><label className="checkbox-label"><input type="checkbox" checked={options.randomize_seed} disabled={disabled} onChange={e=>onOptions({randomize_seed:e.target.checked})}/>Random</label></div></div>
     </div>
     <div className="field"><SettingLabel disabled={disabled} htmlFor="swap-extra" label="Extra instructions" value={'Empty'} onReset={()=>onChange({...value,extra:''})}>Extra instructions <span className="muted">optional</span></SettingLabel>
