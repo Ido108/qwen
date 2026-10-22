@@ -2243,6 +2243,158 @@
     "note": "Gemma 4 12B, the model family LTX 2.5 uses as its text encoder and official prompt enhancer; Heretic build (6 of 100 refusals, KL 0.12), Apache-2.0. Writes video prompts on this computer in llama.cpp and sees the first frame."
   },
   {
+    "id": "qwen36-27b-heretic-q5",
+    "title": "Prompt enhancer (Qwen3.6 27B Heretic, Q5_K_M)",
+    "kind": "image-support",
+    "format": "GGUF Q5_K_M",
+    "repo": "llmfan46/Qwen3.6-27B-uncensored-heretic-v2-GGUF",
+    "revision": "10c4078705dbb6d83e67707f546dbe134b1d4273",
+    "directory": "text_encoders/qwen36-heretic",
+    "files": [
+      {
+        "path": "Qwen3.6-27B-uncensored-heretic-v2-Q5_K_M.gguf",
+        "bytes": 19231102592,
+        "sha256": "427042c7e80aeed0137e5f39d79f0203099337ad92fd3f689c3bb4d513e02ce0"
+      },
+      {
+        "path": "Qwen3.6-27B-mmproj-BF16.gguf",
+        "bytes": 931146048,
+        "sha256": "c5c8c41da6d155a61edd21b7e3aa50b6ef77f122d502d36afe4a4d5c3e494d4f"
+      }
+    ],
+    "bytes": 20162248640,
+    "dependencies": [],
+    "note": "Qwen3.6 27B dense (Qwen, released 2026-04), the big sibling of the Qwen3.5 base that the official Qwen-Image PE models use. Heretic v2: 6 of 100 refusals, KL 0.0021 (almost no quality loss). Vision. llama.cpp arch qwen35. Thinks by default: send chat_template_kwargs enable_thinking false.",
+    "sampling": {
+      "temperature": 0.7,
+      "top_p": 0.8,
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 1.5
+    }
+  },
+  {
+    "id": "gemma4-31b-heretic-q4",
+    "title": "Prompt enhancer (Gemma 4 31B Heretic, Q4_K_M)",
+    "kind": "image-support",
+    "format": "GGUF Q4_K_M",
+    "repo": "llmfan46/gemma-4-31B-it-uncensored-heretic-GGUF",
+    "revision": "eee61b81461ac75eb920a24ca9e5d420bb66e33d",
+    "directory": "text_encoders/gemma4-heretic",
+    "files": [
+      {
+        "path": "gemma-4-31B-it-uncensored-heretic-Q4_K_M.gguf",
+        "bytes": 18687063168,
+        "sha256": "7c65a35e7c4e53cba6c5e02cc9eeb850eb4251f4d9ad120c2caa6de23c5a6395"
+      },
+      {
+        "path": "gemma-4-31B-it-mmproj-BF16.gguf",
+        "bytes": 1200726208,
+        "sha256": "21487ff26d08f7ddd1d654d3bbfc1ae1020aab3119f5bf654742ce4697732e4e"
+      }
+    ],
+    "bytes": 19887789376,
+    "dependencies": [],
+    "note": "Gemma 4 31B dense (Google, released 2026-04), the largest Gemma 4 and the same family as the current 12B enhancer, so the same chat template and code path. Heretic: 10 of 100 refusals, KL 0.054. Strong prose and instruction following. Vision. Q5_K_M (21.8 GB + 1.2 GB mmproj) does not fit the 22 GB budget, so Q4_K_M. llama.cpp arch gemma4.",
+    "sampling": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 64,
+      "min_p": 0.0
+    }
+  },
+  {
+    "id": "gemma4-26b-a4b-heretic-q5",
+    "title": "Prompt enhancer (Gemma 4 26B A4B Heretic, Q5_K_M)",
+    "kind": "image-support",
+    "format": "GGUF Q5_K_M",
+    "repo": "llmfan46/gemma-4-26B-A4B-it-uncensored-heretic-GGUF",
+    "revision": "ea0259bf66bcd33b5f3425eb223932abaa0f4f07",
+    "directory": "text_encoders/gemma4-heretic",
+    "files": [
+      {
+        "path": "gemma-4-26B-A4B-it-uncensored-heretic-Q5_K_M.gguf",
+        "bytes": 19132889600,
+        "sha256": "b33ebc03a3f904ad7d66e7e5c70757c97f8cf5aba574ce90270b9e7b0cda3365"
+      },
+      {
+        "path": "gemma-4-26B-A4B-it-mmproj-BF16.gguf",
+        "bytes": 1194828000,
+        "sha256": "b3ee6c97d5a5bb1ae9eb93bf14c1d1b51a0179a45ac1076b195931814c759e1e"
+      }
+    ],
+    "bytes": 20327717600,
+    "dependencies": [],
+    "note": "Gemma 4 26B MoE with 4B active (Google, released 2026-04): near 31B quality at several times the speed. Heretic: 11 of 100 refusals, KL 0.047. Vision. Same template as the current 12B. llama.cpp arch gemma4.",
+    "sampling": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 64,
+      "min_p": 0.0
+    }
+  },
+  {
+    "id": "qwen36-35b-a3b-heretic-q4",
+    "title": "Prompt enhancer (Qwen3.6 35B A3B Heretic, Q4_K_M)",
+    "kind": "image-support",
+    "format": "GGUF Q4_K_M",
+    "repo": "llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-GGUF",
+    "revision": "f70be2db155a4192a59c559ece01572f3cd508ab",
+    "directory": "text_encoders/qwen36-heretic",
+    "files": [
+      {
+        "path": "Qwen3.6-35B-A3B-uncensored-heretic-Q4_K_M.gguf",
+        "bytes": 21233608512,
+        "sha256": "b82f9f2155eb9c07139d48cc3a37880cf9d0edcca345ef6ad829b62941ccbb82"
+      },
+      {
+        "path": "Qwen3.6-35B-A3B-uncensored-heretic-mmproj-BF16.gguf",
+        "bytes": 902822240,
+        "sha256": "1c625f05cd52e90abc76a5f756226c3a5fe279593379c22f6c6846c970a0cd18"
+      }
+    ],
+    "bytes": 22136430752,
+    "dependencies": [],
+    "note": "Qwen3.6 35B MoE with 3B active (Qwen, released 2026-04): very fast. Heretic: 10 of 100 refusals, KL 0.0015. Vision. 22.1 GB with mmproj, at the top of the budget (Q4_K_S is 20.0 GB). llama.cpp arch qwen35moe. Send chat_template_kwargs enable_thinking false.",
+    "sampling": {
+      "temperature": 0.7,
+      "top_p": 0.8,
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 1.5
+    }
+  },
+  {
+    "id": "mistral-small32-heretic-q6",
+    "title": "Prompt enhancer (Mistral Small 3.2 24B Heretic, Q6_K)",
+    "kind": "image-support",
+    "format": "GGUF Q6_K",
+    "repo": "llmfan46/Mistral-Small-3.2-24B-Instruct-2506-ultra-uncensored-heretic-GGUF",
+    "revision": "cf5ac80fbd22d610870eb6534f3232001e111892",
+    "directory": "text_encoders/mistral-small-heretic",
+    "files": [
+      {
+        "path": "Mistral-Small-3.2-24B-Instruct-2506-ultra-uncensored-heretic-Q6_K.gguf",
+        "bytes": 19345951904,
+        "sha256": "125805cfbf0af1d8ee1070e49dda670d16b7d2ecc706f9ee1ddbe3fc5de5e996"
+      },
+      {
+        "path": "Mistral-Small-3.2-24B-Instruct-2506-mmproj-BF16.gguf",
+        "bytes": 887646304,
+        "sha256": "0a3a2dbf3b97d38d839a036b2abe0cac0f28bc66cf91ce0f43cea8affa68f937"
+      }
+    ],
+    "bytes": 20233598208,
+    "dependencies": [],
+    "note": "Mistral Small 3.2 24B dense (Mistral, released 2025-06), a different family with a looser, less sanitized writing style. Ultra Heretic: 2 of 100 refusals (the most uncensored here), KL 0.037. No thinking mode. Vision. llama.cpp arch mistral3.",
+    "sampling": {
+      "temperature": 0.15,
+      "top_p": 1.0,
+      "top_k": 0,
+      "min_p": 0.0
+    }
+  },
+  {
     "id": "flux3-prompt",
     "title": "FLUX.3 prompt model - W4A8",
     "kind": "image-support",

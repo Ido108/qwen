@@ -445,7 +445,7 @@ function App(){
             model={chosenModel} onAuthorSettings={applyAuthorSettings} hasModel={f=>!!authorModel(f)}
             onBrowse={()=>{setTab('civitai');window.history.replaceState(null,'','#civitai');}}/>
           {imageSection==='create'&&createPlan?<SwapLoras plan={createPlan} speedStrength={1} disabled={locked} onSpeed={()=>{}} strength={activeTool?{label:'Effect strength',value:params.lora_strength??toolStrength(activeTool,params.tool_options),min:0.2,max:1.5,fallback:toolStrength(activeTool,params.tool_options),onChange:value=>setParams(p=>({...p,lora_strength:value}))}:undefined}/>:null}
-          {imageSection==='swap'&&swapPlan?<SwapLoras plan={swapPlan} speedStrength={swap.speedStrength??1} disabled={locked} onSpeed={(on,strength)=>setSwap({...swap,speedLora:on,speedStrength:strength,steps:null,cfg:null,sampler:null,scheduler:null})}
+          {imageSection==='swap'&&swapPlan?<SwapLoras plan={swapPlan} speedStrength={swap.speedStrength??1} disabled={locked} onSpeed={(on,strength)=>setSwap({...swap,speedLora:on,speedStrength:strength})}
             strength={{label:swapPlan.loras.some(l=>l.id.startsWith('krea2'))?'Swap strength':'Keep original face',value:swap.strength,min:0.1,max:2,fallback:swapTool?.strength??1,hint:swapPlan.loras.some(l=>l.id.startsWith('krea2'))?'The author uses 1.0.':"Higher: more of picture 1's face. Lower: more of picture 2's face.",onChange:value=>setSwap({...swap,strength:value??swapTool?.strength??1})}}/>:null}
           {adviceShown?<small className="lora-auto-settings" role="status">{loraAdvice!.note}</small>:null}
           {config&&missingModels.length?<small className="model-missing">Missing model files download automatically when you generate.</small>:null}

@@ -61,7 +61,10 @@ GEMMA_MODEL = 'gemma4-12b-heretic-q6'
 def video_models():
     """(model id, vision model id) for video prompts: Gemma 4 by default, Qwen PE when chosen in Settings > Prompts."""
     from .enhancer_settings import choice
-    return ('pe-t2i-heretic-q6', 'pe-i2i-heretic-q6') if choice('video') == 'qwen-pe' else (GEMMA_MODEL, GEMMA_MODEL)
+    picked = choice('video')
+    if picked.startswith('model:'):
+        return picked[6:], picked[6:]
+    return ('pe-t2i-heretic-q6', 'pe-i2i-heretic-q6') if picked == 'qwen-pe' else (GEMMA_MODEL, GEMMA_MODEL)
 VIDEO_SETTINGS = {'temperature': 0.7, 'top_k': 64, 'top_p': 0.95, 'min_p': 0.05, 'repeat_penalty': 1.05, 'max_tokens': 1024}
 
 
@@ -147,6 +150,8 @@ def runner_model(spec, runner):
         return None
     if runner == 'gemma':
         return GEMMA_MODEL
+    if runner.startswith('model:'):
+        return runner[6:]
     return spec['local_model'] if spec['local_model'] != 'encoder' else LOCAL_MODELS['t2i']
 
 
@@ -350,6 +355,9 @@ def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.
             # values, set for Qwen3-Max, looped this 9B model until the token cap (18,767 characters, 2026-10-21).
             own = prompts()['qwen-image-2.1-t2i']['settings']
             settings = {**settings, **{name: own[name] for name in ('temperature', 'top_p', 'top_k', 'min_p', 'presence_penalty', 'repetition_penalty')}}
+        if item.get('sampling'):
+            # A larger model's own card sampling (Qwen3.6 instruct: 0.7 / 0.8 / 20, presence 1.5; Gemma 4: 1.0 / 0.95 / 64).
+            settings = {**settings, **{name: item['sampling'][name] for name in ('temperature', 'top_p', 'top_k', 'min_p', 'presence_penalty') if name in item['sampling']}}
         update(stage='rewriting', message='Enhancing prompt on this computer…', rewrite_provider='Local', rewrite_model=item['title'], rewrite_prompt=key)
         paths = [local_path(item, file) for file in item['files']]
         marks = [time.perf_counter()]

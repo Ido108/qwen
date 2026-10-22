@@ -8,6 +8,17 @@ PATH = DATA_DIR / 'enhancer-settings.json'
 FAST = 'fast'
 # Gemma 4 12B Heretic: a general model (LTX 2.5's own enhancer family) that can run any architecture's prompt.
 GEMMA = 'gemma'
+# Larger uncensored text models with vision (Heretic builds, 2025-2026, about 20 GB each; they download on first use).
+# The runner 'model:<catalog id>' runs the architecture's own prompt on that model, without a thinking pass.
+LARGER = [('qwen36-27b-heretic-q5', 'Qwen3.6 27B'), ('gemma4-31b-heretic-q4', 'Gemma 4 31B'),
+          ('gemma4-26b-a4b-heretic-q5', 'Gemma 4 26B A4B (fast)'), ('qwen36-35b-a3b-heretic-q4', 'Qwen3.6 35B A3B (fast)'),
+          ('mistral-small32-heretic-q6', 'Mistral Small 3.2 24B')]
+
+
+def _larger(template):
+    return [(f'model:{model}', f'{name}, {template} (20 GB, downloads once)', False, None, f'model:{model}') for model, name in LARGER]
+
+
 # arch: (title, official note, [(choice, label, official, prompt key or None for the official one, runner)])
 ARCHS = {
     # fast: the same official rewriter and prompt, answering directly without its thinking pass (measured on the 5090,
@@ -15,12 +26,12 @@ ARCHS = {
     'qwen-image-2.1': ('Qwen-Image-2.1', "Qwen's own rewriters Qwen-Image-2.1-PE-T2I and PE-I2I (edit), on this computer", [
         (FAST, 'Fast: Qwen PE, no thinking (about 10 s)', True, None, 'llama'),
         ('official', 'Qwen PE with thinking (30 to 60 s)', True, None, 'llama'),
-        (GEMMA, 'Gemma 4 12B, same official prompt (about 12 s)', False, None, GEMMA)]),
+        (GEMMA, 'Gemma 4 12B, same official prompt (about 12 s)', False, None, GEMMA), *_larger('same official prompt')]),
     'krea-2': ('Krea 2', "Krea 2's own text encoder with the official ComfyUI Krea template", [
         (FAST, 'Fast: Qwen PE, Krea template (about 10 s)', False, None, 'llama'),
         ('official', 'Official: Krea 2 text encoder (up to 45 s)', True, None, 'encoder'),
         ('qwen-pe', 'Qwen PE, Krea template, with thinking', False, None, 'llama'),
-        (GEMMA, 'Gemma 4 12B, Krea template (about 12 s)', False, None, GEMMA)]),
+        (GEMMA, 'Gemma 4 12B, Krea template (about 12 s)', False, None, GEMMA), *_larger('Krea template')]),
     'z-image': ('Z-Image', "The official Z-Image prompt (Tongyi-MAI Space pe.py); its official LLM (Qwen3-Max) cannot run on a PC, so Qwen PE T2I runs it here", [
         ('official', 'Official: Z-Image prompt, Qwen PE T2I', True, None, 'llama'),
         ('qwen-prompt', 'Qwen PE T2I, Qwen prompt', False, 'qwen-image-2.1-t2i', 'llama')]),
@@ -28,10 +39,10 @@ ARCHS = {
     'moss-image': ('MOSS Image', 'The official MOSS-Image prompt enhancer skill (caption mode), run by Qwen PE T2I', [
         ('official', 'Official: MOSS skill, Qwen PE T2I', True, None, 'llama'),
         ('moss-encoder', 'MOSS text encoder, ComfyUI template', False, 'moss-image-comfy-template', 'encoder'),
-        (GEMMA, 'Gemma 4 12B, MOSS skill (about 12 s)', False, None, GEMMA)]),
+        (GEMMA, 'Gemma 4 12B, MOSS skill (about 12 s)', False, None, GEMMA), *_larger('MOSS skill')]),
     'video': ('Video (MiniMax H3, LTX 2.5)', "LTX 2.5 uses LTX's official enhancer prompts; MiniMax H3 has no official enhancer", [
         (GEMMA, "Gemma 4 12B, LTX's own enhancer model (about 12 s)", True, None, GEMMA),
-        ('qwen-pe', 'Qwen PE 9B, no thinking (about 10 s)', False, None, 'llama')]),
+        ('qwen-pe', 'Qwen PE 9B, no thinking (about 10 s)', False, None, 'llama'), *_larger('LTX prompt')]),
 }
 FIXED = {'flux3-klein': ('FLUX.3 Klein', "BFL's prompt model always runs inside FLUX.3 (official); Enhance prompt is not used.")}
 
@@ -72,7 +83,7 @@ def route(family, images=(), redraw=False):
     official_key = spec_key(family, images, redraw)
     _, label, official, key, runner = next(entry for entry in ARCHS[arch][2] if entry[0] == picked)
     return dict(arch=arch, choice=picked, label=label, official=official, mode='local', spec=key or official_key, runner=runner, model=None,
-                fast=picked == FAST or runner == GEMMA)
+                fast=picked == FAST or runner == GEMMA or runner.startswith('model:'))
 
 
 def listing():
