@@ -2,7 +2,7 @@ import {useState} from 'react';
 import {Nudge,SettingLabel} from './SettingLabel';
 import type {ModelEntry,ModelState} from './ModelSettings';
 
-export type ImageOptions={negative_prompt?:string;custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
+export type ImageOptions={negative_prompt?:string;custom_size:boolean;auto_resolution:1024|1408|2048;width:number;height:number;steps:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
 export type ToolField={key:string;label:string;placeholder?:string;default:string;options?:{value:string;label:string;prompt?:string;strength?:number}[]};
 export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;steps?:number;families:string[];tested_on:string[];swap?:boolean;swap_page?:boolean;sampling?:{steps?:number;sampler?:string;scheduler?:string;cfg?:number;speed_lora?:string;families?:string[]};inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
@@ -61,7 +61,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
   const followsImage=tool?.reference_resolution===0;
   function setSize(choice:string){
     setCustomMode(choice==='custom');
-    if(choice.startsWith('auto-'))onChange({custom_size:false,auto_resolution:Number(choice.slice(5)) as 1024|2048});
+    if(choice.startsWith('auto-'))onChange({custom_size:false,auto_resolution:Number(choice.slice(5)) as 1024|1408|2048});
     else if(choice==='custom')onChange({custom_size:true});
     else{const [width,height]=choice.split('x').map(Number);onChange({custom_size:true,width,height});}
   }
@@ -109,7 +109,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
     </div>
     <div className="field"><SettingLabel htmlFor="image-size" label="Output size" value="Auto · 2K" onReset={()=>setSize('auto-2048')}>Output size</SettingLabel>
       <select id="image-size" value={sizeValue} onChange={e=>setSize(e.target.value)} title={followsImage?'Follows the shape of image 1.':value.custom_size?'Exact size in pixels.':'Shape follows the prompt or input image.'}>
-        <option value="auto-1024">Auto · 1K (about 1 MP)</option><option value="auto-2048">Auto · 2K (about {followsImage||family.startsWith('moss-image')?'2':family==='krea-2'?'1':'4'} MP)</option>
+        <option value="auto-1024">Auto · 1K (about 1 MP)</option><option value="auto-1408">Auto · 2 MP{family==='qwen-image-2.1'?' (fast with Pruna)':''}</option><option value="auto-2048">Auto · 2K (about {followsImage||family.startsWith('moss-image')?'2':family==='krea-2'?'1':'4'} MP)</option>
         {followsImage?null:<><option disabled>──────────</option>{presets.map(([w,h,r])=><option key={`${w}x${h}`} value={`${w}x${h}`}>{w} × {h} · {r}</option>)}<option disabled>──────────</option><option value="custom">Custom…</option></>}
       </select>
     </div>

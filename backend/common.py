@@ -80,7 +80,8 @@ class GenerationRequest(ImageLabels):
     images: list[str] = Field(default_factory=list, max_length=10)
     enhance: bool = False  # Enhance prompt runs only when the user checks it.
     custom_size: bool = False
-    auto_resolution: Literal[1024, 2048] = 2048
+    # Auto 1K (about 1 MP), Auto 2 MP (1408: the Swap size, where Pruna stays clean) or Auto 2K (about 4 MP)
+    auto_resolution: Literal[1024, 1408, 2048] = 2048
     width: int = Field(default=2688, ge=256, le=2688)
     height: int = Field(default=1536, ge=256, le=2688)
     seed: int = Field(default=0, ge=0, le=2147483647)
