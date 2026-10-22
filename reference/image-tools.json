@@ -450,8 +450,8 @@
     "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/main/docs/qwen-image-2.1-body.md",
     "fit_inputs": [
       "budget",
-      590000,
-      590000
+      "budget",
+      "budget"
     ]
   },
   {

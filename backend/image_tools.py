@@ -14,6 +14,15 @@ def fit_area(image: Image.Image, area: float) -> Image.Image:
     return image if image.size == size else image.resize(size, Image.Resampling.LANCZOS)
 
 
+def fit_box(image: Image.Image, area: float) -> Image.Image:
+    """Fit inside a square of about `area` pixels, keeping the shape, both sides a multiple of 32 (the BFS workflows'
+    ResolutionSelector 1:1 feeding ImageResizeKJv2 "resize")."""
+    side = max(32, round(math.sqrt(area) / 32) * 32)
+    scale = side / max(image.width, image.height)
+    size = (max(32, round(image.width * scale / 32) * 32), max(32, round(image.height * scale / 32) * 32))
+    return image if image.size == size else image.resize(size, Image.Resampling.LANCZOS)
+
+
 def budget(request: dict) -> int:
     """Output pixel budget: Auto 1K ≈ 1 MP, Auto 2K ≈ 2 MP (the size these LoRAs were tested at)."""
     if request.get('custom_size'):
@@ -79,9 +88,9 @@ def prepare(tool: dict, request: dict, images: list[Image.Image]):
         canvas, box = outpaint_canvas(images[0], options['direction'], options['amount'], area)
         images = [canvas]
     if tool.get('fit_inputs'):
-        # Each picture at a set area, scaled up or down (the BFS swaps: the author feeds both at about 2 MP;
-        # Body swap gives the reference person about 0.59 MP). The output keeps the shape of image 1.
-        images = [fit_area(img, area if size == 'budget' else size) for img, size in zip(images, tool['fit_inputs'])]
+        # The BFS swaps fit every picture inside the same square box: the output size's (Qwen, 1408 px at 2 MP) or
+        # 1024 px (Krea 2), as their workflows do. The output keeps the shape of image 1.
+        images = [fit_box(img, area if size == 'budget' else size) for img, size in zip(images, tool['fit_inputs'])]
         return images, (request['width'],request['height']) if request.get('custom_size') else images[0].size, box
     if tool['reference_resolution'] == 0:
         # References keep their size, so the output matches image 1 exactly.

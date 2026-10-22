@@ -20,15 +20,16 @@ class SwapToolTests(unittest.TestCase):
         small, large = Image.new('RGB', (1024, 1024)), Image.new('RGB', (3000, 2000))
         images, size, box = image_tools.prepare(tool, {'auto_resolution': 2048}, [small, large])
         self.assertEqual(images[0].size, (1408, 1408), 'a small scene is scaled up to about 2 MP, as in the author workflow')
-        self.assertAlmostEqual(images[1].width * images[1].height / 2_000_000, 1, delta=0.05)
+        # Fitted inside the same 1408 px square box as the scene (BFS workflow at 2 MP), shape kept.
+        self.assertEqual(images[1].size, (1408, 928))
         self.assertEqual(size, images[0].size)
         self.assertIsNone(box)
 
-    def test_body_swap_gives_the_reference_person_about_059_mp(self):
+    def test_body_swap_fits_both_pictures_in_the_same_box(self):
         tool = models.image_tool('body-swap')
         images, size, _ = image_tools.prepare(tool, {'auto_resolution': 2048}, [Image.new('RGB', (1600, 1200)), Image.new('RGB', (2000, 2000))])
-        self.assertAlmostEqual(images[1].width * images[1].height / 590_000, 1, delta=0.05)
-        self.assertAlmostEqual(images[0].width * images[0].height / 2_000_000, 1, delta=0.05)
+        self.assertEqual(images[0].size, (1408, 1056))
+        self.assertEqual(images[1].size, (1408, 1408))
         self.assertEqual(size, images[0].size)
 
     def test_custom_size_changes_output_without_distorting_reference_inputs(self):

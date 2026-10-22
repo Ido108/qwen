@@ -114,6 +114,19 @@ function App(){
   const [upscaleTarget,setUpscaleTarget]=useState<{source:UpscaleSource;preset?:Partial<UpscaleSettings>;key:number}|null>(null);
   const [inputUpscales,setInputUpscales]=useState<InputUpscale[]>(()=>{try{return JSON.parse(localStorage.getItem('qwen-input-upscales')||'[]');}catch{return [];}});
   useEffect(()=>{try{localStorage.setItem('qwen-input-upscales',JSON.stringify(inputUpscales));}catch{/* offers only last this visit */}},[inputUpscales]);
+  // The Result panel steps through the results in the Recent order (newest first), also with the arrow keys.
+  const shownResults=history.filter(item=>!!item.image_url);
+  const resultIndex=result?shownResults.findIndex(item=>item.id===result.id):-1;
+  const stepResult=(delta:number)=>{const next=shownResults[resultIndex+delta];if(next){setResult(next);if(!busy)setJob(next);}};
+  useEffect(()=>{
+    const keys=(event:KeyboardEvent)=>{
+      if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight')return;
+      const target=event.target as HTMLElement|null;
+      if(tab!=='image'||document.querySelector('dialog[open]')||target?.closest('input,textarea,select,[contenteditable="true"],[role="slider"]'))return;
+      stepResult(event.key==='ArrowLeft'?-1:1);
+    };
+    window.addEventListener('keydown',keys);return()=>window.removeEventListener('keydown',keys);
+  });
   // Phones: Download opens the share sheet (Save Image, Save Video) instead of the browser's download page.
   // Without sharing (plain http) the file opens by itself, to keep with a long press.
   useEffect(()=>{
@@ -457,7 +470,7 @@ function App(){
       </div>
         <section className="panel result-panel studio-result"><div className="section-heading"><h2>{t('result')}</h2>{result?<span className="result-size" dir="ltr">{result.width} × {result.height} · PNG</span>:null}{result?.request.images?.length?<label className="checkbox-label compare-toggle"><input type="checkbox" checked={compareResult} onChange={e=>setCompareResult(e.target.checked)}/>Compare</label>:null}{result?<button className="text-button" onClick={clearResult} title="Empty the Result view. The image stays in Recent and the gallery.">Clear</button>:null}{result?<button className="icon-button" onClick={()=>openResultPreview(result.image_url!)} aria-label={t('preview')}><Expand size={17}/></button>:null}</div>
           <ResultUpscales jobs={imageJobs.filter(item=>item.kind==='image-upscale')}/>
-          <div className="result-canvas checker">{result&&compareResult&&result.request.images?.length?<CompareView before={inputImage(result.request.images[0]).url} after={result.image_url!} alt={result.request.prompt}/>:result?<ProgressiveImage className="result-image" src={result.image_url!} alt={result.request.prompt} onOpen={()=>openResultPreview(result.image_url!)}/>:<div className="result-empty"><ImageIcon size={42} strokeWidth={1.4}/><span>{t('empty')}</span></div>}
+          <div className="result-canvas checker">{resultIndex>=0&&shownResults.length>1?<><button type="button" className="result-step prev" disabled={resultIndex<=0} onClick={()=>stepResult(-1)} aria-label="Newer result" title="Newer (←)">‹</button><button type="button" className="result-step next" disabled={resultIndex>=shownResults.length-1} onClick={()=>stepResult(1)} aria-label="Older result" title="Older (→)">›</button></>:null}{result&&compareResult&&result.request.images?.length?<CompareView before={inputImage(result.request.images[0]).url} after={result.image_url!} alt={result.request.prompt}/>:result?<ProgressiveImage className="result-image" src={result.image_url!} alt={result.request.prompt} onOpen={()=>openResultPreview(result.image_url!)}/>:<div className="result-empty"><ImageIcon size={42} strokeWidth={1.4}/><span>{t('empty')}</span></div>}
           </div>
           {result?<GenerationTiming job={result} models={modelState}/>:null}{result?<div className="result-actions"><a className="button secondary" href={`${result.image_url}?download=true`}><Download size={15}/>{t('download')}</a><UseImageAs jobId={result.id} disabled={locked}/><a className="icon-button" href={`/api/jobs/${result.id}/metadata`} aria-label={t('metadata')} title={t('metadata')}><Download size={15}/></a></div>:null}
           {rewrittenPrompt?<details className="result-rewrite" key={result?.id}><summary title="The prompt the model actually used"><ChevronRight size={12}/><b>Enhanced prompt</b><span dir="auto">{rewrittenPrompt}</span></summary><p dir="auto">{rewrittenPrompt}</p><button className="text-button" onClick={()=>copyPrompt(rewrittenPrompt)}>{copied?<Check size={13}/>:<Copy size={13}/>} {copied?t('copied'):t('copy')}</button></details>:null}

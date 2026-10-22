@@ -172,3 +172,11 @@ dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12p
 .rail-live .rail-thumb img{object-fit:cover}
 .rail-live-state{position:absolute;left:5px;right:5px;bottom:8px;padding:3px 6px;border-radius:6px;background:#211b35c7;color:#fff;font-size:11px;font-weight:600;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rail-live-bar{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);transition:width .3s}
+
+/* Result panel: step through the results. */
+.result-canvas{position:relative}
+.result-step{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:38px;height:56px;border:1px solid #ddd6ef;border-radius:10px;background:#ffffffe6;color:#3c3556;font-size:26px;line-height:1;box-shadow:0 2px 10px #211b351f;cursor:pointer}
+.result-step.prev{left:10px}.result-step.next{right:10px}
+.result-step:hover:not(:disabled){background:#fff;color:var(--accent)}
+.result-step:disabled{opacity:.3;cursor:default}
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){.result-step{width:44px;height:60px}}
