@@ -748,6 +748,7 @@
     "fields": [],
     "prompt": "head_swap: replace the head with the reference head.",
     "reference_resolution": 0,
+    "fit_divisible": 16,
     "fit_inputs": [
       1048576,
       1048576
@@ -757,7 +758,8 @@
       "ref_boost_a": 1.0,
       "ref_position": "aligned (trained)",
       "ref_position_a": "aligned (trained)",
-      "grounding_px": 512
+      "grounding_px": 512,
+      "negative_grounding_px": 768
     },
     "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md",
     "swap_page": true,
@@ -790,6 +792,7 @@
     "fields": [],
     "prompt": "body_swap: replace the person with the reference person.",
     "reference_resolution": 0,
+    "fit_divisible": 16,
     "fit_inputs": [
       1048576,
       1048576
@@ -800,7 +803,8 @@
       "ref_boost_a": 1.0,
       "ref_position": "aligned (trained)",
       "ref_position_a": "aligned (trained)",
-      "grounding_px": 0
+      "grounding_px": 0,
+      "negative_grounding_px": 0
     },
     "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md",
     "swap_page": true,

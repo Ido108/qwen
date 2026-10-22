@@ -168,7 +168,8 @@ def generate(request, prompt, images, width, height, progress):
                 # Krea's own sampler encodes the negative prompt text ('' by default), not zeros.
                 negative = clip.encode_from_tokens_scheduled(clip.tokenize(negative_text))
                 if identity:
-                    negative = identity_encode(clip, negative_text, images, grounding)  # the card: ground the negative on the same photo
+                    # the card: ground the negative on the same photo; the BFS swap workflows ground it at 768
+                    negative = identity_encode(clip, negative_text, images, int(tool['krea_edit'].get('negative_grounding_px', grounding)) if tool else grounding)
                 elif images:
                     extra = {key: positive[0][1][key] for key in ('reference_latents', 'reference_latents_method') if key in positive[0][1]}
                     negative = node_helpers.conditioning_set_values(negative, extra)

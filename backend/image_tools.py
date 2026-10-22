@@ -14,12 +14,13 @@ def fit_area(image: Image.Image, area: float) -> Image.Image:
     return image if image.size == size else image.resize(size, Image.Resampling.LANCZOS)
 
 
-def fit_box(image: Image.Image, area: float) -> Image.Image:
-    """Fit inside a square of about `area` pixels, keeping the shape, both sides a multiple of 32 (the BFS workflows'
-    ResolutionSelector 1:1 feeding ImageResizeKJv2 "resize")."""
-    side = max(32, round(math.sqrt(area) / 32) * 32)
+def fit_box(image: Image.Image, area: float, divisible: int = 32) -> Image.Image:
+    """Fit inside a square of about `area` pixels, keeping the shape, both sides a multiple of `divisible` (the BFS
+    workflows' ImageResizeKJv2 "resize": divisible 32 for Qwen; 2 for Krea 2, where 16 is the latent's own step)."""
+    side = max(divisible, round(math.sqrt(area) / divisible) * divisible)
     scale = side / max(image.width, image.height)
-    size = (max(32, round(image.width * scale / 32) * 32), max(32, round(image.height * scale / 32) * 32))
+    size = (max(divisible, round(image.width * scale / divisible) * divisible),
+            max(divisible, round(image.height * scale / divisible) * divisible))
     return image if image.size == size else image.resize(size, Image.Resampling.LANCZOS)
 
 
@@ -90,7 +91,7 @@ def prepare(tool: dict, request: dict, images: list[Image.Image]):
     if tool.get('fit_inputs'):
         # The BFS swaps fit every picture inside the same square box: the output size's (Qwen, 1408 px at 2 MP) or
         # 1024 px (Krea 2), as their workflows do. The output keeps the shape of image 1.
-        images = [fit_box(img, area if size == 'budget' else size) for img, size in zip(images, tool['fit_inputs'])]
+        images = [fit_box(img, area if size == 'budget' else size, tool.get('fit_divisible', 32)) for img, size in zip(images, tool['fit_inputs'])]
         return images, (request['width'],request['height']) if request.get('custom_size') else images[0].size, box
     if tool['reference_resolution'] == 0:
         # References keep their size, so the output matches image 1 exactly.

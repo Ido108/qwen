@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 import time
 from .common import APP_DIR
-from .models import entry, local_path, required_image
+from .models import entry, image_tool, local_path, required_image
 from .image_cache import ConditioningCache, PositiveOnlyEncoder, retain_cpu_weights, retain_lora_clone
 
 _components = {}
@@ -265,22 +265,38 @@ def generate(request, prompt, images, width, height, progress):
     # RAM. That path caused a native Windows access violation. The supported
     # GPU policy keeps the lossless cache in VRAM when its memory checks allow,
     # otherwise recomputes the prefix without host cache transfers.
-    model.model_options.setdefault('transformer_options', {})['qwen_image21_cache']={'device':'gpu','dtype':'default'}
-    progress(prefix_cache_device='gpu',attention=attention)
     # The prompt is encoded. When the image model does not fit next to the encoder in physical VRAM, move the
     # encoder off the GPU now: Windows can otherwise spill the model to system RAM in silence, 3 to 12 times slower.
+    # Input pictures add their tokens to every step and a prefix cache of 0.5 MiB per token (32 blocks x 4096 x
+    # keys and values in bf16): a 2 MP swap (two 2 MP pictures) needs about 6.3 GB more than its output alone.
     free=dedicated_free_bytes(torch)
     batch=2 if cfg>1 else 1
-    need=model.model_size()-model.loaded_size()+model.model.memory_required([batch,64,height//16,width//16])+memory.minimum_inference_memory()
-    if free is not None and clip.patcher.loaded_size() and free<need:
+    target=(height//16)*(width//16)
+    prefix=512+sum((img.width*img.height if reference_resolution==0 else reference_resolution**2)//256 for img in images)
+    cache_bytes=batch*2*32*prefix*4096*2 if images else 0
+    sampling=model.model.memory_required([batch,64,height//16,width//16])*(target+(prefix if images else 0))/target
+    need=model.model_size()-model.loaded_size()+sampling+memory.minimum_inference_memory()
+    if free is not None and clip.patcher.loaded_size() and free<need+cache_bytes:
         memory.unload_model_and_clones(clip.patcher,unload_additional_models=False)
         progress(encoder_unloaded_for_sampling=True)
+        free=dedicated_free_bytes(torch)
+    # The cache stays in VRAM only when it fits beside the model; a half-size INT8 cache next; otherwise the prefix
+    # is recomputed each step (slower, never a silent spill to system RAM).
+    cache={'device':'gpu','dtype':'default'}
+    if free is not None and cache_bytes and free<need+cache_bytes:
+        cache={'device':'gpu','dtype':'int8'} if free>=need+cache_bytes//2 else {'device':'off','dtype':'default'}
+    model.model_options.setdefault('transformer_options', {})['qwen_image21_cache']=cache
+    progress(prefix_cache_device=cache['device'],prefix_cache_dtype=cache['dtype'],prefix_tokens=prefix if images else 0,
+             prefix_cache_gb=round(cache_bytes/(1 if cache['dtype']=='default' else 2)/1e9,2) if cache['device']=='gpu' else 0,
+             vram_free_before_sampling_gb=round(free/1e9,2) if free is not None else None,attention=attention)
     # Official Qwen 2.1 workflow: 64-channel, 16x spatial latent, Euler + simple.
     latent=torch.zeros((1,64,height//16,width//16),device=memory.intermediate_device())
     noise=comfy.sample.prepare_noise(latent,request['seed'])
     from .image_sampling import resolve, sample_qwen
     sampler,scheduler=resolve(request,defaults)
-    if scheduler!='turbo-sigmas':
+    # The BFS swap workflows (a tool with its author's sampling) have no shift node: the model default 0.69 applies.
+    authored=bool(request.get('tool_id')) and bool(image_tool(request['tool_id']).get('sampling'))
+    if scheduler!='turbo-sigmas' and not authored:
         # The model's scheduler shifts with the image size (mu 0.5 at 256 tokens to 0.9 at 8192, scheduler_config.json);
         # ComfyUI keeps its 1024x1024 value 0.69. ModelSamplingFlux uses the same tokens (w*h/256): 0.69355 at 4096.
         from comfy_extras.nodes_model_advanced import ModelSamplingFlux
@@ -304,5 +320,5 @@ def generate(request, prompt, images, width, height, progress):
     array=(pixels[0].float().cpu().numpy().clip(0,1)*255).round().astype(np.uint8)
     if array.shape[-1]!=4:
         raise RuntimeError('The Qwen 2.1 VAE did not return an RGBA image.')
-    progress(peak_vram_gb=round(torch.cuda.max_memory_allocated()/1024**3,2),engine='ComfyUI',true_cfg_scale=cfg,applied_lora=tool_lora)
+    progress(peak_vram_gb=round(torch.cuda.max_memory_allocated()/1024**3,2),peak_reserved_gb=round(torch.cuda.max_memory_reserved()/1024**3,2),engine='ComfyUI',true_cfg_scale=cfg,applied_lora=tool_lora)
     return Image.fromarray(array)

@@ -179,7 +179,8 @@ def run():
         follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith(('z-image','flux3-klein','moss-image')))
         width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if follow_first else rewrite)
     krea_family = entry(request['model_id']).get('family', '').startswith('krea-2')
-    identity = bool(images) and krea_family and (request.get('krea_reference_mode') or 'identity') == 'identity'
+    # A Krea tool (BFS swap) keeps its own size: the resized picture 1, as the author's GetImageSize does.
+    identity = bool(images) and krea_family and not tool and (request.get('krea_reference_mode') or 'identity') == 'identity'
     if krea_family and not tool and not identity and not request['custom_size'] and request.get('auto_resolution', 2048) <= 1024             and 0.87 <= width / height <= 1.15:
         # Krea 2 at 1K crops in close on a square canvas: Auto makes it 3:4 (the user's choice, 2026-10-22).
         area = width * height
@@ -195,8 +196,10 @@ def run():
             width, height = (int((area * 3 / 4) ** 0.5) // 16 * 16, int((area * 4 / 3) ** 0.5) // 16 * 16) if portrait else \
                             (int((area * 4 / 3) ** 0.5) // 16 * 16, int((area * 3 / 4) ** 0.5) // 16 * 16)
         width, height = identity_size(width, height)
-    render_width = math.ceil(width / 32) * 32
-    render_height = math.ceil(height / 32) * 32
+    # Krea 2's latent steps by 16 px; the others by 32.
+    step = 16 if krea_family else 32
+    render_width = math.ceil(width / step) * step
+    render_height = math.ceil(height / step) * step
     update(stage='loading_model', message=f"Loading {entry(request.get('model_id','official-bf16'))['title']}…", width=width, height=height)
     image = generate(request,prompt,images,render_width,render_height,update)
     from . import sent_prompts

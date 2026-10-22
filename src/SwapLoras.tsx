@@ -17,6 +17,7 @@ export function SwapLoras({plan,strengthNote,speedStrength,disabled,onSpeed}:{pl
     {plan.speed_lora?<div className={`lora-control swap-lora ${speedOn?'':'off'}`}><div className="lora-control-heading"><strong>{speed?.title??'Pruna 8-step LoRA'}</strong><span className="swap-lora-tag">Speed</span>
       <button type="button" className="lora-switch" role="switch" aria-checked={speedOn} aria-label="Use the speed LoRA" disabled={disabled} title="The tool author's 8-step setup: 8 steps, CFG 1, deis 2m. Off: the model's own steps and CFG."
         onClick={()=>onSpeed(!speedOn,speedStrength)}><span className="lora-switch-track" aria-hidden="true"/><span>{speedOn?'On':'Off'}</span></button></div>
+      <p className="swap-lora-note">Speed LoRA: Qwen Standard makes the picture in 8 steps instead of 40 (about 5x faster), as in the swap author's setup. Off: the model's own 40 steps.</p>
       <div className="lora-strength-row"><span>Strength</span>
         <input type="range" min="0" max="2" step="0.05" value={speedStrength} disabled={disabled||!speedOn} aria-label="Speed LoRA strength" onChange={e=>onSpeed(true,Number(e.target.value))}/>
         <input type="number" min="0" max="2" step="0.05" value={speedStrength} disabled={disabled||!speedOn} aria-label="Speed LoRA strength value" title="Strength, 0 to 2. The author uses 1." onChange={e=>onSpeed(true,Math.max(0,Math.min(2,Number(e.target.value)||0)))}/>
