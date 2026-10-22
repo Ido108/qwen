@@ -4,7 +4,7 @@ import type {ModelEntry,ModelState} from './ModelSettings';
 
 export type ImageOptions={negative_prompt?:string;custom_size:boolean;auto_resolution:1024|2048;width:number;height:number;steps:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
 export type ToolField={key:string;label:string;placeholder?:string;default:string;options?:{value:string;label:string;prompt?:string;strength?:number}[]};
-export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;steps?:number;families:string[];tested_on:string[];swap?:boolean;swap_page?:boolean;sampling?:{sampler?:string;scheduler?:string;cfg?:number;families?:string[]};inputs:{min:number;max:number;labels:string[]};
+export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;steps?:number;families:string[];tested_on:string[];swap?:boolean;swap_page?:boolean;sampling?:{steps?:number;sampler?:string;scheduler?:string;cfg?:number;speed_lora?:string;families?:string[]};inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
 export type ToolState={tool_id:string|null;tool_options:Record<string,string>;lora_strength:number|null};
 
@@ -38,7 +38,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
   models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'steps'|'advanced';idPrefix?:string}){
   // A tool's own steps, sampler, schedule and CFG (its author's workflow) win over the model's, as on the server.
   const recipe=tool?.sampling&&(!tool.sampling.families||tool.sampling.families.includes(model?.family||''))?tool.sampling:null;
-  const modelDefaults=model?.generation_defaults;const defaults=modelDefaults&&recipe?{...modelDefaults,...Object.fromEntries(Object.entries(recipe).filter(([key])=>key!=='families'))}:modelDefaults;
+  const modelDefaults=model?.generation_defaults;const defaults=modelDefaults&&recipe?{...modelDefaults,...Object.fromEntries(Object.entries(recipe).filter(([key])=>key!=='families'&&key!=='speed_lora'))}:modelDefaults;
   const defaultSteps=tool?.steps??defaults?.steps;
   const turbo=!!defaults?.sigmas;
   const page=typeof defaults?.note==='string'&&defaults.note.startsWith('From the Civitai page')?defaults:null;
@@ -91,7 +91,7 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
     </div>
   </fieldset>;
   if(part==='advanced')return <fieldset className={cls} disabled={disabled} aria-label="Sampler and schedule">
-    <div className="field"><SettingLabel htmlFor={`${idPrefix}-sampler`} label="Sampler" value={defaults?.sampler||'euler'} onReset={()=>onChange({sampler:null})}>Sampler</SettingLabel><select id={`${idPrefix}-sampler`} value={value.sampler||''} onChange={e=>onChange({sampler:e.target.value||null})}><option value="">Model default ({defaults?.sampler||'euler'})</option>{['euler','res_multistep','dpmpp_2m','heun','res_2m','res_2s','res_2m_ode','res_2s_ode'].map(name=><option key={name} value={name}>{name}</option>)}</select></div>
+    <div className="field"><SettingLabel htmlFor={`${idPrefix}-sampler`} label="Sampler" value={defaults?.sampler||'euler'} onReset={()=>onChange({sampler:null})}>Sampler</SettingLabel><select id={`${idPrefix}-sampler`} value={value.sampler||''} onChange={e=>onChange({sampler:e.target.value||null})}><option value="">Model default ({defaults?.sampler||'euler'})</option>{['euler','res_multistep','dpmpp_2m','heun','res_2m','res_2s','res_2m_ode','res_2s_ode','deis_2m'].map(name=><option key={name} value={name}>{name}</option>)}</select></div>
     <div className="field"><SettingLabel htmlFor={`${idPrefix}-scheduler`} label="Schedule" value={turbo?'trained schedule':defaults?.scheduler||'simple'} onReset={()=>onChange({scheduler:null})}>Schedule</SettingLabel><select id={`${idPrefix}-scheduler`} value={value.scheduler||''} onChange={e=>onChange({scheduler:e.target.value||null})}><option value="">Model default ({turbo?'trained schedule':defaults?.scheduler||'simple'})</option>{['simple','normal','beta','karras','sgm_uniform'].map(name=><option key={name} value={name}>{name}</option>)}</select>{turbo&&value.scheduler?<small>Custom schedule. Reset restores this model’s trained schedule.</small>:null}</div>
   </fieldset>;
   return <fieldset className={cls} disabled={disabled} aria-label="Tool and output size">

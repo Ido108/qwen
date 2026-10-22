@@ -234,7 +234,11 @@ def generate(request, prompt, images, width, height, progress):
     stack=[]
     if request.get('tool_id'):
         from .models import image_tool
-        stack.append((image_tool(request['tool_id'])['lora'],float(request.get('lora_strength',1.0))))
+        tool=image_tool(request['tool_id'])
+        stack.append((tool['lora'],float(request.get('lora_strength',1.0))))
+        # The author's few-step LoRA for this family at 1.0 (BFS Qwen swaps on Standard: Pruna 8-step).
+        from .models import tool_speed_lora
+        if tool_speed_lora(tool,selected):stack.append((tool_speed_lora(tool,selected),1.0))
     stack+=[(lora['id'],float(lora.get('strength',1.0))) for lora in request.get('loras') or []]
     tool_lora=None
     lora_checks=[]

@@ -16,7 +16,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 COMMIT = '56e44755d866c87ff9cb4b6608c8e42155db6ecc'
-SAMPLERS = ('res_2m', 'res_2s', 'res_2m_ode', 'res_2s_ode')
+SAMPLERS = ('res_2m', 'res_2s', 'res_2m_ode', 'res_2s_ode', 'deis_2m')  # deis_2m: the BFS Qwen swap workflows
 MANIFEST = Path(__file__).resolve().parent.parent / 'reference' / 'res4lyf-source.json'
 PACKAGE = '_qwen_res4lyf_' + COMMIT
 

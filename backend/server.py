@@ -1579,7 +1579,10 @@ def generate(body: GenerationRequest):
         data['execution'] = 'runpod' if remote else 'local'
         defaults = models.entry(body.model_id)['generation_defaults']
         # A tool's card can name its own step count (BFS Krea 2 body swap: 10 steps on Turbo).
-        data['steps'] = body.steps if body.steps is not None else (tool or {}).get('steps') or defaults['steps']
+        recipe = (tool or {}).get('sampling') or {}
+        if recipe.get('families') is not None and models.entry(body.model_id).get('family') not in recipe['families']:
+            recipe = {}
+        data['steps'] = body.steps if body.steps is not None else (tool or {}).get('steps') or recipe.get('steps') or defaults['steps']
         data['steps_mode'] = 'custom' if body.steps is not None else 'model'
         if tool:
             data['enhance'] = False

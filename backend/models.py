@@ -153,6 +153,8 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0,k
                 raise ValueError(f"{tool['title']} needs a {' or '.join('Krea 2 Turbo' if f.endswith('turbo') else 'Krea 2 Raw' for f in tool['families'])} model.")
             raise ValueError(f"{tool['title']} needs a {' or '.join('Turbo' if f.endswith('turbo') else 'standard' for f in tool['families'])} Qwen-Image-2.1 model.")
         ids.append(tool['lora'])
+        speed=tool_speed_lora(tool,item)
+        if speed:ids.append(speed)
     for lora_id in loras:
         lora=entry(lora_id)
         if lora['kind']!='image-lora':
@@ -167,6 +169,12 @@ def required(model_id,encoder='auto',tool_id=None,vae='auto',loras=(),images=0,k
         # identity: conradlocke/krea2-identity-edit keeps the person; style: the official style reference workflow.
         ids.append(KREA_IDENTITY_LORA if krea_reference_mode=='identity' else KREA_STYLE_LORA)
     return list(dict.fromkeys(ids))
+
+def tool_speed_lora(tool,item):
+    """The few-step LoRA a tool's author pairs with this model family (BFS Qwen swaps: Pruna 8-step on Standard), or None."""
+    sampling=tool.get('sampling') or {}
+    families=sampling.get('families')
+    return sampling.get('speed_lora') if families is None or item.get('family','qwen-image-2.1') in families else None
 
 def resolve_vae(item,vae='auto'):
     """'auto' is the model's own VAE when its page names one, else the texture-fix VAE: the same

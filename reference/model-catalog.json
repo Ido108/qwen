@@ -1018,6 +1018,25 @@
     "dependencies": []
   },
   {
+    "id": "lora-pruna-8step",
+    "title": "Pruna 8-step LoRA for Qwen-Image-2.1",
+    "kind": "image-lora",
+    "format": "LoRA",
+    "repo": "ameno-tech/Pruna-Qwen-Image-2.1",
+    "revision": "dfdb74cfdca9d601223830826c17656b66173a51",
+    "directory": "loras/pruna",
+    "files": [
+      {
+        "path": "p_qwen_image_2.1_8step_v0.1.safetensors",
+        "bytes": 335606104,
+        "sha256": "f0865d68b02511a3a0ed232d9d1aa99cac3a94166f574b38bcbab1a7a297bb15"
+      }
+    ],
+    "bytes": 335606104,
+    "dependencies": [],
+    "note": "Used by the BFS Qwen swaps on Qwen-Image-2.1 Standard, as in the author's workflows: strength 1.0, 8 steps, CFG 1, deis_2m / simple. Card: 1K, up to 3 reference images, no CFG. Qwen Research License."
+  },
+  {
     "id": "lora-bfs-head",
     "title": "BFS Head Swap V1.1 LoRA",
     "kind": "image-lora",

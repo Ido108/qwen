@@ -386,7 +386,17 @@
       "budget",
       "budget",
       "budget"
-    ]
+    ],
+    "sampling": {
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler": "deis_2m",
+      "scheduler": "simple",
+      "speed_lora": "lora-pruna-8step",
+      "families": [
+        "qwen-image-2.1"
+      ]
+    }
   },
   {
     "id": "head-swap-expression",
@@ -419,7 +429,17 @@
       "budget",
       "budget",
       "budget"
-    ]
+    ],
+    "sampling": {
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler": "deis_2m",
+      "scheduler": "simple",
+      "speed_lora": "lora-pruna-8step",
+      "families": [
+        "qwen-image-2.1"
+      ]
+    }
   },
   {
     "id": "body-swap",
@@ -452,7 +472,17 @@
       "budget",
       "budget",
       "budget"
-    ]
+    ],
+    "sampling": {
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler": "deis_2m",
+      "scheduler": "simple",
+      "speed_lora": "lora-pruna-8step",
+      "families": [
+        "qwen-image-2.1"
+      ]
+    }
   },
   {
     "id": "angles-qma",

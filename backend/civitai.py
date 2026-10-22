@@ -412,7 +412,7 @@ def trained_words(version, model):
     return profile(version, model)['trained_words']
 
 
-SAMPLERS = ('res_2m_ode', 'res_2s_ode', 'res_2m', 'res_2s', 'euler_ancestral_cfg_pp', 'euler_ancestral', 'euler_cfg_pp', 'euler', 'res_multistep', 'dpmpp_2m_sde', 'dpmpp_2m',
+SAMPLERS = ('res_2m_ode', 'res_2s_ode', 'res_2m', 'res_2s', 'deis_2m', 'euler_ancestral_cfg_pp', 'euler_ancestral', 'euler_cfg_pp', 'euler', 'res_multistep', 'dpmpp_2m_sde', 'dpmpp_2m',
             'dpmpp_sde', 'dpmpp_3m_sde', 'uni_pc', 'lcm', 'heun', 'ddim', 'deis', 'er_sde', 'sa_solver')
 SCHEDULERS = ('simple', 'normal', 'beta', 'karras', 'sgm_uniform', 'exponential', 'ddim_uniform', 'linear_quadratic', 'kl_optimal')
 
