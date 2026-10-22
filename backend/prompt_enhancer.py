@@ -165,9 +165,28 @@ def _record(update, title, chat):
         update(sent_prompt={'label': f"Enhance with {title}: {message['role']} message", 'text': text})
 
 
+MENTION = re.compile(r'<image\d+>')
+MENTION_PHRASE = re.compile(r'\bthe ([\w\- ]{1,40}?) from (<image\d+>)', re.I)
+
+
+def missing_mentions(prompt, answer):
+    """The image references of the request (<image1>) that the rewritten prompt lost."""
+    return [ref for ref in dict.fromkeys(MENTION.findall(prompt)) if ref not in answer]
+
+
+def keep_mentions(prompt, answer):
+    """Put back each lost image reference with its label: "Use the woman from <image1>." """
+    missing = missing_mentions(prompt, answer)
+    if not missing:
+        return answer
+    phrases = {ref: f'the {label} from {ref}' for label, ref in MENTION_PHRASE.findall(prompt)}
+    return answer.rstrip() + ' ' + ' '.join(f'Use {phrases.get(ref, ref)}.' for ref in missing)
+
+
 def _finish(parsed, prompt, update):
     if not parsed['parse_ok'] or not parsed['positive_prompt'].strip():
         raise RuntimeError('Prompt enhancement returned an invalid response. Retry or turn off Enhance prompt.')
+    parsed['positive_prompt'] = keep_mentions(prompt, parsed['positive_prompt'])
     if len(parsed['positive_prompt']) > 30000:
         raise RuntimeError('Prompt enhancement returned too much text. Try a shorter request.')
     # The image model's alpha instruction must survive rewriting verbatim.
@@ -383,6 +402,14 @@ def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.
             retry = messages(spec, prompt + note, pictures) + chat[len(chat) - (1 if opening else 0):]
             reply = server.chat({**body, 'messages': retry})
             update(sent_prompt={'label': f'Enhance: asked again for a {shot} (the first answer was a close-up)', 'text': prompt + note})
+        missing = missing_mentions(prompt, reply['choices'][0]['message'].get('content') or '')
+        if missing:
+            # The rewriter dropped an image reference ("the woman from <image1>" became "her"), so the image model no
+            # longer knows which picture is meant (2026-10-22). Ask once more; _finish adds any still missing.
+            note = f" (Keep {', '.join(missing)} exactly as written.)"
+            retry = messages(spec, prompt + note, pictures) + chat[len(chat) - (1 if opening else 0):]
+            reply = server.chat({**body, 'messages': retry})
+            update(sent_prompt={'label': 'Enhance: asked again to keep the image references', 'text': prompt + note})
         marks.append(time.perf_counter())
         # Stay loaded only beside an image model that is already in the GPU, with room for its next encode and steps.
         kept = _image_model_loaded() and _free_vram() >= KEEP_FREE
