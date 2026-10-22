@@ -304,6 +304,8 @@ function App(){
     timer=window.setTimeout(refresh,1500);return()=>{alive=false;clearTimeout(timer);};
   },[showSettings,downloading,api]);
   useEffect(()=>{if(!config)return;api('/api/history').then(setHistory).catch(()=>{});},[queue.revision,config,api]);
+  // Results deleted in the Library leave Recent and Result at once.
+  useEffect(()=>{const reload=()=>{api('/api/history').then(setHistory).catch(()=>{});};window.addEventListener('qwen-results-changed',reload);return()=>window.removeEventListener('qwen-results-changed',reload);},[api]);
   useEffect(()=>{localStorage.setItem('qwen-results-rail',railOpen?'open':'closed');},[railOpen]);
   const submittedJob=queue.state.active?.id===pollId?queue.state.active:queue.state.pending.find(item=>item.id===pollId)||(job as SavedJob|null);
   const imageJobs=[queue.state.active,...queue.state.pending].filter((j):j is SavedJob=>!!j&&['image','image-upscale'].includes(j.kind||'image'));

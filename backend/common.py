@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 from pathlib import Path
 import time
 import uuid
@@ -303,6 +304,16 @@ class UpscaleRequest(BaseModel):
 
 
 def resolve_image(image_id: str) -> Path:
+    # A result used as an input (job-<id>.png) is read from its saved file in the outputs: no copy in Uploads.
+    job = re.fullmatch(r'job-([0-9a-f]{32})\.png', image_id)
+    if job and not (UPLOADS_DIR / image_id).is_file():
+        try:
+            output = Path(json.loads((JOBS_DIR / job.group(1) / 'status.json').read_text(encoding='utf-8'))['output_path'])
+        except (OSError, ValueError, KeyError, TypeError):
+            raise ValueError('Input image not found. Upload it again.')
+        if not output.is_file() or output.suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp'}:
+            raise ValueError('Input image not found. The result was deleted.')
+        return output
     if image_id.startswith('example:'):
         root, name = EXAMPLES_DIR, image_id.removeprefix('example:')
     else:

@@ -1222,9 +1222,9 @@ def save_upload(picture: Image.Image, name: str) -> dict:
             'width': picture.width, 'height': picture.height}
 
 
-def upload_fingerprints(files: list[Path]) -> dict[str, str]:
+def upload_fingerprints(files: list[Path], index_name: str = 'fingerprints.json') -> dict[str, str]:
     """Pixel hash per upload, cached by size and time, so copies saved under old random names group together."""
-    index_path = UPLOADS_DIR / '.thumbs' / 'fingerprints.json'
+    index_path = UPLOADS_DIR / '.thumbs' / index_name
     try:
         index = json.loads(index_path.read_text(encoding='utf-8'))
     except (OSError, ValueError):
@@ -1258,6 +1258,12 @@ def recent_uploads(offset: int = Query(0, ge=0), limit: int = Query(60, ge=1, le
     people_photos = {image_id for person in people.load() for image_id in person['image_ids']}
     files = [path for path in files if path.name not in people_photos]  # shown under People
     fingerprints = upload_fingerprints(files)
+    # Results used as inputs are shown under Results, not again under Uploads: the links made for them (job-*.png)
+    # and the full copies made before 2026-10-22 (same pixels as a result).
+    outputs = [Path(job['output_path']) for job in all_jobs() if job.get('status') == 'succeeded'
+               and job.get('kind', 'image') in IMAGE_KINDS and Path(job.get('output_path') or '').is_file()]
+    result_pixels = set(upload_fingerprints(outputs, 'result-fingerprints.json').values())
+    files = [path for path in files if not path.name.startswith('job-') and fingerprints[path.name] not in result_pixels]
     seen, unique = set(), []
     for path in files:  # newest copy of each image only
         if fingerprints[path.name] not in seen:
@@ -2400,8 +2406,12 @@ def reuse(job_id: str):
     path = Path(job.get('output_path', ''))
     if job.get('kind','image') not in IMAGE_KINDS or job['status'] != 'succeeded' or not path.is_file():
         raise HTTPException(404, 'Saved image not found.')
+    # The input points at the saved result itself (resolve_image reads job-<id>.png from the outputs): no copy.
+    image_id = f'job-{job["id"]}.png'
     with Image.open(path) as picture:
-        return save_upload(picture.convert('RGBA'), path.name)
+        width, height = picture.size
+    return {'id': image_id, 'name': path.name, 'url': f'/api/uploads/{image_id}', 'thumb_url': f'/api/uploads/{image_id}/thumb',
+            'width': width, 'height': height}
 
 @app.post('/api/jobs/{job_id}/reuse-video')
 def reuse_video(job_id: str, part: Literal['final', 'subject'] = 'final'):

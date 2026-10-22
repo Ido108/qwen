@@ -30,8 +30,19 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
   const [selecting,setSelecting]=useState(false);const [picked,setPicked]=useState<string[]>([]);const [confirming,setConfirming]=useState(false);
   const stopSelecting=()=>{setSelecting(false);setPicked([]);setConfirming(false);};
   const togglePicked=(id:string)=>{setConfirming(false);setPicked(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id]);};
+  const [removedResults,setRemovedResults]=useState<string[]>([]);
+  const shownResults=results.filter(r=>!removedResults.includes(r.id));
   async function deletePicked(){
     setBusy('delete');setMessage('');
+    if(tab==='results'){
+      // Finished results: the picture file, its settings file and the job; running or waiting jobs are never touched.
+      try{const result=await api('/api/library/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:picked})});
+        setRemovedResults(old=>[...old,...picked]);window.dispatchEvent(new Event('qwen-results-changed'));
+        setMessage(result.failed?.length?`${result.failed.length} could not be deleted.`:'');stopSelecting();}
+      catch(e){setMessage((e as Error).message);}
+      finally{setBusy('');}
+      return;
+    }
     try{const result=await api('/api/uploads/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:picked})});
       const gone=new Set<string>(result.deleted_ids||[]);
       setUploads(old=>old.filter(u=>!gone.has(u.id)));setTotal(old=>Math.max(0,old-picked.filter(id=>gone.has(id)).length));
@@ -42,7 +53,7 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
     finally{setBusy('');}
   }
   useEffect(()=>{api('/api/uploads?limit=200').then(page=>{setUploads(page.items);setTotal(page.total);}).catch(()=>{});},[api,revision]);
-  useEffect(()=>{if(tab!=='uploads')stopSelecting();},[tab]);
+  useEffect(()=>{stopSelecting();},[tab]);
   const index=(id:string)=>inputs.findIndex(i=>i.id===id);
   useEffect(()=>{if(importing?.state!=='running')return;const timer=setInterval(async()=>{const next=await api('/api/people/import/status');setImporting(next);onPeople();if(next.state!=='running'){setMessage(next.message);clearInterval(timer);}},1500);return()=>clearInterval(timer);},[importing?.state]);
   async function importMoise(){setMessage('');try{await api('/api/people/import/moise',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setImporting({state:'running',message:'Connecting to Moise…'});}catch(e){setMessage((e as Error).message);}}
@@ -85,21 +96,22 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
     <div className="library-tabs" role="tablist">
       <button role="tab" aria-selected={tab==='people'} onClick={()=>{setTab('people');setDrawer(null);}}>People <span>{people.length}</span></button>
       <button role="tab" aria-selected={tab==='uploads'} onClick={()=>{setTab('uploads');}}>Uploads <span>{total}</span></button>
-      <button role="tab" aria-selected={tab==='results'} onClick={()=>setTab('results')}>Results <span>{results.length}</span></button>
+      <button role="tab" aria-selected={tab==='results'} onClick={()=>setTab('results')}>Results <span>{shownResults.length}</span></button>
       <button role="tab" aria-selected={tab==='web'} onClick={()=>setTab('web')}>Web</button>
       {swap?<span className="library-replace">Replacing image {Math.min(target,inputs.length-1)+1}</span>:null}
       <FilePicker className="text-button library-upload" disabled={disabled} multiple={!swap} onFiles={onUpload}><Upload size={14}/>Upload</FilePicker>
       {onClose?<button type="button" className="icon-button library-close" onClick={()=>{setDrawer(null);onClose();}} aria-label="Close library" title="Close (Esc)"><X size={15}/></button>:null}
     </div>
-    {tab==='uploads'&&uploads.length?<div className="library-select-bar">{selecting?<>
+    {(()=>{const pool=tab==='uploads'?uploads.map(u=>u.id):tab==='results'?shownResults.map(r=>r.id):[];if(!pool.length)return null;const noun=tab==='results'?'result':'uploaded picture';
+      return <><div className="library-select-bar">{selecting?<>
       <span>{picked.length} selected</span>
-      <button type="button" className="text-button" onClick={()=>{setConfirming(false);setPicked(picked.length===uploads.length?[]:uploads.map(u=>u.id));}}>{picked.length===uploads.length?'Select none':'Select all'}</button>
+      <button type="button" className="text-button" onClick={()=>{setConfirming(false);setPicked(picked.length===pool.length?[]:pool);}}>{picked.length===pool.length?'Select none':'Select all'}</button>
       <button type="button" className="text-button library-delete" disabled={!picked.length||busy==='delete'} onClick={()=>setConfirming(true)}>Delete {picked.length||''}</button>
       <button type="button" className="text-button" onClick={stopSelecting}>Cancel</button>
-    </>:<button type="button" className="text-button" disabled={disabled} onClick={()=>setSelecting(true)}>Select to delete</button>}</div>:null}
-    {tab==='uploads'&&confirming?<div className="library-confirm" role="alert"><span>Delete {picked.length} uploaded picture{picked.length>1?'s':''} from this computer? Results made from them stay.</span>
+    </>:<button type="button" className="text-button" disabled={disabled} onClick={()=>setSelecting(true)}>Select to delete</button>}</div>
+    {confirming?<div className="library-confirm" role="alert"><span>Delete {picked.length} {noun}{picked.length>1?'s':''} from this computer? {tab==='results'?'The pictures and their settings are removed.':'Results made from them stay.'}</span>
       <button type="button" className="button danger" disabled={busy==='delete'} onClick={()=>void deletePicked()}>{busy==='delete'?'Deleting…':'Delete'}</button>
-      <button type="button" className="text-button" onClick={()=>setConfirming(false)}>Keep</button></div>:null}
+      <button type="button" className="text-button" onClick={()=>setConfirming(false)}>Keep</button></div>:null}</>;})()}
     {tab==='people'?<div className="people-tools">
       <label className="people-search"><Search size={13}/><input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Find a person"/></label>
       <button type="button" className="text-button" disabled={disabled||!inputs.length} onClick={newPerson} title="Make a person from the checked photos"><UserPlus size={14}/>New</button>
@@ -126,8 +138,10 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
       {tab==='uploads'&&selecting?uploads.map(u=>{const on=picked.includes(u.id);return <button key={u.id} type="button" className={`library-tile checker picking ${on?'picked':''}`} onClick={()=>togglePicked(u.id)} title={u.name} aria-pressed={on} aria-label={`${on?'Unselect':'Select'} ${u.name}`}>
         <img src={u.thumb_url} alt="" loading="lazy"/><span className="library-check">{on?'✓':''}</span></button>;}):null}
       {tab==='uploads'&&!selecting?uploads.map(u=>tile(u.id,u.thumb_url,u.name,index(u.id),()=>toggle({id:u.id,name:u.name,url:u.url}))):null}
-      {tab==='results'?results.map(r=>tile(r.id,`/api/jobs/${r.id}/thumbnail`,r.request.prompt,resultInputs[r.id]?index(resultInputs[r.id]):-1,()=>toggleResult(r),busy===r.id)):null}
-      {(tab==='uploads'&&!uploads.length)||(tab==='results'&&!results.length)||false?<p className="library-empty">{tab==='uploads'?'Images you upload or paste appear here.':tab==='results'?'Your finished images appear here.':'No people yet.'}</p>:null}
+      {tab==='results'&&selecting?shownResults.map(r=>{const on=picked.includes(r.id);return <button key={r.id} type="button" className={`library-tile checker picking ${on?'picked':''}`} onClick={()=>togglePicked(r.id)} title={r.request.prompt} aria-pressed={on} aria-label={`${on?'Unselect':'Select'} result`}>
+        <img src={`/api/jobs/${r.id}/thumbnail`} alt="" loading="lazy"/><span className="library-check">{on?'✓':''}</span></button>;}):null}
+      {tab==='results'&&!selecting?shownResults.map(r=>tile(r.id,`/api/jobs/${r.id}/thumbnail`,r.request.prompt,resultInputs[r.id]?index(resultInputs[r.id]):-1,()=>toggleResult(r),busy===r.id)):null}
+      {(tab==='uploads'&&!uploads.length)||(tab==='results'&&!shownResults.length)||false?<p className="library-empty">{tab==='uploads'?'Images you upload or paste appear here.':tab==='results'?'Your finished images appear here.':'No people yet.'}</p>:null}
     </div>
   </div>;
 }

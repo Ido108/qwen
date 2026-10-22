@@ -163,7 +163,8 @@ def avatar(person_id: str) -> Path:
     person = next((p for p in load() if p['id'] == person_id), None)
     if not person or not person['image_ids']:
         raise ValueError('No photo for this person.')
-    with Image.open(UPLOADS_DIR / person['image_ids'][0]) as source:
+    from .common import resolve_image
+    with Image.open(resolve_image(person['image_ids'][0])) as source:
         picture = source.convert('RGB')
     box = _face_square(picture)
     AVATARS.mkdir(parents=True, exist_ok=True)
