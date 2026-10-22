@@ -70,7 +70,7 @@ class ModelDefaultsTests(unittest.TestCase):
             tool=models.image_tool(tool_id)
             for mode in ('realistic','non-realistic'):
                 with patch.object(image_people,'analyze_image',return_value=faces):
-                    prompt=image_people.build_swap_prompt(tool,selection,['s','r'],Path,style_mode=mode)
+                    prompt=image_people.build_swap_prompt(tool,selection,['s','r'],Path,style_mode=mode,template=swap_prompts.default_prompt(tool))
                 base=swap_prompts.default_prompt(tool).replace('<pose_source>','<image1>').replace('<style_source>','<image1>')
                 self.assertTrue(prompt.startswith(base))
                 for phrase in ('exact head angle','contrast','blends into the image','occlusion','micro-expressions'):

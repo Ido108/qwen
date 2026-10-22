@@ -93,11 +93,12 @@ def validate(tool: dict, text: str) -> str:
 
 def _initial(tool):
     validate(tool, tool['prompt'])
-    return {'current': 'scene-v4', 'versions': [
+    # The author's prompt (BFS docs) is the default; the app's longer templates stay selectable in the history.
+    return {'current': 'author-v1', 'versions': [
+        {'id': 'author-v1', 'text': tool['prompt'], 'created_at': None, 'label': 'Original prompt'},
         {'id': 'scene-v4', 'text': default_prompt(tool), 'created_at': None, 'label': 'Scene and identity'},
         {'id': 'style-v3', 'text': _style_prompt_v3(tool), 'created_at': None, 'label': 'Match scene style'},
-        {'id': 'scene-v2', 'text': _scene_prompt_v2(tool), 'created_at': None, 'label': 'Scene preservation'},
-        {'id': 'author-v1', 'text': tool['prompt'], 'created_at': None, 'label': 'Original prompt'}]}
+        {'id': 'scene-v2', 'text': _scene_prompt_v2(tool), 'created_at': None, 'label': 'Scene preservation'}]}
 
 
 def get(tool: dict) -> dict:

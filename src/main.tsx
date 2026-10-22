@@ -127,7 +127,10 @@ function App(){
   const chosenModel=modelState?.models.find(m=>m.id===params.model_id);
   const validSteps=params.steps===null||(Number.isInteger(params.steps)&&params.steps>=1&&params.steps<=80);
   const tools=modelState?.tools||[];
-  const swapTools=tools.filter(t=>t.swap);
+  // Swap page tools: the BFS Qwen swaps (face picker and prompt templates) and the Krea 2 swaps (the author's prompt).
+  const swapTools=tools.filter(t=>t.swap||t.swap_page);
+  const fitting=swapTools.filter(t=>t.families.includes(chosenModel?.family||''));
+  const pageSwapTools=fitting.length?fitting:swapTools.filter(t=>t.swap);
   const [imageSection,setImageSection]=useState<'create'|'swap'>(()=>location.hash==='#swap'?'swap':'create');
   const [swap,setSwapState]=useState<SwapState>(()=>{try{return {...swapDefaults,...JSON.parse(localStorage.getItem('qwen-swap-v1')||'{}')};}catch{return swapDefaults;}});
   const setSwap=(next:SwapState)=>{setSwapState(next);try{localStorage.setItem('qwen-swap-v1',JSON.stringify(next));}catch{}};
@@ -293,11 +296,21 @@ function App(){
   }
   // Images > Swap: the chosen swap tool with picture 1 (scene) and picture 2 (head or person), on a Qwen-Image-2.1 model.
   async function generateSwap(){
-    const tool=swapTools.find(t=>t.id===swap.tool)??swapTools[0];
+    const family=chosenModel?.family||'';
+    const tool=swapTools.find(t=>t.id===swap.tool&&t.families.includes(family))??swapTools.find(t=>t.families.includes(family))??swapTools[0];
     if(locked||!tool)return;if(!validSteps){setError('Enter a whole number of steps from 1 to 80.');return;}
     if(!params.randomize_seed&&(!Number.isInteger(params.seed)||params.seed<0||params.seed>2147483647)){setError('Seed must be a whole number from 0 to 2147483647.');return;}
-    if(!imageReady||!tool.families.includes(chosenModel?.family||'')){setError('Swap runs on a Qwen-Image-2.1 model. Choose one above.');return;}
+    if(!imageReady||!tool.families.includes(family)){setError('Swap runs on a Qwen-Image-2.1 or Krea 2 Turbo model. Choose one above.');return;}
     if(!swap.slots[0]||!swap.slots[1]){setError(`Add both pictures: 1 ${tool.inputs.labels[0]}, 2 ${tool.inputs.labels[1]}.`);return;}
+    if(tool.swap_page){
+      // Krea 2 swap: the author's workflow, picture 1 the base and picture 2 the reference, with the author's prompt.
+      const prompt=tool.prompt+(swap.extra.trim()?' '+swap.extra.trim():'');
+      setSubmitting(true);setError('');setNotice('');setJob(null);
+      try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,prompt,negative_prompt:swapNegative(swap),tool_id:tool.id,tool_options:{},lora_strength:swap.strength,enhance:false,loras:activeLoras,images:swap.slots.map(i=>i!.id),image_labels:swap.slots.map(i=>subjectLabel(i?.subjectLabel)),denoise:null})});
+        setJob(created);setPollId(created.id);setNotice('Added to queue.');queue.refresh();}
+      catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
+      return;
+    }
     if(!swap.selection||!Object.values(swap.selection.assignments).some(Boolean)){setError('Choose a replacement for at least one face in picture 1.');return;}
     const prompt=tool.prompt+(swap.extra.trim()?' '+swap.extra.trim():'');
     setSubmitting(true);setError('');setNotice('');setJob(null);
@@ -307,7 +320,7 @@ function App(){
   }
   function showImageSection(next:'create'|'swap'){setImageSection(next);window.history.replaceState(null,'',next==='swap'?'#swap':'#');setError('');
     // Swap runs on Qwen-Image-2.1: switch from Krea 2 or Z-Image to a ready Qwen model, Turbo first (the author's 8-step setup).
-    if(next==='swap'&&!(chosenModel?.family||'').startsWith('qwen-image-2.1')){const qwen=(modelState?.models||[]).filter(m=>m.kind==='image'&&(m.family||'').startsWith('qwen-image-2.1'));
+    if(next==='swap'&&!swapTools.some(t=>t.families.includes(chosenModel?.family||''))){const qwen=(modelState?.models||[]).filter(m=>m.kind==='image'&&(m.family||'').startsWith('qwen-image-2.1'));
       const pick=qwen.find(m=>m.family==='qwen-image-2.1-turbo'&&m.installed)??qwen.find(m=>m.installed)??qwen[0];if(pick){manualSampling.current.clear();}if(pick)setParams(p=>({...p,model_id:pick.id,steps:null,cfg:null,sampler:null,scheduler:null}));}}
   function reorder(index:number,delta:number){setInputs(old=>{const next=[...old];[next[index],next[index+delta]]=[next[index+delta],next[index]];return next;});}
   function applyExample(example:Example){setParams(p=>({...p,prompt:example.prompt,enhance:example.prompt_extend}));setInputs(example.inputs.map((name)=>({id:`example:${name}`,name,url:`/examples/${name}`})));setActiveExample(null);setJob(null);setNotice(t('promptLoaded'));promptRef.current?.focus();}
@@ -365,7 +378,7 @@ function App(){
           {adviceShown?<small className="lora-auto-settings" role="status">{loraAdvice!.note}</small>:null}
           {config&&missingModels.length?<small className="model-missing">Missing model files download automatically when you generate.</small>:null}
         </section>
-        {imageSection==='swap'?<SwapPanel modelId={params.model_id} restoreKey={imageRestoreKey} effectiveCfg={params.cfg??chosenModel?.generation_defaults?.cfg??(swapNegative(swap).trim()?2:1)} modelFamily={chosenModel?.family} options={params} onOptions={values=>setParams(p=>({...p,...values}))} steps={<ImageSettings idPrefix="swap" part="steps" {...settingsProps} tool={swapTools.find(t=>t.id===swap.tool)??swapTools[0]} value={{...params,negative_prompt:swapNegative(swap)}}/>} advanced={<ImageSettings idPrefix="swap" part="advanced" {...settingsProps} value={{...params,negative_prompt:swapNegative(swap)}}/>} api={api} tools={swapTools} value={swap} onChange={setSwap} disabled={locked} results={history} people={people} onPeople={loadPeople} revision={libraryRevision}/>:null}
+        {imageSection==='swap'?<SwapPanel modelId={params.model_id} restoreKey={imageRestoreKey} effectiveCfg={params.cfg??chosenModel?.generation_defaults?.cfg??(swapNegative(swap).trim()?2:1)} modelFamily={chosenModel?.family} options={params} onOptions={values=>setParams(p=>({...p,...values}))} steps={<ImageSettings idPrefix="swap" part="steps" {...settingsProps} tool={pageSwapTools.find(t=>t.id===swap.tool)??pageSwapTools[0]} value={{...params,negative_prompt:swapNegative(swap)}}/>} advanced={<ImageSettings idPrefix="swap" part="advanced" {...settingsProps} value={{...params,negative_prompt:swapNegative(swap)}}/>} api={api} tools={pageSwapTools} value={swap} onChange={setSwap} disabled={locked} results={history} people={people} onPeople={loadPeople} revision={libraryRevision}/>:null}
         {imageSection==='swap'?<MobileResults results={history.filter(item=>!!item.image_url)} onOpen={openResultPreview} onUseSettings={useMobileSettings} disabled={locked} onGallery={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}/>:null}
         <section ref={inputPanel} className="panel input-panel" hidden={imageSection==='swap'}><div className="section-heading"><h2>{t('input')}</h2>{inputs.length>0?<span className="count">{inputs.length}/10</span>:null}{activeTool?.needs_box&&inputs.length?<button className="text-button mark-object" disabled={locked} onClick={()=>setBoxOpen(true)}><SquareDashed size={15}/>Mark object</button>:null}{inputs.length>0?<button className="text-button" disabled={locked} onClick={()=>setInputs([])}>Clear</button>:null}<button type="button" className={`library-toggle ${libraryOpen?'open':''}`} aria-expanded={libraryOpen} aria-haspopup="dialog" onClick={()=>libraryOpen?closeLibrary():openLibrary(null)} title="Uploads, results and people"><Images size={14}/>Library<ChevronDown size={13}/></button></div>
           <div className={`upload-area ${dragging?'dragging':''} ${inputs.length?'has-images':''}`} onDragOver={e=>{e.preventDefault();if(!locked)setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);upload(Array.from(e.dataTransfer.files));}}>

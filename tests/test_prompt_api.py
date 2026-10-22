@@ -60,8 +60,11 @@ class PromptApiTests(unittest.TestCase):
 
     def test_non_realistic_swap_applies_source_style_and_editable_negative(self):
         selection=dict(scene_image='scene',reference_image='head',scene_revision='a'*24,reference_revision='a'*24,assignments={'face-1':'face-1'})
+        from backend import models, swap_prompts
+        # The app's scene template (the author's default prompt has no style placeholder).
         body={**self.body,'tool_id':'head-swap','swap_selection':selection,'swap_style_source':2,
-              'swap_style_mode':'non-realistic','negative_prompt':'photographic skin, texture from @Image2'}
+              'swap_style_mode':'non-realistic','negative_prompt':'photographic skin, texture from @Image2',
+              'swap_prompt_template':swap_prompts.default_prompt(models.image_tool('head-swap'))}
         preview=self.post('/api/swap-prompts/head-swap/preview',body)
         response=self.post('/api/generate',body)
         self.assertEqual(response.status_code,202,response.text)
@@ -110,7 +113,7 @@ class PromptApiTests(unittest.TestCase):
         self.assertEqual(preview.status_code,200,preview.text)
         self.assertEqual(queued.status_code,202,queued.text)
         self.assertEqual(preview.json()['prompt'],self.queued[-1]['prompt'])
-        self.assertIn('Start with <image1> as the base image.',self.queued[-1]['prompt'])
+        self.assertIn('head_swap: start with <image1> as the base image, keeping its lighting',self.queued[-1]['prompt'])
         self.assertIn('Keep the person from <image1> beside the statue from <image2>.',self.queued[-1]['prompt'])
 
     def test_custom_labels_reach_both_reference_video_families(self):

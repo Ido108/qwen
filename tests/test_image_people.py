@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from backend import image_people, models
+from backend import image_people, models, swap_prompts
 
 
 def scan(count):
@@ -36,8 +36,10 @@ class ImagePeopleTests(unittest.TestCase):
 
     def prompt(self, selection=None, tool='head-swap'):
         with patch.object(image_people, 'analyze_image', side_effect=[self.scene, self.reference]):
+            # The app's scene template (selectable in Edit swap prompt; the author's prompt is the default).
             return image_people.build_swap_prompt(models.image_tool(tool), selection or self.selection,
-                                                  ['scene.png', 'reference.png'], Path, 'Keep the earrings.')
+                                                  ['scene.png', 'reference.png'], Path, 'Keep the earrings.',
+                                                  template=swap_prompts.default_prompt(models.image_tool(tool)))
 
     def test_crossed_choices_preserve_the_unselected_person(self):
         text = self.prompt()
@@ -67,7 +69,8 @@ class ImagePeopleTests(unittest.TestCase):
     def test_pose_and_style_choices_reach_the_authoritative_prompt(self):
         with patch.object(image_people,'analyze_image',side_effect=[self.scene,self.reference]):
             prompt=image_people.build_swap_prompt(models.image_tool('head-swap-expression'),self.selection,
-                ['scene.png','reference.png'],Path,'Keep the earrings.',pose_source=2,style_source=1)
+                ['scene.png','reference.png'],Path,'Keep the earrings.',pose_source=2,style_source=1,
+                template=swap_prompts.default_prompt(models.image_tool('head-swap-expression')))
         self.assertIn('expression of person 2 in <image2>',prompt)
         self.assertIn('exact visual style of <image1>',prompt)
         self.assertIn('background and text of <image1>',prompt)
@@ -88,7 +91,7 @@ class ImagePeopleTests(unittest.TestCase):
                 with self.subTest(tool=tool_id,style=style_source),patch.object(image_people,'analyze_image',side_effect=[scan(1),scan(1)]):
                     prompt=image_people.build_swap_prompt(models.image_tool(tool_id),
                         {**self.selection,'assignments':{'face-1':'face-1'}},['scene.png','reference.png'],Path,
-                        pose_source=1,style_source=style_source)
+                        pose_source=1,style_source=style_source,template=swap_prompts.default_prompt(models.image_tool(tool_id)))
                 self.assertIn(f'exact visual style of <image{style_source}>',prompt)
                 self.assertIn('head angle, head rotation, gaze, expression and micro-expressions from <image1>',prompt)
                 self.assertNotIn('<style_source>',prompt)

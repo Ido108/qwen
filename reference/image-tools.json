@@ -359,7 +359,7 @@
     "id": "head-swap",
     "title": "Head swap",
     "swap": true,
-      "summary": "Replace a head in picture 1 with a head from picture 2. Choose the face, pose and style sources below. Check the result for changes to the scene.",
+    "summary": "Replace a head in picture 1 with a head from picture 2. Choose the face, pose and style sources below. Check the result for changes to the scene.",
     "lora": "lora-bfs-head",
     "strength": 1.0,
     "families": [
@@ -421,7 +421,7 @@
     "id": "body-swap",
     "title": "Body swap",
     "swap": true,
-      "summary": "Replace a person in picture 1 with the person from picture 2, including clothing and body shape. Choose the face, pose and style sources below. Use a full-body reference with a plain background.",
+    "summary": "Replace a person in picture 1 with the person from picture 2, including clothing and body shape. Choose the face, pose and style sources below. Use a full-body reference with a plain background.",
     "lora": "lora-bfs-body",
     "strength": 1.0,
     "families": [
@@ -729,7 +729,8 @@
       "ref_position_a": "aligned (trained)",
       "grounding_px": 512
     },
-    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md"
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md",
+    "swap_page": true
   },
   {
     "id": "krea-body-swap",
@@ -766,7 +767,8 @@
       "ref_position_a": "aligned (trained)",
       "grounding_px": 0
     },
-    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md"
+    "source": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/blob/0ca3913ade4b4ada458d60c232354e8586c4c181/docs/krea-2.md",
+    "swap_page": true
   },
   {
     "id": "krea-outfit-transfer",

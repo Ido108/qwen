@@ -2,7 +2,7 @@ import {ModelDefaultsScope,bindSettings} from './ModelDefaults';
 import {Nudge,SettingLabel} from './SettingLabel';
 import {ImageLabel} from './ImageLabel';
 import {FilePicker} from './FilePicker';
-import {useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import type {ImageTool,ImageOptions} from './ImageSettings';
 import {InputLibrary,type InputImage,type Person} from './InputLibrary';
 import {LibraryPopover} from './LibraryPopover';
@@ -38,12 +38,17 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
   async function upload(index:number,file?:File){if(!file)return;setUploading(index);setError('');
     try{const body=new FormData();body.append('files',file);const [image]=await api('/api/uploads',{method:'POST',body});setSlot(index,image);}
     catch(e){setError((e as Error).message);}finally{setUploading(null);}}
+  // The current template of a Qwen swap: pose and style choices show only when it uses them (the author's prompt does not).
+  const [template,setTemplate]=useState('');
+  useEffect(()=>{if(!tool?.swap){setTemplate('');return;}let live=true;api(`/api/swap-prompts/${tool.id}`).then(r=>{if(live)setTemplate(r.text||'');}).catch(()=>{});return()=>{live=false;};},[tool?.id,tool?.swap,value.promptRevision,value.promptTemplate]);
   if(!tool)return null;
+  const krea=!!tool.swap_page;
+  const usesPose=(value.promptTemplate??template).includes('<pose_source>'),usesStyle=(value.promptTemplate??template).includes('<style_source>');
   const roles=ROLES[tool.id]??['',''];
   const bindings=bindSettings(value,patch=>onChange({...value,...patch}),{'Image style':['styleMode','styleSource'],'Head pose and expression':'poseSource','Color and style':'styleSource','Effect strength':'strength','Extra instructions':'extra','Negative prompt':value.styleMode==='non-realistic'?'nonRealisticNegative':'negativePrompt'});
   bindings['Negative prompt'].value={negativePrompt:value.negativePrompt??'',nonRealisticNegative:value.nonRealisticNegative??nonRealisticNegative};
   return <ModelDefaultsScope model={modelId} scope={'swap-'+tool.id} bindings={bindings} draftKey="qwen-swap-v1" restoreKey={restoreKey}><section ref={panel} className="panel swap-panel">
-    <div className="section-heading"><h2>Swap</h2><SwapPromptEditor key={tool.id} api={api} tool={tool} value={value} onChange={onChange} disabled={disabled}/></div>
+    <div className="section-heading"><h2>Swap</h2>{krea?<a className="text-button" href={tool.source} target="_blank" rel="noreferrer" title={tool.prompt}>Author's guide</a>:<SwapPromptEditor key={tool.id} api={api} tool={tool} value={value} onChange={onChange} disabled={disabled}/>}</div>
     <div className="segmented swap-types" role="radiogroup" aria-label="Swap type">{tools.map(t=><button key={t.id} type="button" role="radio" aria-checked={t.id===tool.id} aria-selected={t.id===tool.id} title={t.summary} disabled={disabled} onClick={()=>onChange({...value,tool:t.id,promptTemplate:undefined,promptRevision:undefined})}>{t.title}</button>)}</div>
     {modelFamily==='qwen-image-2.1-turbo'?<p className="swap-turbo-note">Made for Qwen Standard; Turbo can differ. <a href={tool.source} target="_blank" rel="noreferrer">Guide</a></p>:null}
     <div className="swap-slots">{[0,1].map(index=>{const image=value.slots[index];return <div key={index} className="swap-slot">
@@ -56,14 +61,14 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
       <div className="swap-slot-actions">{image?<FilePicker className="text-button" disabled={disabled||uploading!==null} onFiles={files=>upload(index,files[0])}>{uploading===index?'Uploading…':'Replace'}</FilePicker>:null}
         <button type="button" className="text-button" disabled={disabled} onClick={()=>setPicking(index)} title="Library or People">Library</button></div>
     </div>;})}</div>
-    <SwapFaces api={api} images={[value.slots[0]?.id||null,value.slots[1]?.id||null]} value={value.selection} onChange={selection=>onChange({...latest.current,selection})} disabled={disabled}/>
+    {krea?null:<SwapFaces api={api} images={[value.slots[0]?.id||null,value.slots[1]?.id||null]} value={value.selection} onChange={selection=>onChange({...latest.current,selection})} disabled={disabled}/>}
     <LibraryPopover open={picking!==null} onClose={()=>setPicking(null)} anchor={panel}>
       <InputLibrary api={api} inputs={picking!==null&&value.slots[picking]?[value.slots[picking]!]:[]} onChange={next=>{if(picking!==null)setSlot(picking,next[0]??null);setPicking(null);}}
         results={results} people={people} onPeople={onPeople} replace target={0} revision={revision} disabled={disabled} limit={1}
         onUpload={files=>{if(picking!==null)upload(picking,files[0]);setPicking(null);}} onClose={()=>setPicking(null)}/>
     </LibraryPopover>
     <div className="swap-row">
-    <div className="field" title={value.styleMode==='non-realistic'?'Match the exact shapes, lines, colors, texture and shading of picture 1. Keep the replacement person recognizable in that style.':'Follow the selected picture’s color, light and texture.'}><SettingLabel disabled={disabled} label="Image style" value="Realistic" onReset={()=>onChange({...value,styleMode:'realistic'})}>Image style</SettingLabel><div className="segmented" role="radiogroup" aria-label="Image style">{(['realistic','non-realistic'] as const).map(mode=><button type="button" role="radio" aria-checked={(value.styleMode??'realistic')===mode} key={mode} disabled={disabled} onClick={()=>onChange({...value,styleMode:mode,...(mode==='non-realistic'?{styleSource:1 as const}:{})})}>{mode==='realistic'?'Realistic':'Non-realistic'}</button>)}</div></div>
+    {krea?null:<div className="field" title={value.styleMode==='non-realistic'?'Match the exact shapes, lines, colors, texture and shading of picture 1. Keep the replacement person recognizable in that style.':'Follow the selected picture’s color, light and texture.'}><SettingLabel disabled={disabled} label="Image style" value="Realistic" onReset={()=>onChange({...value,styleMode:'realistic'})}>Image style</SettingLabel><div className="segmented" role="radiogroup" aria-label="Image style">{(['realistic','non-realistic'] as const).map(mode=><button type="button" role="radio" aria-checked={(value.styleMode??'realistic')===mode} key={mode} disabled={disabled} onClick={()=>onChange({...value,styleMode:mode,...(mode==='non-realistic'?{styleSource:1 as const}:{})})}>{mode==='realistic'?'Realistic':'Non-realistic'}</button>)}</div></div>}
       <div className="field"><SettingLabel disabled={disabled} htmlFor="swap-size" label="Output size" value={'Auto · 2 MP'} onReset={()=>onOptions({custom_size:false,auto_resolution:2048})}>Output size</SettingLabel><select id="swap-size" title="Auto follows picture 1. Custom size changes the output shape." disabled={disabled} value={options.custom_size?'custom':String(options.auto_resolution)} onChange={e=>onOptions(e.target.value==='custom'?{custom_size:true}:{custom_size:false,auto_resolution:Number(e.target.value) as 1024|2048})}>
         <option value="1024">Auto · 1 MP</option><option value="2048">Auto · 2 MP</option><option value="custom">Custom size</option></select></div>
     </div>
@@ -86,8 +91,8 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
       {effectiveCfg<=1&&swapNegative(value).trim()?<small role="status" title="The style instructions still apply. Turbo models are usually tuned for CFG 1.">Ignored at CFG 1. Raise CFG in Advanced image settings to use it.</small>:null}
 </div>
     <details className="disclosure swap-advanced"><summary>Advanced</summary>
-      <p className="swap-advanced-note">The face, hair and eye color always come from picture 2. For a plain face swap keep both on Picture 1.</p>
-  <div className="swap-dimensions" title="These choices guide the model. Check the result for changes outside the selected face.">{([['poseSource','Head pose and expression'],['styleSource','Color and style']] as const).map(([key,label])=><div className="field" key={key}><SettingLabel disabled={disabled} htmlFor={'swap-'+key} label={label} value="Picture 1" onReset={()=>onChange({...value,[key]:1})}><span title={label}>{key==='poseSource'?'Head pose':label}</span></SettingLabel><select id={'swap-'+key} value={key==='styleSource'&&value.styleMode==='non-realistic'?1:value[key]??1} disabled={disabled||(key==='styleSource'&&value.styleMode==='non-realistic')} onChange={e=>onChange({...value,[key]:Number(e.target.value) as 1|2})}><option value="1">Picture 1</option><option value="2">Picture 2</option></select></div>)}</div>
+      {!krea&&(usesPose||usesStyle)?<p className="swap-advanced-note">The face, hair and eye color always come from picture 2. For a plain face swap keep both on Picture 1.</p>:null}
+  {krea||!(usesPose||usesStyle)?null:<div className="swap-dimensions" title="These choices guide the model. Check the result for changes outside the selected face.">{([['poseSource','Head pose and expression'],['styleSource','Color and style']] as const).map(([key,label])=><div className="field" key={key}><SettingLabel disabled={disabled} htmlFor={'swap-'+key} label={label} value="Picture 1" onReset={()=>onChange({...value,[key]:1})}><span title={label}>{key==='poseSource'?'Head pose':label}</span></SettingLabel><select id={'swap-'+key} value={key==='styleSource'&&value.styleMode==='non-realistic'?1:value[key]??1} disabled={disabled||(key==='styleSource'&&value.styleMode==='non-realistic')} onChange={e=>onChange({...value,[key]:Number(e.target.value) as 1|2})}><option value="1">Picture 1</option><option value="2">Picture 2</option></select></div>)}</div>}
       {advanced}</details>
     {error?<div className="message error" role="alert"><span>{error}</span></div>:null}
   </section></ModelDefaultsScope>;
