@@ -92,7 +92,7 @@ class GenerationRequest(ImageLabels):
     vae_id: str = Field(default='auto', max_length=120)
     # Optional LoRA tool (see reference/image-tools.json) and its options.
     tool_id: str | None = Field(default=None, max_length=40)
-    lora_strength: float | None = Field(default=None, ge=0, le=1.5)
+    lora_strength: float | None = Field(default=None, ge=0, le=2)
     tool_prompt_addition: str | None = Field(default=None, max_length=4000)
     tool_options: dict[str, str] = Field(default_factory=dict)
     swap_selection: SwapSelection | None = None
