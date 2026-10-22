@@ -22,7 +22,8 @@ import {VideoTab} from './VideoTab';
 import {MultiReferenceTab} from './MultiReferenceTab';
 import {ReferenceTab} from './ReferenceTab';
 import {UpscaleTab} from './UpscaleTab';
-import {ImageSettings,toolPrompt,toolStrength,type ImageOptions,type ToolState} from './ImageSettings';
+import {ImageSettings,toolPrompt,toolStrength,type ImageOptions,type JobPlan,type ToolState} from './ImageSettings';
+import {SwapLoras} from './SwapLoras';
 import {Gallery,inputImage} from './Gallery';
 import {InputLibrary,type Person,type InputImage} from './InputLibrary';
 import {CompareView} from './CompareView';
@@ -351,7 +352,7 @@ function App(){
       // Krea 2 swap: the author's workflow, picture 1 the base and picture 2 the reference, with the author's prompt.
       const prompt=tool.prompt+(swap.extra.trim()?' '+swap.extra.trim():'');
       setSubmitting(true);setError('');setNotice('');setJob(null);
-      try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,...swapSampling,...swapSize,prompt,negative_prompt:swapNegative(swap),tool_id:tool.id,tool_options:{},lora_strength:swap.strength,swap_selection:null,swap_prompt_template:null,swap_prompt_revision:null,swap_extra:'',enhance:false,loras:activeLoras,images:sent.map(i=>i.id),image_labels:sent.map(i=>subjectLabel(i.subjectLabel)),denoise:null})});
+      try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,...swapSampling,...swapSpeed,...swapSize,prompt,negative_prompt:swapNegative(swap),tool_id:tool.id,tool_options:{},lora_strength:swap.strength,swap_selection:null,swap_prompt_template:null,swap_prompt_revision:null,swap_extra:'',enhance:false,loras:activeLoras,images:sent.map(i=>i.id),image_labels:sent.map(i=>subjectLabel(i.subjectLabel)),denoise:null})});
         setJob(created);setPollId(created.id);setNotice('Added to queue.');queue.refresh();}
       catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
       return;
@@ -359,7 +360,7 @@ function App(){
     if(!swap.selection||!Object.values(swap.selection.assignments).some(Boolean)){setError('Choose a replacement for at least one face in picture 1.');return;}
     const prompt=tool.prompt+(swap.extra.trim()?' '+swap.extra.trim():'');
     setSubmitting(true);setError('');setNotice('');setJob(null);
-    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,...swapSampling,...swapSize,prompt,negative_prompt:swapNegative(swap),swap_style_mode:swap.styleMode??'realistic',tool_id:tool.id,tool_options:{},swap_selection:swap.selection,swap_extra:swap.extra,swap_pose_source:swap.poseSource??1,swap_style_source:swap.styleSource??1,swap_prompt_template:swap.promptTemplate??null,swap_prompt_revision:swap.promptRevision??null,lora_strength:swap.strength,enhance:false,loras:activeLoras,images:sent.map(i=>i.id),image_labels:sent.map(i=>subjectLabel(i.subjectLabel)),denoise:null})});
+    try{const created=await api('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...params,...swapSampling,...swapSpeed,...swapSize,prompt,negative_prompt:swapNegative(swap),swap_style_mode:swap.styleMode??'realistic',tool_id:tool.id,tool_options:{},swap_selection:swap.selection,swap_extra:swap.extra,swap_pose_source:swap.poseSource??1,swap_style_source:swap.styleSource??1,swap_prompt_template:swap.promptTemplate??null,swap_prompt_revision:swap.promptRevision??null,lora_strength:swap.strength,enhance:false,loras:activeLoras,images:sent.map(i=>i.id),image_labels:sent.map(i=>subjectLabel(i.subjectLabel)),denoise:null})});
       setJob(created);setPollId(created.id);setNotice('Added to queue.');queue.refresh();}
     catch(e){setError((e as Error).message);}finally{setSubmitting(false);}
   }
@@ -387,6 +388,8 @@ function App(){
   async function copyPrompt(text:string){try{await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1600);}catch(e){setError(String(e));}}
   // Swap keeps its own steps, CFG, sampler and schedule (Swap often needs a higher CFG than Create).
   const swapSampling={steps:swap.steps??null,cfg:swap.cfg??null,sampler:swap.sampler??null,scheduler:swap.scheduler??null};
+  const swapSpeed={speed_lora:swap.speedLora??null,speed_lora_strength:swap.speedStrength??null};
+  const swapTool=pageSwapTools.find(t=>t.id===swap.tool)??pageSwapTools[0];
   const swapSize={custom_size:swap.custom_size??false,auto_resolution:swap.auto_resolution??1024,width:swap.width??params.width,height:swap.height??params.height};
   const setSwapSampling=(values:Partial<ImageOptions>)=>setSwap({...swap,...Object.fromEntries(Object.entries(values).filter(([key])=>key in swapSampling))});
   const settingsProps={value:params,model:chosenModel,models:modelState,modelId:params.model_id,tools:tools.filter(t=>!t.swap),tool:activeTool,toolState:{tool_id:activeTool?.id??null,tool_options:params.tool_options,lora_strength:params.lora_strength},disabled:locked,
@@ -395,6 +398,13 @@ function App(){
       // Swap's steps, CFG, sampler and schedule follow the new model too (its default or the saved Swap default).
       if(swap.steps!=null||swap.cfg!=null||swap.sampler||swap.scheduler)setSwap({...swap,steps:null,cfg:null,sampler:null,scheduler:null});}setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');},
     onTool:(state:ToolState)=>{const next=tools.find(t=>t.id===state.tool_id);setParams(p=>({...p,...state,prompt:next?toolPrompt(next,state.tool_options):(p.tool_id?'':p.prompt)}));setError('');}};
+  // What the swap will really run, from the server's own plan (the job is filled from the same code).
+  const [swapPlan,setSwapPlan]=useState<JobPlan|null>(null);
+  const swapNegativeText=swapNegative(swap);
+  useEffect(()=>{if(imageSection!=='swap'||!swapTool||!swapTool.families.includes(chosenModel?.family||'')){setSwapPlan(null);return;}let live=true;
+    api('/api/job-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_id:params.model_id,tool_id:swapTool.id,lora_strength:swap.strength,...swapSpeed,negative_prompt:swapNegativeText,loras:activeLoras})})
+      .then((plan:JobPlan)=>{if(live)setSwapPlan(plan);}).catch(()=>{if(live)setSwapPlan(null);});return()=>{live=false;};
+  },[imageSection,params.model_id,swapTool?.id,swap.strength,swap.speedLora,swap.speedStrength,swapNegativeText,JSON.stringify(activeLoras)]);
   // The enhanced prompt is shown with the result only when enhancement really changed the prompt.
   const rewrittenPrompt=result?.rewritten_prompt?.trim()&&result.rewritten_prompt.trim()!==(result.request?.prompt||'').trim()?result.rewritten_prompt.trim():'';
   const imageDefaultBindings=bindSettings({...params,steps:params.steps??chosenModel?.generation_defaults?.steps??40,cfg:params.cfg??chosenModel?.generation_defaults?.cfg??(params.negative_prompt?.trim()?2:1),sampler:params.sampler??chosenModel?.generation_defaults?.sampler??'euler',scheduler:params.scheduler??null},patch=>{markManual(patch);setParams(p=>({...p,...patch}));},{
@@ -424,14 +434,15 @@ function App(){
       <div className="studio-controls">
       <div className="controls-scroll">
         <section className="panel model-panel">
-          <ImageSettings part="model" {...settingsProps}/>
+          <ImageSettings part="model" {...settingsProps} plan={imageSection==='swap'?swapPlan:null} swapFamilies={imageSection==='swap'?[...new Set(swapTools.flatMap(t=>t.families))]:undefined}/>
           <LoraStack compact value={params.loras} onChange={next=>change('loras',next)} loras={userLoras} family={family} pixels={pixels} prompt={params.prompt} onPrompt={next=>change('prompt',next)} disabled={locked}
             model={chosenModel} onAuthorSettings={applyAuthorSettings} hasModel={f=>!!authorModel(f)}
             onBrowse={()=>{setTab('civitai');window.history.replaceState(null,'','#civitai');}}/>
+          {imageSection==='swap'&&swapPlan?<SwapLoras plan={swapPlan} strength={swap.strength} speedStrength={swap.speedStrength??1} disabled={locked} onSpeed={(on,strength)=>setSwap({...swap,speedLora:on,speedStrength:strength,steps:null,cfg:null,sampler:null,scheduler:null})}/>:null}
           {adviceShown?<small className="lora-auto-settings" role="status">{loraAdvice!.note}</small>:null}
           {config&&missingModels.length?<small className="model-missing">Missing model files download automatically when you generate.</small>:null}
         </section>
-        {imageSection==='swap'?<SwapPanel modelId={params.model_id} restoreKey={imageRestoreKey} effectiveCfg={swap.cfg??chosenModel?.generation_defaults?.cfg??(swapNegative(swap).trim()?2:1)} modelFamily={chosenModel?.family} options={{...params,...swapSize}} onOptions={values=>{const size=Object.fromEntries(Object.entries(values).filter(([key])=>key in swapSize));const rest=Object.fromEntries(Object.entries(values).filter(([key])=>!(key in swapSize)));if(Object.keys(size).length)setSwap({...swap,...size});if(Object.keys(rest).length)setParams(p=>({...p,...rest}));}} steps={<ImageSettings idPrefix="swap" part="steps" {...settingsProps} tool={pageSwapTools.find(t=>t.id===swap.tool)??pageSwapTools[0]} value={{...params,...swapSampling,negative_prompt:swapNegative(swap)}} onChange={setSwapSampling}/>} advanced={<ImageSettings idPrefix="swap" part="advanced" {...settingsProps} value={{...params,...swapSampling,negative_prompt:swapNegative(swap)}} onChange={setSwapSampling}/>} api={api} tools={pageSwapTools} value={swap} onChange={setSwap} disabled={locked} results={history} people={people} onPeople={loadPeople} revision={libraryRevision}/>:null}
+        {imageSection==='swap'?<SwapPanel modelId={params.model_id} restoreKey={imageRestoreKey} effectiveCfg={swap.cfg??swapPlan?.cfg??chosenModel?.generation_defaults?.cfg??(swapNegative(swap).trim()?2:1)} modelFamily={chosenModel?.family} options={{...params,...swapSize}} onOptions={values=>{const size=Object.fromEntries(Object.entries(values).filter(([key])=>key in swapSize));const rest=Object.fromEntries(Object.entries(values).filter(([key])=>!(key in swapSize)));if(Object.keys(size).length)setSwap({...swap,...size});if(Object.keys(rest).length)setParams(p=>({...p,...rest}));}} steps={<ImageSettings idPrefix="swap" part="steps" {...settingsProps} plan={swapPlan} tool={swapTool} value={{...params,...swapSampling,negative_prompt:swapNegative(swap)}} onChange={setSwapSampling}/>} advanced={<ImageSettings idPrefix="swap" part="advanced" {...settingsProps} plan={swapPlan} tool={swapTool} value={{...params,...swapSampling,negative_prompt:swapNegative(swap)}} onChange={setSwapSampling}/>} api={api} tools={pageSwapTools} value={swap} onChange={setSwap} disabled={locked} results={history} people={people} onPeople={loadPeople} revision={libraryRevision}/>:null}
         {imageSection==='swap'?<MobileResults results={history.filter(item=>!!item.image_url)} onOpen={openResultPreview} onUseSettings={useMobileSettings} disabled={locked} onGallery={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}/>:null}
         <section ref={inputPanel} className="panel input-panel" hidden={imageSection==='swap'}><div className="section-heading"><h2>{t('input')}</h2>{inputs.length>0?<span className="count">{inputs.length}/10</span>:null}{activeTool?.needs_box&&inputs.length?<button className="text-button mark-object" disabled={locked} onClick={()=>setBoxOpen(true)}><SquareDashed size={15}/>Mark object</button>:null}{inputs.length>0?<button className="text-button" disabled={locked} onClick={()=>setInputs([])}>Clear</button>:null}<button type="button" className={`library-toggle ${libraryOpen?'open':''}`} aria-expanded={libraryOpen} aria-haspopup="dialog" onClick={()=>libraryOpen?closeLibrary():openLibrary(null)} title="Uploads, results and people"><Images size={14}/>Library<ChevronDown size={13}/></button></div>
           <div className={`upload-area ${dragging?'dragging':''} ${inputs.length?'has-images':''}`} onDragOver={e=>{e.preventDefault();if(!locked)setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);upload(Array.from(e.dataTransfer.files));}}>

@@ -15,6 +15,8 @@ import {displayImageMentions,imageMentionOptions} from './promptMentions';
 export type SwapState={tool:string;slots:(InputImage|null)[];strength:number;extra:string;selection:SwapSelection|null;poseSource:1|2;styleSource:1|2;promptTemplate?:string;promptRevision?:string;styleMode?:'realistic'|'non-realistic';negativePrompt?:string;nonRealisticNegative?:string;
   // Swap's own sampling: its defaults are saved per model and swap type, apart from the Create page's.
   steps?:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null;
+  // The author's speed LoRA (Pruna 8-step on Qwen Standard): off only when you switch it off.
+  speedLora?:boolean;speedStrength?:number|null;
   // Swap's own output size, apart from Create's: Auto 1 MP by default (the Pruna 8-step LoRA was trained at 1K).
   custom_size?:boolean;auto_resolution?:1024|2048;width?:number;height?:number};
 export const nonRealisticNegative='photorealism, photographic face, realistic skin pores, photographic skin texture, individual skin microdetails, photographic hair strands, photographic highlights, mismatched rendering style, pasted-on face';

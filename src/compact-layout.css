@@ -202,3 +202,12 @@ dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12p
 .swap-gender button{padding:4px 14px;border-radius:6px;font-size:12.5px;color:#615d78}
 .swap-gender button[aria-checked=true]{background:#fff;color:var(--accent);font-weight:600;box-shadow:0 1px 3px #2a1f5414,inset 0 0 0 1px #7864dc55}
 @media(pointer:coarse){.swap-gender button{min-height:36px}.swap-image .person-photo-cycle button{min-height:34px}}
+/* Swap's own LoRAs under the model: the swap LoRA and the speed LoRA with its switch */
+.swap-loras{flex-direction:column;align-items:stretch;gap:4px;margin-top:4px}
+.swap-loras .swap-lora{padding:4px 0}
+.swap-lora .lora-control-heading{display:flex;align-items:center;gap:8px}
+.swap-lora .lora-control-heading strong{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.swap-lora-tag{font-size:11px;color:var(--muted,#5b5870);border:1px solid var(--line,#ddd);border-radius:4px;padding:0 5px}
+.swap-lora .lora-switch{margin-left:auto}
+.swap-lora .lora-strength-row span{font-size:12px;color:var(--muted,#5b5870)}
+.swap-lora.off strong{opacity:.6}

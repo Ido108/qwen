@@ -50,6 +50,25 @@ class PromptApiTests(unittest.TestCase):
         self.assertEqual(preview.status_code,200,preview.text)
         self.assertEqual(preview.json()['prompt'],job['prompt'])
 
+    def test_job_plan_matches_the_queued_swap(self):
+        """The page shows /api/job-plan; the queued job must carry the same steps, CFG, sampler and LoRA choice."""
+        swap=dict(scene_image='scene',reference_image='head',scene_revision='a'*24,reference_revision='a'*24,assignments={'face-1':'2'})
+        for model_id,speed,expected in (('uc-int8-convrot',None,(8,1.0,'deis_2m','simple',True)),
+                                        ('uc-int8-convrot',False,(40,None,None,None,False)),
+                                        ('turbo-int8-convrot',None,(8,None,None,None,False)),
+                                        ('krea2-turbo-fp8',None,(8,1.0,'euler','simple',False))):
+            tool='krea-head-swap' if model_id.startswith('krea') else 'head-swap'
+            body={**self.body,'model_id':model_id,'tool_id':tool,'speed_lora':speed,'swap_selection':None if tool.startswith('krea') else swap}
+            if tool.startswith('krea'):body['prompt']='head_swap: replace the head with the reference head.'
+            plan=self.post('/api/job-plan',body).json()
+            self.queued.clear()
+            self.assertEqual(self.post('/api/generate',body).status_code,202)
+            job=self.queued[0]
+            self.assertEqual((job['steps'],job['cfg'],job['sampler'],job['scheduler'],plan['speed_lora'] is not None and plan['speed_lora']['on']),expected,model_id)
+            self.assertEqual(job['steps'],plan['steps'],model_id)
+            if job['cfg'] is not None:self.assertEqual(job['cfg'],plan['cfg'])
+            if job['sampler'] is not None:self.assertEqual(job['sampler'],plan['sampler'])
+
     def test_all_image_mentions_resolve_before_the_queue(self):
         response=self.post('/api/generate',{**self.body,'prompt':'Use @Image2 in <image 1>.','negative_prompt':'Do not copy @Image2 background.'})
         self.assertEqual(response.status_code,202,response.text)

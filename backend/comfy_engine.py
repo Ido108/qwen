@@ -236,9 +236,9 @@ def generate(request, prompt, images, width, height, progress):
         from .models import image_tool
         tool=image_tool(request['tool_id'])
         stack.append((tool['lora'],float(request.get('lora_strength',1.0))))
-        # The author's few-step LoRA for this family at 1.0 (BFS Qwen swaps on Standard: Pruna 8-step).
-        from .models import tool_speed_lora
-        if tool_speed_lora(tool,selected):stack.append((tool_speed_lora(tool,selected),1.0))
+        # The author's few-step LoRA for this family (BFS Qwen swaps on Standard: Pruna 8-step), unless switched off.
+        from .job_plan import speed_lora
+        if speed_lora(tool,selected,request):stack.append((speed_lora(tool,selected,request),float(request.get('speed_lora_strength') or 1.0)))
     stack+=[(lora['id'],float(lora.get('strength',1.0))) for lora in request.get('loras') or []]
     tool_lora=None
     lora_checks=[]

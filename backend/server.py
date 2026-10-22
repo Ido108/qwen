@@ -1509,6 +1509,16 @@ def validate_image_tool(body: GenerationRequest) -> dict:
     return tool
 
 
+@app.post('/api/job-plan')
+def job_plan_preview(body: dict):
+    """What an image job with these choices will really run: steps, CFG, sampler, schedule and every LoRA."""
+    from .job_plan import plan
+    try:
+        return plan(body)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.post('/api/generate', status_code=202)
 def generate(body: GenerationRequest):
     source_prompt, source_negative_prompt = body.prompt, body.negative_prompt
@@ -1580,8 +1590,10 @@ def generate(body: GenerationRequest):
         data['execution'] = 'runpod' if remote else 'local'
         defaults = models.entry(body.model_id)['generation_defaults']
         # A tool's card can name its own step count (BFS Krea 2 body swap: 10 steps on Turbo).
-        recipe = (tool or {}).get('sampling') or {}
-        if recipe.get('families') is not None and models.entry(body.model_id).get('family') not in recipe['families']:
+        from .job_plan import tool_recipe, speed_lora
+        recipe = dict(tool_recipe(tool, models.entry(body.model_id)))
+        # The author's 8 steps, CFG and sampler belong to the speed LoRA; without it the model's own settings apply.
+        if recipe.get('speed_lora') and not speed_lora(tool, models.entry(body.model_id), data):
             recipe = {}
         data['steps'] = body.steps if body.steps is not None else (tool or {}).get('steps') or recipe.get('steps') or defaults['steps']
         data['steps_mode'] = 'custom' if body.steps is not None else 'model'
@@ -1591,11 +1603,9 @@ def generate(body: GenerationRequest):
             data['reference_resolution'] = tool['reference_resolution']
             # The tool author's sampler, schedule and CFG (their workflow) unless the user set one; a model's own
             # defaults (for example a Civitai merge's euler ancestral / beta) do not replace them.
-            sampling = tool.get('sampling') or {}
-            if sampling.get('families') is None or models.entry(body.model_id).get('family') in sampling['families']:
-                for key in ('sampler', 'scheduler', 'cfg'):
-                    if data.get(key) is None and sampling.get(key) is not None:
-                        data[key] = sampling[key]
+            for key in ('sampler', 'scheduler', 'cfg'):
+                if data.get(key) is None and recipe.get(key) is not None:
+                    data[key] = recipe[key]
         data['output_dir'] = str(destination)
         if body.randomize_seed:
             data['seed'] = secrets.randbelow(2147483648)

@@ -6,6 +6,8 @@ export type ImageOptions={negative_prompt?:string;custom_size:boolean;auto_resol
 export type ToolField={key:string;label:string;placeholder?:string;default:string;options?:{value:string;label:string;prompt?:string;strength?:number}[]};
 export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;steps?:number;families:string[];tested_on:string[];swap?:boolean;swap_page?:boolean;sampling?:{steps?:number;sampler?:string;scheduler?:string;cfg?:number;speed_lora?:string;families?:string[]};inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
+/** What a job will really run (POST /api/job-plan): the server fills the job from the same plan. */
+export type JobPlan={steps:number;cfg:number;sampler:string;scheduler:string;loras:{id:string;title:string;source:'tool'|'speed'|'model'|'yours';strength:number}[];speed_lora:{id:string;on:boolean}|null;recipe:boolean};
 export type ToolState={tool_id:string|null;tool_options:Record<string,string>;lora_strength:number|null};
 
 const presets=[[2688,1536,'16:9'],[1536,2688,'9:16'],[2048,2048,'1:1'],[2368,1728,'4:3'],[1728,2368,'3:4'],[1344,768,'16:9'],[768,1344,'9:16'],[1184,864,'4:3'],[864,1184,'3:4'],[1024,1024,'1:1']] as const;
@@ -34,19 +36,22 @@ export function toolStrength(tool:ImageTool,options:Record<string,string>){
 }
 export function toolDefaults(tool:ImageTool){return Object.fromEntries(tool.fields.map(f=>[f.key,f.default]));}
 
-export function ImageSettings({part='main',idPrefix='image',value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled}:{value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
+export function ImageSettings({part='main',idPrefix='image',value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled,plan,swapFamilies}:{plan?:JobPlan|null;swapFamilies?:string[];value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
   models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'steps'|'advanced';idPrefix?:string}){
   // A tool's own steps, sampler, schedule and CFG (its author's workflow) win over the model's, as on the server.
   const recipe=tool?.sampling&&(!tool.sampling.families||tool.sampling.families.includes(model?.family||''))?tool.sampling:null;
   const modelDefaults=model?.generation_defaults;const defaults=modelDefaults&&recipe?{...modelDefaults,...Object.fromEntries(Object.entries(recipe).filter(([key])=>key!=='families'&&key!=='speed_lora'))}:modelDefaults;
-  const defaultSteps=tool?.steps??defaults?.steps;
-  const turbo=!!defaults?.sigmas;
+  // With a plan (Swap), every default shown is the one the job will run.
+  const defaultSteps=plan?.steps??tool?.steps??defaults?.steps;
+  const turbo=plan?plan.scheduler==='trained':!!defaults?.sigmas;
+  const planSampler=plan?.sampler??defaults?.sampler??'euler';const planSchedule=plan?(plan.scheduler==='trained'?'trained schedule':plan.scheduler):turbo?'trained schedule':defaults?.scheduler||'simple';
   const page=typeof defaults?.note==='string'&&defaults.note.startsWith('From the Civitai page')?defaults:null;
   const pageText=page?`Author settings: ${page.steps} steps${page.cfg?`, CFG ${page.cfg}`:''}${page.sampler?`, ${page.sampler}`:''}${page.scheduler?` / ${page.scheduler}`:''}.`:'';
   const validSteps=value.steps===null||(Number.isInteger(value.steps)&&value.steps>=1&&value.steps<=80);
-  const defaultCfg=defaults?.cfg??(value.negative_prompt?.trim()?2:1);const validCfg=value.cfg==null||(value.cfg>=1&&value.cfg<=15);
+  const defaultCfg=plan?.cfg??defaults?.cfg??(value.negative_prompt?.trim()?2:1);const validCfg=value.cfg==null||(value.cfg>=1&&value.cfg<=15);
   const family=model?.family||'qwen-image-2.1';
-  const imageModels=(models?.models||[]).filter(m=>m.kind==='image');
+  // Swap lists only the models a swap runs on.
+  const imageModels=(models?.models||[]).filter(m=>m.kind==='image'&&(!swapFamilies||swapFamilies.includes(m.family||'qwen-image-2.1')));
   const groups=[['flux3-klein','FLUX.3 Image Klein'],['flux3-klein-base','FLUX.3 Image Klein Base'],['qwen-image-2.1','Qwen 2.1 Standard'],['qwen-image-2.1-turbo','Qwen 2.1 Turbo (fast)'],['krea-2-turbo','Krea 2 Turbo (fast)'],['krea-2','Krea 2 Raw'],['z-image-turbo','Z-Image Turbo (fast)'],['z-image','Z-Image Base'],['moss-image-turbo','MOSS Image Turbo (fast)'],['moss-image','MOSS Image SFT'],['moss-image-base','MOSS Image Base']] as const;
   const order=['Q8_0','Q6_K','Q5_K_M','Q4_K_M','Q4_0','FP8','NVFP4','INT8','BF16'];
   const quant=(m:ModelEntry)=>m.title.split(' · ').at(-1)||m.title;
@@ -70,8 +75,10 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
   const hintSampler=defaults?.sampler&&defaults.sampler!=='euler'?defaults.sampler.replace(/_/g,' '):'';const hintScheduler=defaults?.scheduler&&defaults.scheduler!=='simple'?defaults.scheduler.replace(/_/g,' '):'';
   // CFG 1 runs one pass without the negative branch, so a negative prompt changes nothing.
   const settingsHint=`${family.startsWith('flux3-klein')?(family.endsWith('base')?'FLUX.3 Klein Base':'FLUX.3 Klein'):family==='qwen-image-2.1-turbo'?'Turbo':family==='krea-2-turbo'?'Krea 2 Turbo':family==='krea-2'?'Krea 2 Raw':family==='z-image-turbo'?'Z-Image Turbo':family==='z-image'?'Z-Image Base':family==='moss-image-turbo'?'MOSS Image Turbo':family==='moss-image'?'MOSS Image SFT':family==='moss-image-base'?(defaults?.speed_lora?'MOSS Image Base Turbo (8-step DMD LoRA)':'MOSS Image Base'):'Standard'}, ${hintSteps} steps, ${hintCfg===null?'CFG 2 with a negative prompt, else 1':`CFG ${hintCfg}`}${hintSampler?`, ${hintSampler}`:''}${hintScheduler?` / ${hintScheduler}`:''}${hintCfg!==null&&hintCfg<=1?' (negative prompt has no effect at CFG 1)':''}`;
+  // On Swap the line shows what the swap runs (your values or its defaults), not the Create defaults.
+  const swapHint=plan?`Swap: ${value.steps??plan.steps} steps, CFG ${value.cfg??plan.cfg}, ${(value.sampler||plan.sampler).replace(/_/g,' ')} / ${value.scheduler||planSchedule}${plan.loras.some(l=>l.source==='speed')?', with the speed LoRA':''}`:'';
   const status=[RECOMMENDED.has(model?.id??'')?'★ Recommended':'',model?.ready?'✓ Installed':model?'Downloads when you generate':'',
-    settingsHint,pageText?'Author settings':''].filter(Boolean).join(' · ');
+    swapHint||settingsHint,pageText&&!plan?'Author settings':''].filter(Boolean).join(' · ');
   const cls=`image-generation-settings studio-settings settings-${part}`;
   if(part==='model')return <fieldset className={cls} disabled={disabled} aria-label="Model">
     <div className="field model-field"><label htmlFor="image-model">Model</label>
@@ -91,8 +98,8 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
     </div>
   </fieldset>;
   if(part==='advanced')return <fieldset className={cls} disabled={disabled} aria-label="Sampler and schedule">
-    <div className="field"><SettingLabel htmlFor={`${idPrefix}-sampler`} label="Sampler" value={defaults?.sampler||'euler'} onReset={()=>onChange({sampler:null})}>Sampler</SettingLabel><select id={`${idPrefix}-sampler`} value={value.sampler||''} onChange={e=>onChange({sampler:e.target.value||null})}><option value="">Model default ({defaults?.sampler||'euler'})</option>{['euler','res_multistep','dpmpp_2m','heun','res_2m','res_2s','res_2m_ode','res_2s_ode','deis_2m'].map(name=><option key={name} value={name}>{name}</option>)}</select></div>
-    <div className="field"><SettingLabel htmlFor={`${idPrefix}-scheduler`} label="Schedule" value={turbo?'trained schedule':defaults?.scheduler||'simple'} onReset={()=>onChange({scheduler:null})}>Schedule</SettingLabel><select id={`${idPrefix}-scheduler`} value={value.scheduler||''} onChange={e=>onChange({scheduler:e.target.value||null})}><option value="">Model default ({turbo?'trained schedule':defaults?.scheduler||'simple'})</option>{['simple','normal','beta','karras','sgm_uniform'].map(name=><option key={name} value={name}>{name}</option>)}</select>{turbo&&value.scheduler?<small>Custom schedule. Reset restores this model’s trained schedule.</small>:null}</div>
+    <div className="field"><SettingLabel htmlFor={`${idPrefix}-sampler`} label="Sampler" value={planSampler} onReset={()=>onChange({sampler:null})}>Sampler</SettingLabel><select id={`${idPrefix}-sampler`} value={value.sampler||''} onChange={e=>onChange({sampler:e.target.value||null})}><option value="">{plan?.recipe?'Swap default':'Model default'} ({planSampler})</option>{['euler','res_multistep','dpmpp_2m','heun','res_2m','res_2s','res_2m_ode','res_2s_ode','deis_2m'].map(name=><option key={name} value={name}>{name}</option>)}</select></div>
+    <div className="field"><SettingLabel htmlFor={`${idPrefix}-scheduler`} label="Schedule" value={planSchedule} onReset={()=>onChange({scheduler:null})}>Schedule</SettingLabel><select id={`${idPrefix}-scheduler`} value={value.scheduler||''} onChange={e=>onChange({scheduler:e.target.value||null})}><option value="">{plan?.recipe?'Swap default':'Model default'} ({planSchedule})</option>{['simple','normal','beta','karras','sgm_uniform'].map(name=><option key={name} value={name}>{name}</option>)}</select>{turbo&&value.scheduler?<small>Custom schedule. Reset restores this model’s trained schedule.</small>:null}</div>
   </fieldset>;
   return <fieldset className={cls} disabled={disabled} aria-label="Tool and output size">
     <div className="field"><SettingLabel htmlFor="image-tool" label="Tool" value={'None'} onReset={()=>chooseTool('')}>Tool</SettingLabel>
