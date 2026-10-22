@@ -106,3 +106,40 @@ dialog .resident-model p[role=status]{flex:1 1 220px;margin:0;font-size:12.5px;l
 dialog .resident-model .button{min-height:32px;padding:4px 12px;font-size:12.5px}
 dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12px}
 @media(max-width:600px){dialog .resident-model .button{min-height:40px}}
+#root .studio-controls .krea-strength{flex-basis:100%;display:grid;gap:2px;margin-top:2px}
+#root .studio-controls .krea-strength input[type=range]{width:100%;accent-color:var(--accent)}
+.queue-activity-stop{flex-shrink:0;min-height:32px;padding:0 10px;font-size:12.5px;font-weight:600;color:#b42318}
+.queue-activity-stop:hover:not(:disabled){background:#fff1ef;border-radius:7px}
+@media(max-width:600px){.queue-activity-stop{min-height:40px}}
+
+/* Field headers: "Set default" shows when the field is hovered or focused (a mouse); touch keeps it visible. */
+@media(hover:hover) and (pointer:fine){
+  .setting-heading .setting-save:not(.saved),.setting-heading .setting-default-menu{opacity:0;transition:opacity .12s}
+  .field:hover .setting-heading .setting-save,.field:focus-within .setting-heading .setting-save,.setting-heading:hover .setting-save,
+  .field:hover .setting-heading .setting-default-menu,.field:focus-within .setting-heading .setting-default-menu,.setting-heading:hover .setting-default-menu,
+  .setting-heading .setting-save:focus-visible{opacity:1}
+  .setting-save,.setting-reset{min-height:22px}
+}
+#root .studio-controls .field,.swap-panel .field{gap:3px}
+#root .studio-controls .studio-settings{gap:8px 12px}
+#root .studio-controls .settings-steps{margin-top:8px}
+.swap-panel .settings-steps{margin:0}
+.swap-panel .field small{line-height:1.35}
+.swap-face-picker{padding:10px 12px;gap:8px;border-radius:10px}
+.swap-face-hint{line-height:1.4}
+#root .studio-controls .settings-steps{display:grid;grid-template-columns:1fr 1fr}
+
+/* Recent panel: closed, it keeps a slim column with its button at the same place as the open panel's Hide button. */
+.results-rail.rail-collapsed{padding:14px 4px;align-items:center;background:#ffffffc4}
+.rail-collapsed .rail-show{width:30px;height:30px;font-size:17px;line-height:1;color:#4b3f80}
+@media(min-width:760px){.studio-main.rail-closed .studio-grid{grid-template-columns:minmax(330px,440px) minmax(0,1fr) 40px}}
+@media(min-width:1280px){.studio-main.rail-closed .studio-grid{grid-template-columns:minmax(380px,460px) minmax(0,1fr) 40px}}
+/* Medium windows: the open panel is a drawer over the result that opens where its button is, below the queue banner. */
+@media(min-width:760px) and (max-width:1279px){
+  .studio-main .studio-grid{position:relative}
+  .studio-main.with-rail .studio-grid{grid-template-columns:minmax(330px,440px) minmax(0,1fr) 40px}
+  .studio-main .results-rail:not(.queue-only):not(.rail-collapsed){position:absolute;top:0;right:0;bottom:auto;width:250px;max-height:calc(100dvh - 170px)}
+  .studio-main .results-rail.rail-collapsed{position:sticky;top:16px;right:auto;bottom:auto;width:auto;box-shadow:none;z-index:auto;height:auto}
+}
+.studio-result .section-heading{flex-wrap:wrap;row-gap:4px}
+.studio-result .result-size{white-space:nowrap}

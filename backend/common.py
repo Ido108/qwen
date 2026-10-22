@@ -111,6 +111,8 @@ class GenerationRequest(ImageLabels):
     # Identity edit: which input photo is the person and which (optional) is the scene; the add order does not matter.
     krea_person: int = Field(default=0, ge=0, le=9)
     krea_scene: int | None = Field(default=None, ge=0, le=9)
+    # How strongly the person photo is followed (the node's ref_boost for the person). None: the card's 2, or 2.5 with a scene.
+    krea_identity_strength: float | None = Field(default=None, ge=0.5, le=4)
 
     @field_validator('prompt')
     @classmethod

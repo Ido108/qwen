@@ -268,7 +268,13 @@ def generate(request, prompt, images, width, height, progress):
         # Added after the LoRAs: the runtime LoRA wrapper stays outside and still runs its hooks.
         from .krea_edit import patch as identity_patch, reference_settings, tool_settings
         settings = tool_settings(tool, len(images)) if tool else reference_settings(len(images))
-        model = identity_patch(model, vae, images, latent, settings)
+        if not tool and request.get('krea_identity_strength') is not None:
+            settings['ref_boost'] = float(request['krea_identity_strength'])
+        # The node encodes the photo with the VAE here. ComfyUI runs nodes in inference mode; outside it, VAE weights
+        # loaded in inference mode by an earlier decode failed the encode ("Inference tensors cannot be saved for
+        # backward", 2026-10-22).
+        with torch.inference_mode():
+            model = identity_patch(model, vae, images, latent, settings)
         # The photo tokens double the sequence: free the encoder (8.9 GB BF16) and the VAE before sampling.
         memory.unload_model_and_clones(clip.patcher)
         memory.unload_model_and_clones(vae.patcher)
@@ -281,10 +287,15 @@ def generate(request, prompt, images, width, height, progress):
         progress(stage='generating', message='Generating image…', step=step + 1, total_steps=total)
     progress(stage='generating', message='Generating image…', step=0, sampling=f'{sampler}-{scheduler}', sampler=sampler, scheduler=scheduler, cfg=cfg, shift_mu=round(mu, 4))
     started = time.perf_counter()
+    weights_before, peak_before = torch.cuda.memory_allocated(), torch.cuda.max_memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
     with torch.inference_mode():
         samples = comfy.sample.sample_custom(model, noise, cfg, comfy.samplers.sampler_object(sampler), sigmas,
                                              positive, negative, latent, callback=callback, seed=request['seed'])
         sampling_seconds = time.perf_counter() - started
+        # Memory the sampling steps used on top of what was already in VRAM (the weights when the model was loaded).
+        progress(sampling_memory_gb=round((torch.cuda.max_memory_allocated() - weights_before) / 1024**3, 2),
+                 sampling_reserved_gb=round(torch.cuda.max_memory_reserved() / 1024**3, 2))
         del noise, latent
         from .lora_runtime import execution_report
         from .comfy_engine import placement
@@ -295,5 +306,5 @@ def generate(request, prompt, images, width, height, progress):
         pixels = vae.decode(samples)
     pixels = pixels.reshape(-1, pixels.shape[-3], pixels.shape[-2], pixels.shape[-1])
     array = (pixels[0].float().cpu().numpy().clip(0, 1) * 255).round().astype(np.uint8)
-    progress(peak_vram_gb=round(torch.cuda.max_memory_allocated() / 1024**3, 2), engine='ComfyUI Krea 2', true_cfg_scale=cfg, applied_lora=applied_loras)
+    progress(peak_vram_gb=round(max(peak_before, torch.cuda.max_memory_allocated()) / 1024**3, 2), engine='ComfyUI Krea 2', true_cfg_scale=cfg, applied_lora=applied_loras)
     return Image.fromarray(array[..., :3]).convert('RGBA')

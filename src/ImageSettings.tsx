@@ -35,7 +35,7 @@ export function toolStrength(tool:ImageTool,options:Record<string,string>){
 export function toolDefaults(tool:ImageTool){return Object.fromEntries(tool.fields.map(f=>[f.key,f.default]));}
 
 export function ImageSettings({part='main',idPrefix='image',value,onChange,model,models,modelId,onModel,tools,tool,toolState,onTool,disabled}:{value:ImageOptions;onChange:(values:Partial<ImageOptions>)=>void;model?:ModelEntry;
-  models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'advanced';idPrefix?:string}){
+  models:ModelState|null;modelId:string;onModel:(id:string)=>void;tools:ImageTool[];tool?:ImageTool;toolState:ToolState;onTool:(state:ToolState)=>void;disabled:boolean;part?:'model'|'main'|'steps'|'advanced';idPrefix?:string}){
   const defaults=model?.generation_defaults;const defaultSteps=tool?.steps??defaults?.steps;  // a tool's own steps win, as on the server
   const turbo=!!defaults?.sigmas;
   const page=typeof defaults?.note==='string'&&defaults.note.startsWith('From the Civitai page')?defaults:null;
@@ -79,13 +79,15 @@ export function ImageSettings({part='main',idPrefix='image',value,onChange,model
       <small className="model-status" title={[pageText,defaults?.note].filter(Boolean).join(' ')||undefined}>{status}</small>
     </div>
   </fieldset>;
-  if(part==='advanced')return <fieldset className={cls} disabled={disabled} aria-label="Steps and CFG">
+  if(part==='steps')return <fieldset className={cls} disabled={disabled} aria-label="Steps and CFG">
     <div className="field slider-field"><SettingLabel htmlFor={`${idPrefix}-steps`} label="Steps" value={defaultSteps} disabled={!defaultSteps} onReset={()=>onChange({steps:null})}>Steps <span className="tool-strength-value">{value.steps??defaultSteps??'…'}</span></SettingLabel><input id={`${idPrefix}-steps`} type="range" min="1" max="80" step="1" disabled={!defaultSteps} value={value.steps??defaultSteps??1} aria-valuetext={`${value.steps??defaultSteps} steps`} title={turbo?`Turbo is trained for ${defaultSteps} steps; other counts stretch its schedule.`:`Default: ${defaultSteps??'…'} steps`} onChange={e=>onChange({steps:Number(e.target.value)})}/>
       {!validSteps?<small>Choose a whole number from 1 to 80.</small>:turbo&&value.steps!==null&&value.steps!==defaultSteps?<small>Turbo is trained for {defaultSteps}.</small>:null}
     </div>
     <div className="field slider-field"><SettingLabel htmlFor={`${idPrefix}-cfg`} label="CFG" value={defaultCfg} onReset={()=>onChange({cfg:null})}>CFG <span className="tool-strength-value">{(value.cfg??defaultCfg).toFixed(1)}</span></SettingLabel><input id={`${idPrefix}-cfg`} type="range" min="1" max="15" step="0.5" disabled={!defaults} value={value.cfg??defaultCfg} aria-valuetext={`CFG ${value.cfg??defaultCfg}`} title={`${defaults?.cfg?'Default from the model page. ':turbo?'Turbo is trained for CFG 1. ':'1, or 2 with a negative prompt. '}Above 1 runs a second guidance pass, so each step takes about twice as long.`} onChange={e=>onChange({cfg:Number(e.target.value)})}/>
       {!validCfg?<small>Choose a number from 1 to 15.</small>:(value.cfg??defaultCfg)>1?<small>Above 1: about 2x slower per step.</small>:null}
     </div>
+  </fieldset>;
+  if(part==='advanced')return <fieldset className={cls} disabled={disabled} aria-label="Sampler and schedule">
     <div className="field"><SettingLabel htmlFor={`${idPrefix}-sampler`} label="Sampler" value={defaults?.sampler||'euler'} onReset={()=>onChange({sampler:null})}>Sampler</SettingLabel><select id={`${idPrefix}-sampler`} value={value.sampler||''} onChange={e=>onChange({sampler:e.target.value||null})}><option value="">Model default ({defaults?.sampler||'euler'})</option>{['euler','res_multistep','dpmpp_2m','heun','res_2m','res_2s','res_2m_ode','res_2s_ode'].map(name=><option key={name} value={name}>{name}</option>)}</select></div>
     <div className="field"><SettingLabel htmlFor={`${idPrefix}-scheduler`} label="Schedule" value={turbo?'trained schedule':defaults?.scheduler||'simple'} onReset={()=>onChange({scheduler:null})}>Schedule</SettingLabel><select id={`${idPrefix}-scheduler`} value={value.scheduler||''} onChange={e=>onChange({scheduler:e.target.value||null})}><option value="">Model default ({turbo?'trained schedule':defaults?.scheduler||'simple'})</option>{['simple','normal','beta','karras','sgm_uniform'].map(name=><option key={name} value={name}>{name}</option>)}</select>{turbo&&value.scheduler?<small>Custom schedule. Reset restores this model’s trained schedule.</small>:null}</div>
   </fieldset>;

@@ -28,8 +28,8 @@ const ROLES:Record<string,[string,string]>={
 type Result={id:string;request:{prompt:string}};
 
 /** Images > Swap: head or body swap with the BFS LoRAs for Qwen-Image-2.1, from two pictures. */
-export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,results,people,onPeople,revision,options,onOptions,advanced,modelFamily,effectiveCfg}:{api:Api;tools:ImageTool[];value:SwapState;onChange:(next:SwapState)=>void;
-  disabled:boolean;results:Result[];people:Person[];onPeople:()=>void;revision:number;options:ImageOptions&{seed:number;randomize_seed:boolean};onOptions:(next:Partial<ImageOptions&{seed:number;randomize_seed:boolean}>)=>void;advanced:React.ReactNode;modelFamily?:string;effectiveCfg:number;modelId:string;restoreKey:number}){
+export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,results,people,onPeople,revision,options,onOptions,advanced,steps,modelFamily,effectiveCfg}:{api:Api;tools:ImageTool[];value:SwapState;onChange:(next:SwapState)=>void;
+  disabled:boolean;results:Result[];people:Person[];onPeople:()=>void;revision:number;options:ImageOptions&{seed:number;randomize_seed:boolean};onOptions:(next:Partial<ImageOptions&{seed:number;randomize_seed:boolean}>)=>void;advanced:React.ReactNode;steps:React.ReactNode;modelFamily?:string;effectiveCfg:number;modelId:string;restoreKey:number}){
   const [uploading,setUploading]=useState<number|null>(null);const [error,setError]=useState('');const [picking,setPicking]=useState<number|null>(null);
   const panel=useRef<HTMLElement>(null);
   const latest=useRef(value);latest.current=value;
@@ -71,9 +71,11 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
     {options.custom_size?<fieldset className="swap-output" disabled={disabled}>
       <div className="swap-dimensions">{(['width','height'] as const).map(key=><div className="field" key={key}><SettingLabel disabled={disabled} htmlFor={'swap-'+key} label={key==='width'?'Width':'Height'} onReset={()=>onOptions({[key]:key==='width'?2688:1536})}>{key==='width'?'Width':'Height'} (px)</SettingLabel><input id={'swap-'+key} type="number" min="256" max="2688" step="8" value={options[key]} onChange={e=>onOptions({[key]:Number(e.target.value)})}/></div>)}</div>
     </fieldset>:null}
+    {steps}
     <div className="swap-row">
     <div className="field swap-strength" title="1.0 is the recommended starting point. Higher values apply the swap model more strongly, including its pose and expression guidance. Lower values can let picture 2's pose dominate. This is not a blend between the pictures; check both identity and scene detail."><SettingLabel disabled={disabled} htmlFor="swap-strength" label="Effect strength" value={tool.strength} onReset={()=>onChange({...value,strength:tool.strength})}><span title="Effect strength">Strength</span> <b>{value.strength.toFixed(2)}</b></SettingLabel>
       <input id="swap-strength" type="range" min="0.5" max="1.5" step="0.05" value={value.strength} disabled={disabled} onChange={e=>onChange({...value,strength:Number(e.target.value)})}/>
+      <small>How strongly the swap LoRA applies. 1.0 is the author's value.</small>
 </div>
     <div className="field swap-seed" title="Turn off Random seed to compare prompt or strength changes with the same seed."><SettingLabel disabled={disabled} htmlFor="swap-seed" label="Seed" value={'Random'} onReset={()=>onOptions({seed:0,randomize_seed:true})}>Seed</SettingLabel><div className="seed-row"><input id="swap-seed" type="number" min="0" max="2147483647" step="1" value={options.seed} disabled={disabled||options.randomize_seed} onChange={e=>onOptions({seed:Number(e.target.value)})}/><label className="checkbox-label"><input type="checkbox" checked={options.randomize_seed} disabled={disabled} onChange={e=>onOptions({randomize_seed:e.target.checked})}/>Random</label></div></div>
     </div>

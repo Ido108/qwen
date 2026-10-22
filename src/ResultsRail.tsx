@@ -16,7 +16,10 @@ export function ResultsRail({open,onToggle,running,results,selected,onSelect,onU
     <div className="rail-head"><h2>Queue</h2><span>{running.length}</span><button className="icon-button" onClick={onToggle} aria-label="Show recent results" title="Show recent results"><PanelRightOpen size={18}/></button></div>
     {jobs}<button className="text-button rail-more" onClick={onOpenQueue}>View queue</button>
   </aside>;
-  if(!open)return <button className="rail-open" onClick={onToggle} aria-label="Show recent results" title="Show recent results"><PanelRightOpen size={18}/>{running.length?<span>{running.length}</span>:null}</button>;
+  // Closed: a slim column whose button sits where the open panel's Hide button is, so the panel opens in place.
+  if(!open)return <aside className="results-rail rail-collapsed" aria-label="Recent results">
+    <button className="icon-button rail-show" onClick={onToggle} aria-label="Show recent results" title="Show recent results">«</button>
+  </aside>;
   return <aside className="results-rail" aria-label="Recent results">
     <div className="rail-head"><h2>Recent</h2><span>{results.length}</span><button className="icon-button" onClick={onToggle} aria-label="Hide recent results" title="Hide"><ChevronsRight size={18}/></button></div>
     {jobs}
