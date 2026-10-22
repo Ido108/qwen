@@ -13,7 +13,9 @@ import {SwapPromptEditor} from './SwapPromptEditor';
 import {PromptInput} from './PromptInput';
 import {displayImageMentions,imageMentionOptions} from './promptMentions';
 
-export type SwapState={tool:string;slots:[InputImage|null,InputImage|null];strength:number;extra:string;selection:SwapSelection|null;poseSource:1|2;styleSource:1|2;promptTemplate?:string;promptRevision?:string;styleMode?:'realistic'|'non-realistic';negativePrompt?:string;nonRealisticNegative?:string};
+export type SwapState={tool:string;slots:[InputImage|null,InputImage|null];strength:number;extra:string;selection:SwapSelection|null;poseSource:1|2;styleSource:1|2;promptTemplate?:string;promptRevision?:string;styleMode?:'realistic'|'non-realistic';negativePrompt?:string;nonRealisticNegative?:string;
+  // Swap's own sampling: its defaults are saved per model and swap type, apart from the Create page's.
+  steps?:number|null;cfg?:number|null;sampler?:string|null;scheduler?:string|null};
 export const nonRealisticNegative='photorealism, photographic face, realistic skin pores, photographic skin texture, individual skin microdetails, photographic hair strands, photographic highlights, mismatched rendering style, pasted-on face';
 export function swapNegative(value:SwapState){return value.styleMode==='non-realistic'?(value.nonRealisticNegative??nonRealisticNegative):(value.negativePrompt??'');}
 export const swapDefaults:SwapState={tool:'head-swap',slots:[null,null],strength:1,extra:'',selection:null,poseSource:1,styleSource:1,styleMode:'realistic',negativePrompt:''};
@@ -45,7 +47,7 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
   const krea=!!tool.swap_page;
   const usesPose=(value.promptTemplate??template).includes('<pose_source>'),usesStyle=(value.promptTemplate??template).includes('<style_source>');
   const roles=ROLES[tool.id]??['',''];
-  const bindings=bindSettings(value,patch=>onChange({...value,...patch}),{'Image style':['styleMode','styleSource'],'Head pose and expression':'poseSource','Color and style':'styleSource','Effect strength':'strength','Extra instructions':'extra','Negative prompt':value.styleMode==='non-realistic'?'nonRealisticNegative':'negativePrompt'});
+  const bindings=bindSettings(value,patch=>onChange({...value,...patch}),{'Image style':['styleMode','styleSource'],'Head pose and expression':'poseSource','Color and style':'styleSource','Effect strength':'strength','Extra instructions':'extra',Steps:'steps',CFG:'cfg',Sampler:'sampler',Schedule:'scheduler','Negative prompt':value.styleMode==='non-realistic'?'nonRealisticNegative':'negativePrompt'});
   bindings['Negative prompt'].value={negativePrompt:value.negativePrompt??'',nonRealisticNegative:value.nonRealisticNegative??nonRealisticNegative};
   return <ModelDefaultsScope model={modelId} scope={'swap-'+tool.id} bindings={bindings} draftKey="qwen-swap-v1" restoreKey={restoreKey}><section ref={panel} className="panel swap-panel">
     <div className="section-heading"><h2>Swap</h2>{krea?<a className="text-button" href={tool.source} target="_blank" rel="noreferrer" title={tool.prompt}>Author's guide</a>:<SwapPromptEditor key={tool.id} api={api} tool={tool} value={value} onChange={onChange} disabled={disabled}/>}</div>

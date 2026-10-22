@@ -70,6 +70,19 @@ class PromptTests(unittest.TestCase):
         restored=swap_prompts.save(self.tool,'',saved['current'],'scene-v2')
         self.assertEqual(restored['text'],swap_prompts._scene_prompt_v2(self.tool))
 
+    def test_prompt_without_image_mentions_saves_and_keeps_picture_one_pose(self):
+        short='head_swap: replace the head with the reference head.'
+        saved=swap_prompts.save(self.tool,short,swap_prompts.get(self.tool)['current'])
+        self.assertEqual(saved['text'],short)
+        faces={'revision':'a'*24,'faces':[{'id':'face-1','box':[.1,.1,.2,.2]},{'id':'face-2','box':[.6,.1,.7,.2]}]}
+        selection=dict(scene_image='s',reference_image='r',scene_revision='a'*24,reference_revision='a'*24,assignments={'face-1':None,'face-2':'face-1'})
+        with patch.object(image_people,'analyze_image',return_value=faces):
+            # A "Picture 2" pose choice left from an older template does not apply to a prompt without @PoseSource.
+            prompt=image_people.build_swap_prompt(self.tool,selection,['s','r'],Path,'',2,2,short)
+        self.assertTrue(prompt.startswith(short))
+        self.assertIn('expression of person 2 in <image1>',prompt)
+        self.assertNotIn('expression of person 1 in <image2>',prompt)
+
     def test_image_notation_validation_and_normal_text(self):
         text='Keep @Image1; use <image 2> and <Picture 3>. name@example.com @unrelated'
         self.assertEqual(image_mentions(text,3),'Keep <image1>; use <image2> and <image3>. name@example.com @unrelated')

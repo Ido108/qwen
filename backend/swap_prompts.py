@@ -86,8 +86,10 @@ def validate(tool: dict, text: str) -> str:
     trigger = 'body_swap:' if tool['id'] == 'body-swap' else 'head_swap:'
     if not text.startswith(trigger):
         raise ValueError(f'Keep "{trigger}" at the start of the prompt.')
-    if len(text) > 6000 or not all(f'<image{i}>' in text for i in (1, 2)):
-        raise ValueError('Use both image mentions and no more than 6,000 characters.')
+    # Image mentions are optional: picture 1 (the base) and picture 2 (the head or person) always reach the model in
+    # that order, so a prompt like the Krea author's "replace the head with the reference head." works too.
+    if len(text) > 6000:
+        raise ValueError('Use no more than 6,000 characters.')
     return text
 
 

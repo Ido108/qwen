@@ -102,6 +102,13 @@ def build_swap_prompt(tool: dict, selection: dict, images: list[str], resolve, e
         raise ValueError('Choose a replacement for at least one face in picture 1.')
     body = tool['id'] == 'body-swap'
     from .swap_prompts import get as saved_prompt, validate, style_instructions
+    template = validate(tool, template if template is not None else saved_prompt(tool)['text'])
+    # Pose and style choices apply only to a prompt that uses them; otherwise picture 1 gives the pose, as in the
+    # author's prompt (a hidden "Picture 2" choice still turned the face-picker lines against it, 2026-10-22).
+    if '<pose_source>' not in template:
+        pose_source = 1
+    if '<style_source>' not in template:
+        style_source = 1
     from .prompt_mentions import image_mentions
     directions = []
     def describe(face, picture, all_faces):
@@ -117,8 +124,7 @@ def build_swap_prompt(tool: dict, selection: dict, images: list[str], resolve, e
             if len(sources) > 1 or len(replacements) > 1:
                 directions.append(f'Replace only the {part} of {source} with that of {target}.')
                 directions.append(f'Keep the exact head angle, gaze and expression of {source if pose_source==1 else target}.')
-    # No template in the request: the saved current version, the same text Generate sends.
-    prompt = validate(tool, template if template is not None else saved_prompt(tool)['text'])
+    prompt = template
     style_source = 1 if style_mode == 'non-realistic' else style_source
     prompt = prompt.replace('<pose_source>', f'<image{pose_source}>').replace('<style_source>', f'<image{style_source}>')
     style = style_instructions(style_mode)
