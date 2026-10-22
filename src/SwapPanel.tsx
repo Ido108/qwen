@@ -5,6 +5,7 @@ import {useEffect,useRef,useState} from 'react';
 import type {ImageTool,ImageOptions} from './ImageSettings';
 import {InputLibrary,type InputImage,type Person} from './InputLibrary';
 import {LibraryPopover} from './LibraryPopover';
+import {AddToPerson} from './AddToPerson';
 import {PersonPhotoCycle} from './PersonPhotoCycle';
 import type {Api} from './ModelSettings';
 import {SwapFaces,type SwapSelection} from './SwapFaces';
@@ -80,7 +81,8 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
       {/* Click the picture (or the empty slot) to choose from the Library, which also uploads. */}
       {image?<div className="swap-image checker"><button type="button" className="swap-pick" disabled={disabled} onClick={()=>setPicking(index)} title="Replace from the Library" aria-label={`Replace picture ${index+1}`}><img src={image.url} alt={tool.inputs.labels[index]}/></button>
         <button type="button" className="swap-remove" aria-label={`Remove picture ${index+1}`} disabled={disabled} onClick={()=>setSlot(index,null)}>×</button>
-        <PersonPhotoCycle image={image} people={people} disabled={disabled||uploading!==null} onChange={next=>setSlot(index,next)}/></div>
+        <PersonPhotoCycle image={image} people={people} disabled={disabled||uploading!==null} onChange={next=>setSlot(index,next)}/>
+        <AddToPerson api={api} image={image} people={people} onPeople={onPeople} disabled={disabled} onLinked={next=>{const slots=[...latest.current.slots];slots[index]=next;latest.current={...latest.current,slots};onChange(latest.current);}}/></div>
         :<button type="button" className="swap-empty" title={roles[index]} disabled={disabled||uploading!==null} onClick={()=>setPicking(index)}><span>{uploading===index?'Uploading…':'Add picture '+(index+1)}</span></button>}
       {/* Picture 1 is the scene (no label); picture 2 is one person: woman or man, found automatically. */}
       {image&&index===1?<div className="swap-gender" role="radiogroup" aria-label="Head picture: person, female or male"><span className="swap-gender-name">Person</span>{(['woman','man'] as const).map(label=><button type="button" role="radio" key={label} aria-checked={image.subjectLabel===label} disabled={disabled}
