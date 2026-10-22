@@ -37,16 +37,31 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
   const panel=useRef<HTMLElement>(null);
   const latest=useRef(value);latest.current=value;
   const tool=tools.find(t=>t.id===value.tool)??tools[0];
+  const setLabel=(index:number,subjectLabel:string)=>{const slots=[...latest.current.slots];const image=slots[index];if(!image)return;slots[index]={...image,subjectLabel};latest.current={...latest.current,slots};onChange(latest.current);
+    // A People photo keeps the label for every photo of that person.
+    const person=image.personId&&people.find(p=>p.id===image.personId);
+    if(person)api(`/api/people/${person.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:subjectLabel})}).then(onPeople).catch(()=>{});};
+  // The head picture's label: the person's saved one, else the face scan's gender.
+  const headId=value.slots[1]?.id;
+  useEffect(()=>{
+    const image=latest.current.slots[1];if(!image||image.subjectLabel==='woman'||image.subjectLabel==='man')return;
+    const person=image.personId&&people.find(p=>p.id===image.personId);
+    if(person&&(person.label==='woman'||person.label==='man')){setLabel(1,person.label);return;}
+    let alive=true;api(`/api/image-people?image_id=${encodeURIComponent(image.id)}`).then((scan:{faces:{box:number[];gender?:string|null}[]})=>{
+      const face=[...scan.faces].sort((a,b)=>b.box[2]*b.box[3]-a.box[2]*a.box[3])[0];
+      if(alive&&face?.gender&&latest.current.slots[1]?.id===image.id)setLabel(1,face.gender==='female'?'woman':'man');}).catch(()=>{});
+    return()=>{alive=false;};
+  },[headId]);
   const setSlot=(index:number,image:InputImage|null)=>{const slots=[...latest.current.slots] as SwapState['slots'];slots[index]=image;latest.current={...latest.current,slots,selection:null};onChange(latest.current);};
   async function upload(index:number,file?:File){if(!file)return;setUploading(index);setError('');
     try{const body=new FormData();body.append('files',file);const [image]=await api('/api/uploads',{method:'POST',body});setSlot(index,image);}
     catch(e){setError((e as Error).message);}finally{setUploading(null);}}
   // The current template of a Qwen swap: pose and style choices show only when it uses them (the author's prompt does not).
-  const [template,setTemplate]=useState('');const [sceneFaces,setSceneFaces]=useState(0);
+  const [template,setTemplate]=useState('');
   useEffect(()=>{if(!tool?.swap){setTemplate('');return;}let live=true;api(`/api/swap-prompts/${tool.id}`).then(r=>{if(live)setTemplate(r.text||'');}).catch(()=>{});return()=>{live=false;};},[tool?.id,tool?.swap,value.promptRevision,value.promptTemplate]);
   if(!tool)return null;
   const krea=!!tool.swap_page;
-  const showHead2=!krea&&(sceneFaces>1||!!value.slots[2]);
+
   const usesPose=(value.promptTemplate??template).includes('<pose_source>'),usesStyle=(value.promptTemplate??template).includes('<style_source>');
   const roles=ROLES[tool.id]??['',''];
   const bindings=bindSettings(value,patch=>onChange({...value,...patch}),{'Image style':['styleMode','styleSource'],'Head pose and expression':'poseSource','Color and style':'styleSource','Effect strength':'strength','Extra instructions':'extra',Steps:'steps',CFG:'cfg',Sampler:'sampler',Schedule:'scheduler','Negative prompt':value.styleMode==='non-realistic'?'nonRealisticNegative':'negativePrompt'});
@@ -55,17 +70,18 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
     <div className="section-heading"><h2>Swap</h2>{krea?<a className="text-button" href={tool.source} target="_blank" rel="noreferrer" title={tool.prompt}>Author's guide</a>:<SwapPromptEditor key={tool.id} api={api} tool={tool} value={value} onChange={onChange} disabled={disabled}/>}</div>
     <div className="segmented swap-types" role="radiogroup" aria-label="Swap type">{tools.map(t=><button key={t.id} type="button" role="radio" aria-checked={t.id===tool.id} aria-selected={t.id===tool.id} title={t.summary} disabled={disabled} onClick={()=>onChange({...value,tool:t.id,promptTemplate:undefined,promptRevision:undefined,steps:null,cfg:null,sampler:null,scheduler:null})}>{t.title}</button>)}</div>
     {modelFamily==='qwen-image-2.1-turbo'?<p className="swap-turbo-note">Made for Qwen Standard; Turbo can differ. <a href={tool.source} target="_blank" rel="noreferrer">Guide</a></p>:null}
-    {/* A second head picture (picture 3) for scenes with more than one person; Krea's swap takes one head. */}
-    <div className={`swap-slots ${showHead2?'three':''}`}>{(showHead2?[0,1,2]:[0,1]).map(index=>{const image=value.slots[index];return <div key={index} className="swap-slot">
+    <div className="swap-slots">{[0,1].map(index=>{const image=value.slots[index];return <div key={index} className="swap-slot">
       <div className="swap-slot-head" title={roles[index]}><b>{index+1}</b><strong>{tool.inputs.labels[index]}</strong></div>
       {/* Click the picture (or the empty slot) to choose from the Library, which also uploads. */}
       {image?<div className="swap-image checker"><button type="button" className="swap-pick" disabled={disabled} onClick={()=>setPicking(index)} title="Replace from the Library" aria-label={`Replace picture ${index+1}`}><img src={image.url} alt={tool.inputs.labels[index]}/></button>
-        <button type="button" className="swap-remove" aria-label={`Remove picture ${index+1}`} disabled={disabled} onClick={()=>setSlot(index,null)}>×</button></div>
+        <button type="button" className="swap-remove" aria-label={`Remove picture ${index+1}`} disabled={disabled} onClick={()=>setSlot(index,null)}>×</button>
+        <PersonPhotoCycle image={image} people={people} disabled={disabled||uploading!==null} onChange={next=>setSlot(index,next)}/></div>
         :<button type="button" className="swap-empty" title={roles[index]} disabled={disabled||uploading!==null} onClick={()=>setPicking(index)}><span>{uploading===index?'Uploading…':'Add picture '+(index+1)}</span></button>}
-      {image?<PersonPhotoCycle image={image} people={people} disabled={disabled||uploading!==null} onChange={next=>setSlot(index,next)}/>:null}
-      {image?<ImageLabel number={index+1} value={image.subjectLabel} disabled={disabled} onChange={subjectLabel=>{const slots=[...latest.current.slots] as SwapState['slots'];slots[index]={...image,subjectLabel};onChange({...latest.current,slots});}}/>:null}
+      {/* Picture 1 is the scene (no label); picture 2 is one person: woman or man, found automatically. */}
+      {image&&index===1?<div className="swap-gender" role="radiogroup" aria-label="Head picture is a">{(['woman','man'] as const).map(label=><button type="button" role="radio" key={label} aria-checked={image.subjectLabel===label} disabled={disabled}
+        onClick={()=>setLabel(index,label)}>{label==='woman'?'Woman':'Man'}</button>)}</div>:null}
     </div>;})}</div>
-    {krea?null:<SwapFaces api={api} scene={value.slots[0]?.id||null} heads={value.slots.slice(1,showHead2?3:2).filter((i):i is InputImage=>!!i).map(i=>({id:i.id,url:i.url}))} value={value.selection} onChange={selection=>onChange({...latest.current,selection})} onFaces={setSceneFaces} disabled={disabled}/>}
+    {krea?null:<SwapFaces api={api} scene={value.slots[0]?.id||null} head={value.slots[1]?.id||null} value={value.selection} onChange={selection=>onChange({...latest.current,selection})} disabled={disabled}/>}
     <LibraryPopover open={picking!==null} onClose={()=>setPicking(null)} anchor={panel}>
       <InputLibrary api={api} inputs={picking!==null&&value.slots[picking]?[value.slots[picking]!]:[]} onChange={next=>{if(picking!==null)setSlot(picking,next[0]??null);setPicking(null);}}
         results={results} people={people} onPeople={onPeople} replace target={0} revision={revision} disabled={disabled} limit={1}

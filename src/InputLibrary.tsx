@@ -7,7 +7,7 @@ export type InputImage={id:string;name:string;url:string;personId?:string;subjec
 type Upload={id:string;name:string;url:string;thumb_url:string};
 type Result={id:string;request:{prompt:string}};
 export type LibraryTab='uploads'|'results'|'people';
-export type Person={id:string;name:string;image_id:string;image_ids:string[];thumb_url:string;url:string};
+export type Person={id:string;name:string;image_id:string;image_ids:string[];thumb_url:string;url:string;label?:string|null};
 
 /** Every image you have used, with a checkmark: checked images are the inputs, in the order you check them. */
 export function InputLibrary({api,inputs,onChange,results,people,onPeople,revision,disabled,onUpload,limit,replace,target,onClose,multiple=false}:{api:Api;inputs:InputImage[];onChange:(next:InputImage[])=>void;
@@ -21,7 +21,8 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
     if(!multiple){setDrawer(null);onClose?.();}
   }
   const [filter,setFilter]=useState('');const [importing,setImporting]=useState<{state:string;message:string;done?:number;total?:number}|null>(null);const [message,setMessage]=useState('');
-  const [tab,setTab]=useState<LibraryTab>(()=>(localStorage.getItem('qwen-input-tab') as LibraryTab)||'people');
+  // The Library always opens on People.
+  const [tab,setTab]=useState<LibraryTab>('people');
   const [uploads,setUploads]=useState<Upload[]>([]);const [total,setTotal]=useState(0);
   const [resultInputs,setResultInputs]=useState<Record<string,string>>({});const [busy,setBusy]=useState('');
   // Select mode on Uploads: a tap marks a picture for deletion instead of using it.
@@ -40,7 +41,7 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
     finally{setBusy('');}
   }
   useEffect(()=>{api('/api/uploads?limit=200').then(page=>{setUploads(page.items);setTotal(page.total);}).catch(()=>{});},[api,revision]);
-  useEffect(()=>{try{localStorage.setItem('qwen-input-tab',tab);}catch{}if(tab!=='uploads')stopSelecting();},[tab]);
+  useEffect(()=>{if(tab!=='uploads')stopSelecting();},[tab]);
   const index=(id:string)=>inputs.findIndex(i=>i.id===id);
   useEffect(()=>{if(importing?.state!=='running')return;const timer=setInterval(async()=>{const next=await api('/api/people/import/status');setImporting(next);onPeople();if(next.state!=='running'){setMessage(next.message);clearInterval(timer);}},1500);return()=>clearInterval(timer);},[importing?.state]);
   async function importMoise(){setMessage('');try{await api('/api/people/import/moise',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setImporting({state:'running',message:'Connecting to Moise…'});}catch(e){setMessage((e as Error).message);}}

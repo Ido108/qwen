@@ -14,7 +14,7 @@ MODEL = (LIBRARY_DIR / 'onnx' if LIBRARY_DIR and LIBRARY_DIR.is_dir() else MODEL
 MODEL_URL = ('https://huggingface.co/onnx-community/fairface_gender_image_detection-ONNX/resolve/'
              '8e2913896361751b45f598ab1bcd914541a51ee2/onnx/model.onnx')
 MODEL_SHA256 = 'f9a361ef12ea495caf10c7ca1aff24b5fad21a4bd77f0e363597129779be836d'
-_lock = threading.Lock()
+_lock = threading.RLock()  # classify() holds it while _net() may call ensure(), which takes it again
 
 
 def ensure() -> Path:

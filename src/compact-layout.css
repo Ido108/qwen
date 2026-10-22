@@ -190,3 +190,15 @@ dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12p
 .enhancer-pick select{height:30px;padding:0 8px;border:1px solid #d9d3e7;border-radius:7px;background:#fff;color:#211b35;font-size:12.5px;max-width:100%}
 .enhancer-pick small{color:#b42318;font-size:11.5px}
 @media(max-width:759px),(max-width:1000px) and (pointer:coarse){.enhancer-pick select{height:38px;font-size:16px}}
+.swap-face-pick{display:flex;flex-wrap:wrap;gap:8px}
+.swap-face-pick button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px;border:2px solid #e3dcf5;border-radius:10px;background:#fff;cursor:pointer;font-size:12px;color:#3c3556}
+.swap-face-pick button img{width:64px;height:64px;object-fit:cover;border-radius:7px}
+.swap-face-pick button.chosen{border-color:var(--accent);background:#f1edfc;color:var(--accent);font-weight:600}
+
+/* Swap slots: the person-photo arrows sit on the picture; the head picture is Woman or Man. */
+.swap-image .person-photo-cycle{position:absolute;left:6px;right:6px;bottom:6px;z-index:2;margin:0;background:#ffffffe6;border-radius:8px}
+.swap-image .person-photo-cycle button{min-height:26px}
+.swap-gender{display:flex;gap:4px;padding:3px;background:#f1eff7;border-radius:8px;align-self:flex-start}
+.swap-gender button{padding:4px 14px;border-radius:6px;font-size:12.5px;color:#615d78}
+.swap-gender button[aria-checked=true]{background:#fff;color:var(--accent);font-weight:600;box-shadow:0 1px 3px #2a1f5414,inset 0 0 0 1px #7864dc55}
+@media(pointer:coarse){.swap-gender button{min-height:36px}.swap-image .person-photo-cycle button{min-height:34px}}
