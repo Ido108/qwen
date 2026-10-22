@@ -72,7 +72,6 @@ export function ZoomView({src,alt,className,onSwipe,separateControls=false,befor
     <output aria-live="polite">{Math.round(view.scale*100)}%</output>
     <button type="button" aria-label="Zoom in" disabled={view.scale>=8} {...control(()=>zoom(current.current.scale*1.5))}><Plus size={18}/></button>
     <button type="button" aria-label="Fit image" {...control(()=>zoom(1))}><Maximize size={17}/><span>Fit</span></button>
-    {before?<label className="zoom-compare"><span>Before</span><input type="range" min="0" max="100" step="0.5" value={split} aria-label="Divider: before on the left, after on the right" onChange={e=>setSplit(Number(e.target.value))} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight')e.stopPropagation();}}/><span>After</span></label>:null}
     {separateControls?<><ImageLoadState {...image} fullSize={view.scale>1}/>{failed?<p className="viewer-error" role="alert">The image could not load. Close and open it again.</p>:null}</>:null}
   </div>;
   const viewport=<div ref={box} className={`zoom-view ${view.scale>1?'zoomed':''} ${separateControls?'':className||''}`} tabIndex={0} aria-label="Image viewer"
@@ -115,7 +114,12 @@ export function ZoomView({src,alt,className,onSwipe,separateControls=false,befor
     onDoubleClick={e=>{if(Date.now()-lastTouch.current>500&&!(e.target as Element).closest('button'))zoom(current.current.scale>1?1:2.5,e.clientX,e.clientY);}}>
     <img ref={img} key={image.url} src={image.url} alt={alt} draggable={false} decoding="async" data-quality={image.quality} onLoad={()=>setFailed(false)} onError={()=>setFailed(true)} style={{transform:`translate(${view.x+swipe}px,${view.y}px) scale(${view.scale})`}}/>
     {before?<><div className="zoom-before" aria-hidden="true" style={{clipPath:`inset(0 ${100-split}% 0 0)`}}><img src={before} alt="" draggable={false} decoding="async" style={{...(frame?{left:frame.left,top:frame.top,width:frame.width,height:frame.height}:{}),transform:`translate(${view.x+swipe}px,${view.y}px) scale(${view.scale})`}}/></div>
-      <div className="zoom-divider" aria-hidden="true" style={{left:`${split}%`}}/><span className="zoom-tag zoom-tag-before">Before</span><span className="zoom-tag zoom-tag-after">After</span></>:null}
+      {/* Drag the line on the picture (as in the Result Compare); dragging anywhere else still pans the zoom. */}
+      <div className="zoom-divider" style={{left:`${split}%`}} role="slider" tabIndex={0} aria-label="Compare: before on the left, after on the right" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(split)}
+        onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();setSplit(v=>Math.min(100,Math.max(0,v+(e.key==='ArrowLeft'?-2:2))));}}}
+        onPointerDown={e=>{e.stopPropagation();e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);}}
+        onPointerMove={e=>{if(!e.currentTarget.hasPointerCapture(e.pointerId))return;e.stopPropagation();const r=box.current?.getBoundingClientRect();if(r)setSplit(Math.min(100,Math.max(0,(e.clientX-r.left)/r.width*100)));}}
+        onPointerUp={e=>{e.stopPropagation();e.currentTarget.releasePointerCapture(e.pointerId);}}><span/></div><span className="zoom-tag zoom-tag-before">Before</span><span className="zoom-tag zoom-tag-after">After</span></>:null}
     {separateControls?null:<><ImageLoadState {...image} fullSize={view.scale>1}/>{failed?<p className="viewer-error" role="alert">The image could not load. Close and open it again.</p>:null}</>}
     {separateControls?null:controls}
   </div>;
