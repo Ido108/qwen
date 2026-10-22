@@ -339,6 +339,7 @@ function App(){
     if(!swap.slots[0]||!swap.slots[1]){setError(`Add both pictures: 1 ${tool.inputs.labels[0]}, 2 ${tool.inputs.labels[1]}.`);return;}
     // The scene, the head and, for a Qwen swap with two people, the second head (Krea's swap takes one head).
     const sent=swap.slots.slice(0,tool.swap_page?2:tool.inputs.max).filter((i):i is InputImage=>!!i);
+    try{localStorage.setItem('qwen-swap-model',params.model_id);}catch{}
     if(tool.swap_page){
       // Krea 2 swap: the author's workflow, picture 1 the base and picture 2 the reference, with the author's prompt.
       const prompt=tool.prompt+(swap.extra.trim()?' '+swap.extra.trim():'');
@@ -357,8 +358,10 @@ function App(){
   }
   function showImageSection(next:'create'|'swap'){setImageSection(next);window.history.replaceState(null,'',next==='swap'?'#swap':'#');setError('');
     // Swap runs on Qwen-Image-2.1: switch from Krea 2 or Z-Image to a ready Qwen model, Turbo first (the author's 8-step setup).
-    if(next==='swap'&&!swapTools.some(t=>t.families.includes(chosenModel?.family||''))){const qwen=(modelState?.models||[]).filter(m=>m.kind==='image'&&(m.family||'').startsWith('qwen-image-2.1'));
-      const pick=qwen.find(m=>m.family==='qwen-image-2.1-turbo'&&m.installed)??qwen.find(m=>m.installed)??qwen[0];if(pick){manualSampling.current.clear();}if(pick)setParams(p=>({...p,model_id:pick.id,steps:null,cfg:null,sampler:null,scheduler:null}));}}
+    if(next==='swap'&&!swapTools.some(t=>t.families.includes(chosenModel?.family||''))){const swapFamilies=new Set(swapTools.flatMap(t=>t.families));const qwen=(modelState?.models||[]).filter(m=>m.kind==='image'&&swapFamilies.has(m.family||''));
+      // The model last used on Swap first, then a ready Turbo.
+      let last='';try{last=localStorage.getItem('qwen-swap-model')||'';}catch{}
+      const pick=qwen.find(m=>m.id===last&&m.installed)??qwen.find(m=>m.family==='qwen-image-2.1-turbo'&&m.installed)??qwen.find(m=>m.installed)??qwen[0];if(pick){manualSampling.current.clear();}if(pick)setParams(p=>({...p,model_id:pick.id,steps:null,cfg:null,sampler:null,scheduler:null}));}}
   function reorder(index:number,delta:number){setInputs(old=>{const next=[...old];[next[index],next[index+delta]]=[next[index+delta],next[index]];return next;});}
   function applyExample(example:Example){setParams(p=>({...p,prompt:example.prompt,enhance:example.prompt_extend}));setInputs(example.inputs.map((name)=>({id:`example:${name}`,name,url:`/examples/${name}`})));setActiveExample(null);setJob(null);setNotice(t('promptLoaded'));promptRef.current?.focus();}
   // The preview steps through the list it was opened from: results (newest first, like the Recent rail) or the input images.
@@ -380,7 +383,9 @@ function App(){
   const setSwapSampling=(values:Partial<ImageOptions>)=>setSwap({...swap,...Object.fromEntries(Object.entries(values).filter(([key])=>key in swapSampling))});
   const settingsProps={value:params,model:chosenModel,models:modelState,modelId:params.model_id,tools:tools.filter(t=>!t.swap),tool:activeTool,toolState:{tool_id:activeTool?.id??null,tool_options:params.tool_options,lora_strength:params.lora_strength},disabled:locked,
     onChange:(values:Partial<ImageOptions>)=>{markManual(values);setParams(p=>({...p,...values}));},
-    onModel:(id:string)=>{if(id!==params.model_id)manualSampling.current.clear();setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');},
+    onModel:(id:string)=>{if(id!==params.model_id){manualSampling.current.clear();
+      // Swap's steps, CFG, sampler and schedule follow the new model too (its default or the saved Swap default).
+      if(swap.steps!=null||swap.cfg!=null||swap.sampler||swap.scheduler)setSwap({...swap,steps:null,cfg:null,sampler:null,scheduler:null});}setParams(p=>({...p,model_id:id,steps:p.model_id===id?p.steps:null,cfg:p.model_id===id?p.cfg:null,sampler:p.model_id===id?p.sampler:null,scheduler:p.model_id===id?p.scheduler:null}));setError('');},
     onTool:(state:ToolState)=>{const next=tools.find(t=>t.id===state.tool_id);setParams(p=>({...p,...state,prompt:next?toolPrompt(next,state.tool_options):(p.tool_id?'':p.prompt)}));setError('');}};
   // The enhanced prompt is shown with the result only when enhancement really changed the prompt.
   const rewrittenPrompt=result?.rewritten_prompt?.trim()&&result.rewritten_prompt.trim()!==(result.request?.prompt||'').trim()?result.rewritten_prompt.trim():'';
