@@ -48,7 +48,10 @@ class LoraPromptTests(unittest.TestCase):
     def test_custom_additions_expand_friendly_image_mentions(self):
         self.items['model'] = {'family': 'qwen-image-2.1'}
         request = {'model_id':'model', 'images':['a'], 'image_labels':[], 'loras':[{'id':'none', 'prompt_addition':'Use @Image1 in pencil.'}]}
-        self.assertEqual(internal_prompt('', request)[0], 'Use the person from <image1> in pencil.')
+        # No label: the plain picture reference; a label names what the mention selects.
+        self.assertEqual(internal_prompt('', request)[0], 'Use <image1> in pencil.')
+        request['image_labels'] = ['woman']
+        self.assertEqual(internal_prompt('', request)[0], 'Use the woman from <image1> in pencil.')
 
     def test_deduplicate_whole_phrases_and_shared_words(self):
         request={'loras':[{'id':'style'}, {'id':'other'}]}

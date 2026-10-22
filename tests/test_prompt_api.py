@@ -72,8 +72,12 @@ class PromptApiTests(unittest.TestCase):
     def test_all_image_mentions_resolve_before_the_queue(self):
         response=self.post('/api/generate',{**self.body,'prompt':'Use @Image2 in <image 1>.','negative_prompt':'Do not copy @Image2 background.'})
         self.assertEqual(response.status_code,202,response.text)
-        self.assertEqual(self.queued[0]['prompt'],'Use the person from <image2> in <image1>.')
-        self.assertEqual(self.queued[0]['negative_prompt'],'Do not copy the person from <image2> background.')
+        # No labels: plain picture references; a label names the subject.
+        self.assertEqual(self.queued[0]['prompt'],'Use <image2> in <image1>.')
+        self.assertEqual(self.queued[0]['negative_prompt'],'Do not copy <image2> background.')
+        self.assertEqual(self.post('/api/generate',{**self.body,'image_labels':['','woman'],'prompt':'Use @Image2 in <image 1>.'}).status_code,202)
+        self.assertEqual(self.queued[1]['prompt'],'Use the woman from <image2> in <image1>.')
+        self.queued.pop()
         self.assertEqual(self.post('/api/generate',{**self.body,'prompt':'Use @Image3.'}).status_code,400)
         self.assertEqual(len(self.queued),1)
 
@@ -92,7 +96,7 @@ class PromptApiTests(unittest.TestCase):
         self.assertIn('exact visual style of <image1>',job['prompt'])
         self.assertIn('line weight, edge softness',job['prompt'])
         self.assertIn('same original artwork',job['prompt'])
-        self.assertEqual(job['negative_prompt'],'photographic skin, texture from the person from <image2>')
+        self.assertEqual(job['negative_prompt'],'photographic skin, texture from <image2>')
         self.assertEqual(job['source_negative_prompt'],body['negative_prompt'])
         self.assertEqual(job['swap_style_mode'],'non-realistic')
         self.assertEqual(job['seed'],self.body['seed'])

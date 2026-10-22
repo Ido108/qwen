@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field, field_validator
 def subject_label(value: str) -> str:
     label = re.sub(r'[^\w\s-]', ' ', value, flags=re.UNICODE).replace('_', ' ').replace('-', ' ')
     label = ' '.join(label.split()).lower()[:48].strip()
-    return label if any(letter.isalpha() for letter in label) else 'person'
+    # No label (a picture that is not a person, or not labelled): the mention stays the plain reference.
+    return label if any(letter.isalpha() for letter in label) else ''
 
 
 class ImageLabels(BaseModel):
@@ -34,8 +35,8 @@ def image_mentions(text: str, count: int, notation: str = 'qwen', labels: list[s
             raise ValueError(f'Image {index} is not selected. Add it or remove its mention.')
         reference = f'<image{index}>' if notation == 'qwen' else f'Image {index}'
         if labels is not None and match[1] and not re.search(r'\bthe\s+[\w -]{1,48}\s+from\s*$', text[:match.start()], re.I):
-            label = subject_label(labels[index-1]) if index <= len(labels) else 'person'
-            return f'the {label} from {reference}'
+            label = subject_label(labels[index-1]) if index <= len(labels) else ''
+            return f'the {label} from {reference}' if label else reference
         return reference
     return IMAGE.sub(replace, text)
 
