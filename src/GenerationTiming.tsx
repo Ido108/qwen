@@ -22,6 +22,14 @@ function time(seconds:number){
 const stageLabels:Record<string,string>={loading:'Preparing tools',loading_model:'Loading model',loading_encoder:'Loading text encoder',loading_video_vae:'Loading video and audio encoders',rewriting:'Prompt enhancement',encoding:'Processing inputs',encoding_text:'Encoding text',encoding_video:'Encoding video',encoding_images:'Encoding images',encoding_audio:'Encoding audio',encoding_references:'Encoding references',reading_references:'Preparing references',decoding_source:'Reading source video',generating:'Generation',upscaling:'Upscaling',upscaling_latent:'Resolution refinement',decoding:'Decoding output',saving:'Saving output',muxing_audio:'Adding source audio',downloading_models:'Model download'};
 
 /** Every value belongs to the displayed result, never to the editable form. */
+/** When the result was made, the same everywhere (Gallery card, Gallery details, Result): 21 Oct, 16:05; the year
+ *  only when it is not this year. */
+export function resultWhen(job:{finished_at?:number;created_at?:number}){
+  const seconds=job.finished_at||job.created_at;if(!seconds)return '';
+  const date=new Date(seconds*1000);
+  return date.toLocaleString(undefined,{day:'numeric',month:'short',...(date.getFullYear()===new Date().getFullYear()?{}:{year:'numeric'}),hour:'2-digit',minute:'2-digit'});
+}
+
 export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?:ModelState|null;detailsOnly?:boolean}){
   const dialog=useRef<HTMLDialogElement>(null),headingId=useId();
   const [copyState,setCopyState]=useState('Copy details');
@@ -71,6 +79,7 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
   if(positive(job.input_count)&&valid(job.input_cache_hits))facts.push(['Input images reused',`${job.input_cache_hits} of ${job.input_count}`]);
   if(job.input_preparation_reused!==undefined)facts.push(['Image preparation reused',job.input_preparation_reused?'Yes':'No']);
   if(valid(job.input_read_seconds)&&positive(job.input_count))facts.push(['Read input images',time(job.input_read_seconds)]);
+  if(resultWhen(job))facts.unshift(['Made',resultWhen(job)]);
   if(valid(job.created_at)&&valid(job.finished_at)&&job.finished_at>=job.created_at)facts.push(['Request to result',time(job.finished_at-job.created_at)]);
   const stages=Object.entries(job.stage_seconds||{}).filter(([stage,value])=>!['queued','complete','failed','cancelled'].includes(stage)&&positive(value));
   const stageName=(name:string)=>stageLabels[name]||name.replaceAll('_',' ').replace(/^./,value=>value.toUpperCase());
@@ -78,6 +87,7 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
   return <div className={`run-details${detailsOnly?' run-details-compact':''}`} data-run-id={job.id}>
     {detailsOnly?<button type="button" className="button secondary" onClick={()=>dialog.current?.showModal()} aria-label="View run details">Details</button>:<><div className="run-details-summary" aria-label="Completed run summary">
       <button type="button" className="run-details-button" onClick={()=>dialog.current?.showModal()} aria-label="View run details">Details</button>
+      {resultWhen(job)?<span className="run-when">{resultWhen(job)}</span>:null}
       <button type="button" className="run-time" title="Time by stage" onClick={()=>dialog.current?.showModal()}><Clock3 size={12}/>{elapsed!==null?`Time ${time(elapsed)}`:'Time unavailable'}{inference!==null?` · Inference ${time(inference)}`:''}</button>
       {model?<span className="run-model" title={model}>{model}</span>:null}
       {steps?<span>{steps} {countLabel}</span>:null}{cfg!==null?<span>CFG {cfg}</span>:null}{size?<span>{size}</span>:null}{seed!==null?<span>Seed {seed}</span>:null}
