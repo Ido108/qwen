@@ -63,7 +63,10 @@ def plan(request: dict) -> dict:
         lora = models.KREA_IDENTITY_LORA if identity else models.KREA_STYLE_LORA
         loras.append({'id': lora, 'title': models.entry(lora)['title'], 'source': 'model', 'strength': 1.0})
     if defaults.get('speed_lora'):
-        loras.append({'id': defaults['speed_lora'], 'title': models.entry(defaults['speed_lora'])['title'], 'source': 'model', 'strength': 1.0})
+        # A Turbo entry built from a Base model and a speed LoRA (MOSS Serenity Turbo: {'id', 'strength'}).
+        own = defaults['speed_lora'] if isinstance(defaults['speed_lora'], dict) else {'id': defaults['speed_lora']}
+        loras.append({'id': own['id'], 'title': models.entry(own['id'])['title'], 'source': 'model',
+                      'strength': float(own.get('strength', 1.0))})
     for choice in request.get('loras') or []:
         lora_id = choice['id'] if isinstance(choice, dict) else choice.id
         if (choice.get('enabled', True) if isinstance(choice, dict) else getattr(choice, 'enabled', True)) is False:

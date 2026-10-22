@@ -99,9 +99,10 @@ export function SwapPanel({modelId,restoreKey,api,tools,value,onChange,disabled,
     </fieldset>:null}
     {steps}
     <div className="swap-row">
-    <div className="field swap-strength" title="The swap LoRA's strength. 1.0 is the author's value."><SettingLabel disabled={disabled} htmlFor="swap-strength" label="Effect strength" value={tool.strength} onReset={()=>onChange({...value,strength:tool.strength})}><span title="The swap LoRA's strength">Keep original face</span> <b>{value.strength.toFixed(2)}</b><Nudge label="strength" value={value.strength} step={0.05} min={0.1} max={2} disabled={disabled} onChange={strength=>onChange({...value,strength})}/></SettingLabel>
+    <div className="field swap-strength" title="The swap LoRA's strength. 1.0 is the author's value."><SettingLabel disabled={disabled} htmlFor="swap-strength" label="Effect strength" value={tool.strength} onReset={()=>onChange({...value,strength:tool.strength})}><span title="The swap LoRA's strength">{krea?'Swap strength':'Keep original face'}</span> <b>{value.strength.toFixed(2)}</b><Nudge label="strength" value={value.strength} step={0.05} min={0.1} max={2} disabled={disabled} onChange={strength=>onChange({...value,strength})}/></SettingLabel>
       <input id="swap-strength" type="range" min="0.1" max="2" step="0.05" value={value.strength} disabled={disabled} onChange={e=>onChange({...value,strength:Number(e.target.value)})}/>
-      <small>Higher: more of picture 1's face. Lower: more of picture 2's face.</small>
+      {/* Tested on Qwen only (2026-10-22); Krea's direction is not measured yet. */}
+      {krea?<small>The author uses 1.0.</small>:<small>Higher: more of picture 1's face. Lower: more of picture 2's face.</small>}
 </div>
     <div className="field swap-seed" title="Turn off Random seed to compare prompt or strength changes with the same seed."><SettingLabel disabled={disabled} htmlFor="swap-seed" label="Seed" value={'Random'} onReset={()=>onOptions({seed:0,randomize_seed:true})}>Seed</SettingLabel><div className="seed-row"><input id="swap-seed" type="number" min="0" max="2147483647" step="1" value={options.seed} disabled={disabled||options.randomize_seed} onChange={e=>onOptions({seed:Number(e.target.value)})}/><label className="checkbox-label"><input type="checkbox" checked={options.randomize_seed} disabled={disabled} onChange={e=>onOptions({randomize_seed:e.target.checked})}/>Random</label></div></div>
     </div>

@@ -405,6 +405,12 @@ function App(){
     api('/api/job-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_id:params.model_id,tool_id:swapTool.id,lora_strength:swap.strength,...swapSpeed,negative_prompt:swapNegativeText,loras:activeLoras})})
       .then((plan:JobPlan)=>{if(live)setSwapPlan(plan);}).catch(()=>{if(live)setSwapPlan(null);});return()=>{live=false;};
   },[imageSection,params.model_id,swapTool?.id,swap.strength,swap.speedLora,swap.speedStrength,swapNegativeText,JSON.stringify(activeLoras)]);
+  // The Create page's automatic LoRAs (a tool's, Krea 2 identity or style with photos, a Turbo model's speed LoRA).
+  const [createPlan,setCreatePlan]=useState<JobPlan|null>(null);
+  useEffect(()=>{if(imageSection!=='create'){setCreatePlan(null);return;}let live=true;
+    api('/api/job-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_id:params.model_id,tool_id:activeTool?.id??null,lora_strength:params.lora_strength,image_count:inputs.length,krea_reference_mode:params.krea_reference_mode??'identity'})})
+      .then((plan:JobPlan)=>{if(live)setCreatePlan(plan);}).catch(()=>{if(live)setCreatePlan(null);});return()=>{live=false;};
+  },[imageSection,params.model_id,activeTool?.id,params.lora_strength,inputs.length,params.krea_reference_mode]);
   // The enhanced prompt is shown with the result only when enhancement really changed the prompt.
   const rewrittenPrompt=result?.rewritten_prompt?.trim()&&result.rewritten_prompt.trim()!==(result.request?.prompt||'').trim()?result.rewritten_prompt.trim():'';
   const imageDefaultBindings=bindSettings({...params,steps:params.steps??chosenModel?.generation_defaults?.steps??40,cfg:params.cfg??chosenModel?.generation_defaults?.cfg??(params.negative_prompt?.trim()?2:1),sampler:params.sampler??chosenModel?.generation_defaults?.sampler??'euler',scheduler:params.scheduler??null},patch=>{markManual(patch);setParams(p=>({...p,...patch}));},{
@@ -438,7 +444,8 @@ function App(){
           <LoraStack compact value={params.loras} onChange={next=>change('loras',next)} loras={userLoras} family={family} pixels={pixels} prompt={params.prompt} onPrompt={next=>change('prompt',next)} disabled={locked}
             model={chosenModel} onAuthorSettings={applyAuthorSettings} hasModel={f=>!!authorModel(f)}
             onBrowse={()=>{setTab('civitai');window.history.replaceState(null,'','#civitai');}}/>
-          {imageSection==='swap'&&swapPlan?<SwapLoras plan={swapPlan} strength={swap.strength} speedStrength={swap.speedStrength??1} disabled={locked} onSpeed={(on,strength)=>setSwap({...swap,speedLora:on,speedStrength:strength,steps:null,cfg:null,sampler:null,scheduler:null})}/>:null}
+          {imageSection==='create'&&createPlan?<SwapLoras plan={createPlan} strengthNote={`Strength ${(params.lora_strength??(activeTool?toolStrength(activeTool,params.tool_options):1)).toFixed(2)}: set with Effect strength below`} speedStrength={1} disabled={locked} onSpeed={()=>{}}/>:null}
+          {imageSection==='swap'&&swapPlan?<SwapLoras plan={swapPlan} strengthNote={`Strength ${swap.strength.toFixed(2)}: set with ${swapPlan.loras.some(l=>l.id.startsWith('krea2'))?'Swap strength':'Keep original face'} below`} speedStrength={swap.speedStrength??1} disabled={locked} onSpeed={(on,strength)=>setSwap({...swap,speedLora:on,speedStrength:strength,steps:null,cfg:null,sampler:null,scheduler:null})}/>:null}
           {adviceShown?<small className="lora-auto-settings" role="status">{loraAdvice!.note}</small>:null}
           {config&&missingModels.length?<small className="model-missing">Missing model files download automatically when you generate.</small>:null}
         </section>
