@@ -5,12 +5,12 @@ import type {SavedJob} from './JobQueue';
 type Result=SavedJob&{image_url?:string;width?:number;height?:number};
 
 /** Recent image results beside the workspace, with running and waiting jobs on top. */
-export function ResultsRail({open,onToggle,running,results,selected,onSelect,onUseAsInput,onUseSettings,onOpenGallery,onOpenFolder,onOpenQueue}:{open:boolean;onToggle:()=>void;running:SavedJob[];results:Result[];selected?:string;
-  onSelect:(job:Result)=>void;onUseAsInput:(job:Result)=>void;onUseSettings:(job:Result)=>void;onOpenGallery:()=>void;onOpenFolder:()=>void;onOpenQueue:()=>void}){
+export function ResultsRail({open,onToggle,running,results,selected,onSelect,onUseAsInput,onUseSettings,onOpenGallery,onOpenFolder,onOpenQueue,onShowLive}:{open:boolean;onToggle:()=>void;running:SavedJob[];results:Result[];selected?:string;
+  onSelect:(job:Result)=>void;onUseAsInput:(job:Result)=>void;onUseSettings:(job:Result)=>void;onOpenGallery:()=>void;onOpenFolder:()=>void;onOpenQueue:()=>void;onShowLive?:(id:string)=>void}){
   // A running or waiting job as a tile with each step's preview as it denoises.
   const tile=(job:SavedJob)=>{const live=job as SavedJob&{preview_url?:string;preview_updated_at?:number};const going=job.status==='running';
       return <div className="rail-item rail-live" key={job.id} title={job.request.prompt}>
-        <div className="rail-thumb checker">{live.preview_url?<img src={`${live.preview_url}?v=${live.preview_updated_at}`} alt=""/>:null}
+        <div className="rail-thumb checker" role={going&&onShowLive?'button':undefined} tabIndex={going&&onShowLive?0:undefined} title={going?'Show on the big view':undefined} onClick={()=>{if(going)onShowLive?.(job.id);}} onKeyDown={e=>{if(going&&(e.key==='Enter'||e.key===' ')){e.preventDefault();onShowLive?.(job.id);}}}>{live.preview_url?<img src={`${live.preview_url}?v=${live.preview_updated_at}`} alt=""/>:null}
           <span className="rail-live-state">{going?(job.stage==='generating'?`Step ${job.step}/${job.total_steps}`:job.stage==='downloading_models'?'Downloading':job.message||'Preparing'):`Waiting · #${job.position??''}`}</span>
           {going&&job.stage==='generating'&&job.total_steps?<i className="rail-live-bar" style={{width:`${Math.round(100*job.step/job.total_steps)}%`}}/>:null}
         </div></div>;};

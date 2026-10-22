@@ -1,6 +1,7 @@
 import {ModelDefaultsRoot,ModelDefaultsScope,bindSettings} from './ModelDefaults';
 import {ImageDestinations,UseImageAs,useImageDestination} from './UseImageAs';
 import {Nudge,SettingLabel} from './SettingLabel';
+import {EnhancerPick} from './EnhancerPick';
 import {videoTasks} from './videoModels';
 import {resultCfg} from './resultCfg';
 import {ImageLabel,subjectLabel} from './ImageLabel';
@@ -117,7 +118,7 @@ function App(){
   // The Result panel steps through the results in the Recent order (newest first), also with the arrow keys.
   const shownResults=history.filter(item=>!!item.image_url);
   const resultIndex=result?shownResults.findIndex(item=>item.id===result.id):-1;
-  const stepResult=(delta:number)=>{const next=shownResults[resultIndex+delta];if(next){setResult(next);if(!busy)setJob(next);}};
+  const stepResult=(delta:number)=>{if(liveFor){setLiveFor(null);if(resultIndex>=0&&delta)return;}const next=shownResults[resultIndex+delta];if(next){setResult(next);if(!busy)setJob(next);}};
   useEffect(()=>{
     const keys=(event:KeyboardEvent)=>{
       if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight')return;
@@ -303,7 +304,11 @@ function App(){
   const submittedJob=queue.state.active?.id===pollId?queue.state.active:queue.state.pending.find(item=>item.id===pollId)||(job as SavedJob|null);
   const imageJobs=[queue.state.active,...queue.state.pending].filter((j):j is SavedJob=>!!j&&['image','image-upscale'].includes(j.kind||'image'));
   // The running image job develops on the big Result picture, step by step (each step's estimate, as in ComfyUI).
-  const liveJob=queue.state.active&&(queue.state.active.kind||'image')==='image'&&queue.state.active.status==='running'?queue.state.active as SavedJob&{preview_url?:string;preview_updated_at?:number}:null;
+  const runningJob=queue.state.active&&(queue.state.active.kind||'image')==='image'&&queue.state.active.status==='running'?queue.state.active as SavedJob&{preview_url?:string;preview_updated_at?:number}:null;
+  // Shown when a job starts or its Recent tile is clicked; stepping to or choosing a result shows that result instead.
+  const [liveFor,setLiveFor]=useState<string|null>(null);
+  useEffect(()=>{if(runningJob?.id)setLiveFor(runningJob.id);},[runningJob?.id]);
+  const liveJob=runningJob&&liveFor===runningJob.id?runningJob:null;
   // Each newly finished image becomes the result, also when it is not the last job sent.
   const newestResult=useRef<string|null>(null);
   // Clear empties Result until the next image finishes; the cleared image stays in Recent and the gallery.
@@ -452,6 +457,7 @@ function App(){
           const before=current.slice(0,at),pad=before&&!/\s$/.test(before)?(/,\s*$/.test(before)?' ':', '):'';
           change('prompt',before+pad+text+current.slice(end));}}/>:null} mentions={[...imageMentionOptions(inputs,people,image=>setInputs(old=>[...old,image]),zimage?1:activeTool?.inputs.max??10)]}/>
         {flux3||activeTool?null:<label className="checkbox-label enhance-toggle" title="Each model's official prompt rewriter runs on this computer and writes a detailed English prompt from yours, in any language. Text to show in the picture stays as you wrote it. About 10 seconds; a repeat is instant. Off by default."><input type="checkbox" checked={!!params.enhance} disabled={locked} onChange={e=>change('enhance',e.target.checked)}/>Enhance prompt</label>}
+        {flux3||activeTool||!params.enhance?null:<EnhancerPick api={api} family={family} disabled={locked}/>}
         <MobileResults results={history.filter(item=>!!item.image_url)} onOpen={openResultPreview} onUseSettings={useMobileSettings} disabled={locked} onGallery={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}}/>
         <ImageSettings part="main" {...settingsProps}/>
         <ImageSettings part="steps" {...settingsProps}/>
@@ -484,7 +490,7 @@ function App(){
           {rewrittenPrompt?<details className="result-rewrite" key={result?.id}><summary title="The prompt the model actually used"><ChevronRight size={12}/><b>Enhanced prompt</b><span dir="auto">{rewrittenPrompt}</span></summary><p dir="auto">{rewrittenPrompt}</p><button className="text-button" onClick={()=>copyPrompt(rewrittenPrompt)}>{copied?<Check size={13}/>:<Copy size={13}/>} {copied?t('copied'):t('copy')}</button></details>:null}
         </section>
       <ResultsRail open={railOpen} onToggle={()=>setRailOpen(o=>!o)} running={imageJobs} results={history} selected={result?.id}
-        onSelect={item=>{setResult(item as Job);if(!busy)setJob(item as Job);}} onUseAsInput={async item=>{if(inputs.length>=10){setError(t('maxImages'));return;}try{const added=await api(`/api/jobs/${item.id}/reuse`,{method:'POST'});setInputs(old=>old.some(i=>i.id===added.id)?old:[...old,added]);}catch(e){setError((e as Error).message);}}}
+        onSelect={item=>{setLiveFor(null);setResult(item as Job);if(!busy)setJob(item as Job);}} onShowLive={id=>setLiveFor(id)} onUseAsInput={async item=>{if(inputs.length>=10){setError(t('maxImages'));return;}try{const added=await api(`/api/jobs/${item.id}/reuse`,{method:'POST'});setInputs(old=>old.some(i=>i.id===added.id)?old:[...old,added]);}catch(e){setError((e as Error).message);}}}
         onUseSettings={item=>restoreJob(item)} onOpenGallery={()=>{setTab('gallery');window.history.replaceState(null,'','#gallery');}} onOpenFolder={()=>api('/api/open-output',{method:'POST'}).catch(err=>setError(String(err)))} onOpenQueue={()=>setQueueOpen(true)}/>
       </div>
       <footer><span className="local-status"><i/>{modelState?.remote?'Runs on RunPod GPU':t('local')}</span><span>{modelState?.remote?'Results saved on this computer':config?.device||''}</span></footer>
