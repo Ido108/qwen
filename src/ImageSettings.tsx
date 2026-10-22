@@ -7,7 +7,7 @@ export type ToolField={key:string;label:string;placeholder?:string;default:strin
 export type ImageTool={id:string;title:string;summary:string;lora:string;strength:number;steps?:number;families:string[];tested_on:string[];swap?:boolean;swap_page?:boolean;sampling?:{steps?:number;sampler?:string;scheduler?:string;cfg?:number;speed_lora?:string;families?:string[]};inputs:{min:number;max:number;labels:string[]};
   fields:ToolField[];prompt:string;reference_resolution:number;prepare?:string;needs_box?:boolean;source:string};
 /** What a job will really run (POST /api/job-plan): the server fills the job from the same plan. */
-export type JobPlan={steps:number;cfg:number;sampler:string;scheduler:string;loras:{id:string;title:string;source:'tool'|'speed'|'model'|'yours';strength:number}[];speed_lora:{id:string;on:boolean}|null;recipe:boolean};
+export type JobPlan={steps:number;cfg:number;sampler:string;scheduler:string;loras:{id:string;title:string;source:'tool'|'speed'|'model'|'yours';strength:number}[];speed_lora:{id:string;on:boolean}|null;recipe:boolean;speed_note?:string};
 export type ToolState={tool_id:string|null;tool_options:Record<string,string>;lora_strength:number|null};
 
 const presets=[[2688,1536,'16:9'],[1536,2688,'9:16'],[2048,2048,'1:1'],[2368,1728,'4:3'],[1728,2368,'3:4'],[1344,768,'16:9'],[768,1344,'9:16'],[1184,864,'4:3'],[864,1184,'3:4'],[1024,1024,'1:1']] as const;

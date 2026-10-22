@@ -297,8 +297,9 @@ def generate(request, prompt, images, width, height, progress):
     from .image_sampling import resolve, sample_qwen
     sampler,scheduler=resolve(request,defaults)
     # The BFS swap workflows (a tool with its author's sampling) have no shift node: the model default 0.69 applies.
-    from .job_plan import speed_lora as _speed
-    authored=bool(request.get('tool_id')) and bool(image_tool(request['tool_id']).get('sampling')) or bool(_speed(None,selected,request) and not request.get('tool_id'))
+    # Only the swap tools: Create keeps the size shift also with Pruna (without it 2048 px pictures came out burned:
+    # shift 1.313 good, none burned, 2026-10-22).
+    authored=bool(request.get('tool_id')) and bool(image_tool(request['tool_id']).get('sampling'))
     if scheduler!='turbo-sigmas' and not authored:
         # The model's scheduler shifts with the image size (mu 0.5 at 256 tokens to 0.9 at 8192, scheduler_config.json);
         # ComfyUI keeps its 1024x1024 value 0.69. ModelSamplingFlux uses the same tokens (w*h/256): 0.69355 at 4096.

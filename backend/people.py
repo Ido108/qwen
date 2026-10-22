@@ -119,12 +119,8 @@ def preset_labels() -> int:
     from . import face_gender
     from .common import resolve_image
     from .image_people import analyze_image
-    # The model downloads once in the background; wait for it here, never in a request.
-    for _ in range(60):
-        if face_gender.available():
-            break
-        time.sleep(10)
-    else:
+    # Only with the model already on disk (a face scan downloads it once); this task never downloads it.
+    if not face_gender.MODEL.is_file():
         return 0
     done = 0
     for person in load():

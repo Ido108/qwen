@@ -31,9 +31,22 @@ def recipe_for(tool, item, request):
     return tool_recipe(tool, item) if tool else model_recipe(item, request)
 
 
+def output_pixels(request):
+    """About how many pixels the job makes: Auto 1K about 1 MP, Auto 2K about 4 MP, or the custom size."""
+    if request.get('custom_size'):
+        return int(request.get('width') or 1024) * int(request.get('height') or 1024)
+    return int(request.get('auto_resolution') or 2048) ** 2
+
+
 def speed_lora(tool, item, request):
-    """The few-step LoRA (a tool author's, or Create's default for the family), unless the user switched it off."""
-    if request.get('speed_lora') is False:
+    """The few-step LoRA (a tool author's, or Create's default for the family), unless the user switched it off.
+    On Create it starts on up to about 2 MP only: Pruna is trained at 1K, and at 4 MP its 8 steps came out burned
+    and over-sharp (same prompt and seed: 1K natural, 4 MP burned, 4 MP without Pruna natural; 2026-10-22).
+    The swaps run at 2 MP at most. Switched on by hand, it runs at any size."""
+    flag = request.get('speed_lora')
+    if flag is False:
+        return None
+    if not tool and flag is None and output_pixels(request) > 2_200_000:
         return None
     return recipe_for(tool, item, request).get('speed_lora')
 
@@ -93,4 +106,8 @@ def plan(request: dict) -> dict:
     return {'steps': int(steps or 1), 'cfg': cfg, 'sampler': sampler, 'scheduler': scheduler, 'loras': loras,
             'speed_lora': {'id': recipe_for(tool, item, request).get('speed_lora'), 'on': bool(speed)}
                           if recipe_for(tool, item, request).get('speed_lora') else None,
-            'recipe': bool(recipe)}
+            'recipe': bool(recipe),
+            # Why the speed LoRA starts off here (shown under its switch)
+            'speed_note': 'Off at this size: Pruna is made for 1K; above about 2 MP it comes out over-sharp.'
+                          if not speed and not tool and request.get('speed_lora') is None and recipe_for(tool, item, request).get('speed_lora')
+                          and output_pixels(request) > 2_200_000 else ''}

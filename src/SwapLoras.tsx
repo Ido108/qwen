@@ -23,7 +23,8 @@ export function SwapLoras({plan,strength,speedStrength,disabled,onSpeed}:{plan:J
         onClick={()=>onSpeed(!speedOn,speedStrength)}><span className="lora-switch-track" aria-hidden="true"/><span>{speedOn?'On':'Off'}</span></button></div>
       {speedOn?<div className="auto-lora-strength"><span>Strength <b>{speedStrength.toFixed(2)}</b></span>
         <Nudge label="speed LoRA strength" value={speedStrength} step={0.05} min={0} max={2} disabled={disabled} onChange={value=>onSpeed(true,value)}/>
-        <input type="range" min="0" max="2" step="0.05" value={speedStrength} disabled={disabled} aria-label="Speed LoRA strength" onChange={e=>onSpeed(true,Number(e.target.value))}/></div>:null}</div>:null}
+        <input type="range" min="0" max="2" step="0.05" value={speedStrength} disabled={disabled} aria-label="Speed LoRA strength" onChange={e=>onSpeed(true,Number(e.target.value))}/></div>:null}
+      {plan.speed_note?<small className="auto-lora-hint">{plan.speed_note}</small>:null}</div>:null}
     {own.map(l=><div className="auto-lora" key={l.id}><div className="auto-lora-head"><strong title={l.title}>{l.title}</strong><span className="auto-lora-tag">{l.id.startsWith('krea2-lora')?'For input photos':'Part of this model'}</span></div></div>)}
   </div>;
 }

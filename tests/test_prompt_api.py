@@ -71,7 +71,11 @@ class PromptApiTests(unittest.TestCase):
 
     def test_create_on_qwen_standard_runs_pruna_by_default(self):
         """Create on Qwen Standard: Pruna 8-step, 8 steps, CFG 1, deis_2m (as the BFS swaps); off: the model's 40."""
-        body={**self.body,'model_id':'uc-int8-convrot','images':[],'prompt':'A red teapot'}
+        # Pruna starts on up to about 2 MP (Auto 1K here); at Auto 2K (4 MP) it starts off: it burns there
+        body={**self.body,'model_id':'uc-int8-convrot','images':[],'prompt':'A red teapot','auto_resolution':1024}
+        four=self.post('/api/job-plan',{**body,'auto_resolution':2048}).json()
+        self.assertEqual((four['steps'],four['speed_lora']['on'],bool(four['speed_note'])),(40,False,True))
+        self.assertEqual(self.post('/api/job-plan',{**body,'auto_resolution':2048,'speed_lora':True}).json()['steps'],8)
         plan=self.post('/api/job-plan',body).json()
         self.assertEqual(self.post('/api/generate',body).status_code,202)
         job=self.queued[-1]
