@@ -1,8 +1,9 @@
 import {useEffect,useState} from 'react';
-import {Check,Download,Images,Loader2,Pencil,Search,Star,Trash2,Upload,UserPlus,X} from 'lucide-react';
+import {Check,Download,Images,Loader2,Pencil,Search,Star,Upload,UserPlus,X} from 'lucide-react';
 import type {Api} from './ModelSettings';
 import {FilePicker} from './FilePicker';
 import {WebSearch} from './WebSearch';
+import {PersonEditor} from './PersonEditor';
 
 export type InputImage={id:string;name:string;url:string;personId?:string;subjectLabel?:string};
 type Upload={id:string;name:string;url:string;thumb_url:string};
@@ -57,11 +58,10 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
   const index=(id:string)=>inputs.findIndex(i=>i.id===id);
   useEffect(()=>{if(importing?.state!=='running')return;const timer=setInterval(async()=>{const next=await api('/api/people/import/status');setImporting(next);onPeople();if(next.state!=='running'){setMessage(next.message);clearInterval(timer);}},1500);return()=>clearInterval(timer);},[importing?.state]);
   async function importMoise(){setMessage('');try{await api('/api/people/import/moise',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});setImporting({state:'running',message:'Connecting to Moise…'});}catch(e){setMessage((e as Error).message);}}
-  async function newPerson(){const name=window.prompt('Name for the checked photos');if(!name)return;try{await api('/api/people',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,image_ids:inputs.map(i=>i.id)})});onPeople();setTab('people');}catch(e){setMessage((e as Error).message);}}
-  async function rename(person:Person){const name=window.prompt('New name',person.name);if(!name||name===person.name)return;try{await api(`/api/people/${person.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});onPeople();}catch(e){setMessage((e as Error).message);}}
-  async function remove(person:Person){if(!window.confirm(`Remove ${person.name} from People? The photos stay in Uploads.`))return;await api(`/api/people/${person.id}`,{method:'DELETE'});onPeople();}
   const shown=people.filter(p=>p.name.toLowerCase().includes(filter.trim().toLowerCase()));
   const [drawer,setDrawer]=useState<string|null>(null);const opened=people.find(p=>p.id===drawer);
+  // The person editor: new (also from a web picture) or one person's name and photos.
+  const [editing,setEditing]=useState<{person?:Person;start?:{id:string;url:string}[];name?:string}|null>(null);
   // Which of the person's photos is in the inputs now (any of them, not only the main photo).
   const personAt=(p:Person)=>inputs.findIndex(i=>p.image_ids.includes(i.id));
   function togglePerson(p:Person){const at=personAt(p);if(multiple&&at>=0)onChange(inputs.filter((_,i)=>i!==at));else add({id:p.image_id,name:p.name,url:p.url,personId:p.id});}
@@ -112,20 +112,22 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
     {confirming?<div className="library-confirm" role="alert"><span>Delete {picked.length} {noun}{picked.length>1?'s':''} from this computer? {tab==='results'?'The pictures and their settings are removed.':'Results made from them stay.'}</span>
       <button type="button" className="button danger" disabled={busy==='delete'} onClick={()=>void deletePicked()}>{busy==='delete'?'Deleting…':'Delete'}</button>
       <button type="button" className="text-button" onClick={()=>setConfirming(false)}>Keep</button></div>:null}</>;})()}
-    {tab==='people'?<div className="people-tools">
+    {tab==='people'&&!editing?<div className="people-tools">
       <label className="people-search"><Search size={13}/><input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Find a person"/></label>
-      <button type="button" className="text-button" disabled={disabled||!inputs.length} onClick={newPerson} title="Make a person from the checked photos"><UserPlus size={14}/>New</button>
+      <button type="button" className="text-button" disabled={disabled} onClick={()=>{setDrawer(null);setEditing({start:inputs.map(i=>({id:i.id,url:i.url}))});}} title="New person: a name and photos from uploads, the checked inputs or the web"><UserPlus size={14}/>New</button>
       <button type="button" className="text-button" disabled={importing?.state==='running'} onClick={importMoise} title="Import contacts and photos from Moise">{importing?.state==='running'?<Loader2 className="spin" size={14}/>:<Download size={14}/>}Moise</button>
     </div>:null}
     {importing?.state==='running'?<div className="people-progress"><progress value={importing.done||0} max={importing.total||1}/><span>{importing.message}{importing.total?` · ${importing.done}/${importing.total}`:''}</span></div>:message?<p className="people-message">{message}</p>:null}
-    {tab==='people'&&!opened?<div className="people-grid">{shown.map(p=>{const at=personAt(p);return <div key={p.id} className={`person ${at>=0?'checked':''}`}>
+    {tab==='people'&&editing?<PersonEditor key={editing.person?.id??'new'} api={api} person={editing.person} start={editing.start} startName={editing.name} checked={inputs} onPeople={onPeople}
+      onDone={made=>{setEditing(null);if(made&&!editing.person&&!multiple&&inputs.length<limit)add({id:made.image_id,name:made.name,url:made.url,personId:made.id});}}/>:null}
+    {tab==='people'&&!opened&&!editing?<div className="people-grid">{shown.map(p=>{const at=personAt(p);return <div key={p.id} className={`person ${at>=0?'checked':''}`}>
       <button type="button" className="person-face" disabled={disabled||(inputs.length>=limit&&!swap&&!(multiple&&at>=0))} onClick={()=>togglePerson(p)} aria-label={`Use ${p.name}`} title={`${p.name} · ${p.image_ids.length} photo${p.image_ids.length>1?'s':''}`} aria-pressed={at>=0}>
         <img src={p.thumb_url} alt="" loading="lazy"/><span className="library-check">{at>=0?at+1:<Check size={12}/>}</span></button>
       <button type="button" className="person-name" dir="auto" disabled={disabled||(inputs.length>=limit&&!swap&&!(multiple&&at>=0))} onClick={()=>togglePerson(p)}>{p.name}</button>
       {p.image_ids.length>1?<button type="button" className={`person-photos ${drawer===p.id?'open':''}`} onClick={()=>setDrawer(p.id)} aria-label={`Choose photo of ${p.name}`} title={`Choose one of ${p.image_ids.length} photos`} aria-expanded={drawer===p.id}><Images size={14}/>{p.image_ids.length} photos</button>:null}
-      <span className="person-actions"><button type="button" onClick={()=>rename(p)} aria-label={`Rename ${p.name}`}><Pencil size={11}/></button><button type="button" onClick={()=>remove(p)} aria-label={`Remove ${p.name}`}><Trash2 size={11}/></button></span>
+      <span className="person-actions"><button type="button" onClick={()=>{setDrawer(null);setEditing({person:p});}} aria-label={`Edit ${p.name}`} title="Name and photos"><Pencil size={11}/></button></span>
     </div>;})}{!shown.length?<p className="library-empty">{people.length?'No match.':'No people yet. Import your contacts from Moise, or check photos and click New.'}</p>:null}</div>:null}
-    {tab==='people'&&opened?<div className="person-drawer">
+    {tab==='people'&&opened&&!editing?<div className="person-drawer">
       <div className="person-drawer-head"><button type="button" className="text-button" onClick={()=>setDrawer(null)}>Back to people</button><b dir="auto">{opened.name}</b><span>{opened.image_ids.length} photos</span></div>
       <div className="person-drawer-grid">{opened.image_ids.map((id,n)=>{const used=inputs.findIndex(i=>i.id===id);return <div key={id} className={`person-photo ${used>=0?'checked':''}`}>
         <button type="button" className={`library-tile checker ${used>=0?"checked":""}`} disabled={disabled} onClick={()=>pickPhoto(opened,id)} aria-label={`Use photo ${n+1} of ${opened.name}`} aria-pressed={used>=0} title={multiple&&used>=0?'Remove from inputs':'Use this photo'}>
@@ -133,7 +135,7 @@ export function InputLibrary({api,inputs,onChange,results,people,onPeople,revisi
         {n===0?<span className="person-main">Main</span>:<button type="button" className="person-main-set" onClick={()=>makeMain(opened,id)} title="Make this the main photo and avatar"><Star size={10}/>Main</button>}
       </div>;})}</div>
     </div>:null}
-    {tab==='web'?<WebSearch api={api} disabled={disabled} onUse={add} onPeople={onPeople}/>:null}
+    {tab==='web'?<WebSearch api={api} disabled={disabled} onUse={add} onPeople={onPeople} onPerson={(image,query)=>{setTab('people');setDrawer(null);setEditing({start:[{id:image.id,url:image.url}],name:query});}}/>:null}
     <div className="library-grid" hidden={tab==='people'||tab==='web'}>
       {tab==='uploads'&&selecting?uploads.map(u=>{const on=picked.includes(u.id);return <button key={u.id} type="button" className={`library-tile checker picking ${on?'picked':''}`} onClick={()=>togglePicked(u.id)} title={u.name} aria-pressed={on} aria-label={`${on?'Unselect':'Select'} ${u.name}`}>
         <img src={u.thumb_url} alt="" loading="lazy"/><span className="library-check">{on?'✓':''}</span></button>;}):null}

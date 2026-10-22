@@ -73,6 +73,22 @@ def _public(url: str) -> None:
             raise ValueError('This picture address is not on the public internet.')
 
 
+def download_any(urls: list[str]) -> bytes:
+    """The first of these addresses that gives a picture: the full-size file, else the search's own preview copy."""
+    from io import BytesIO
+    from PIL import Image
+    problem = 'Could not download this picture.'
+    for url in [u for u in urls if u]:
+        try:
+            data = download(url)
+            with Image.open(BytesIO(data)) as picture:
+                picture.verify()
+            return data
+        except Exception as exc:  # a blocked site, a web page, broken bytes: try the next address
+            problem = str(exc) or problem
+    raise ValueError(f'{problem} Choose another picture.')
+
+
 def download(url: str) -> bytes:
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36',
                'Accept': 'image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8'}
@@ -84,9 +100,11 @@ def download(url: str) -> bytes:
                     url = urljoin(url, response.headers['location'])
                     continue
                 if response.status_code != 200:
-                    raise ValueError(f'The site answered {response.status_code}. Choose another picture.')
-                if not response.headers.get('content-type', '').startswith('image/'):
-                    raise ValueError('This link is not a picture. Choose another one.')
+                    raise ValueError(f'The site answered {response.status_code}.')
+                # Many sites label pictures "application/octet-stream" or "binary/octet-stream": the bytes decide
+                # (the caller opens them with PIL); only a web page instead of the picture is refused here.
+                if response.headers.get('content-type', '').startswith('text/html'):
+                    raise ValueError('The site sent a web page instead of the picture.')
                 data = bytearray()
                 for chunk in response.iter_bytes():
                     data += chunk

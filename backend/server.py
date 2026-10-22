@@ -1179,6 +1179,8 @@ def web_search_images(q: str, count: int = 24):
 
 class WebImport(BaseModel):
     url: str = Field(max_length=4000)
+    # The search's own small copy, used when the site blocks the full-size file.
+    fallback: str | None = Field(default=None, max_length=4000)
     person_name: str | None = Field(default=None, max_length=80)
 
 
@@ -1187,7 +1189,7 @@ def web_search_import(body: WebImport):
     """Download one web picture into Uploads; with a name, also make it a new person in People."""
     from . import web_search
     try:
-        raw = web_search.download(body.url)
+        raw = web_search.download_any([body.url, body.fallback])
         with Image.open(io.BytesIO(raw)) as source:
             if source.width * source.height > 64_000_000:
                 raise ValueError('The picture is over 64 megapixels.')
