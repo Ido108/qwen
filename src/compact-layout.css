@@ -180,3 +180,9 @@ dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12p
 .result-step:hover:not(:disabled){background:#fff;color:var(--accent)}
 .result-step:disabled{opacity:.3;cursor:default}
 @media(max-width:759px),(max-width:1000px) and (pointer:coarse){.result-step{width:44px;height:60px}}
+
+/* The running image develops on the big Result picture. */
+.result-live{position:absolute;inset:0;z-index:2;display:grid;place-items:center;background:#f3f0fb}
+.result-live img{position:absolute;inset:0;width:100%;height:100%;max-width:none;max-height:none;object-fit:contain}
+.result-live span{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);padding:5px 12px;border-radius:8px;background:#211b35c7;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap}
+.result-live i{position:absolute;left:0;bottom:0;height:4px;background:var(--accent);transition:width .3s}

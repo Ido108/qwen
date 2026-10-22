@@ -956,6 +956,7 @@ class PersonBody(BaseModel):
 class PersonUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     image_ids: list[str] | None = Field(default=None, max_length=20)
+    label: str | None = Field(default=None, max_length=48)
 
 
 class MoiseImport(BaseModel):
@@ -986,7 +987,7 @@ def edit_person(person_id: str, body: PersonUpdate):
     if body.image_ids:
         for image_id in body.image_ids:
             people_call(resolve_image, image_id)
-    return people_call(people.update, person_id, body.name, body.image_ids)
+    return people_call(people.update, person_id, body.name, body.image_ids, body.label)
 
 
 @app.delete('/api/people/{person_id}')

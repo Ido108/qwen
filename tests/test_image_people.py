@@ -21,7 +21,7 @@ class ImagePeopleTests(unittest.TestCase):
         from unittest.mock import Mock
         detector=Mock()
         detector.detect.side_effect=[(None,None),(None,np.array([[138,0,186,340]]))]
-        with tempfile.TemporaryDirectory() as folder,patch('backend.reference_people.face_detector',return_value=detector):
+        with tempfile.TemporaryDirectory() as folder,patch('backend.reference_people.face_detector',return_value=detector),             patch('backend.face_gender.available',return_value=False):
             path=Path(folder)/'closeup.png';Image.new('RGB',(500,500)).save(path)
             found=image_people.analyze_image(path)
             self.assertEqual(len(found['faces']),1)

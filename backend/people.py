@@ -48,7 +48,8 @@ def _save(people: list[dict]) -> None:
 def public(person: dict) -> dict:
     cover = person['image_ids'][0] if person['image_ids'] else ''
     return {'id': person['id'], 'name': person['name'], 'image_ids': person['image_ids'], 'source': person.get('source', 'manual'),
-            'image_id': cover, 'url': f'/api/uploads/{cover}', 'thumb_url': f"/api/people/{person['id']}/avatar?v={person.get('updated_at', 0)}"}
+            'image_id': cover, 'url': f'/api/uploads/{cover}', 'thumb_url': f"/api/people/{person['id']}/avatar?v={person.get('updated_at', 0)}",
+            'label': person.get('label')}
 
 
 def listing() -> list[dict]:
@@ -89,7 +90,7 @@ def upsert(name: str, image_ids: list[str], source: str = 'manual', source_id: s
     return public(person)
 
 
-def update(person_id: str, name: str | None = None, image_ids: list[str] | None = None) -> dict:
+def update(person_id: str, name: str | None = None, image_ids: list[str] | None = None, label: str | None = None) -> dict:
     with _lock:
         people = load()
         person = next((p for p in people if p['id'] == person_id), None)
@@ -103,6 +104,9 @@ def update(person_id: str, name: str | None = None, image_ids: list[str] | None 
             if not image_ids:
                 raise ValueError('A person needs at least one photo.')
             person['image_ids'] = list(dict.fromkeys(image_ids))
+        if label is not None:
+            # What a mention of this person's photos reads as ("woman", "man"), kept for every photo of them.
+            person['label'] = label.strip().lower()[:48] or None
         person['updated_at'] = time.time()
         _save(people)
     (AVATARS / f'{person_id}.webp').unlink(missing_ok=True)

@@ -62,13 +62,21 @@ def _analyze(path: str, size: int, modified: int) -> dict:
             continue
         crop = sample.crop((max(0, int(x-.25*w)), max(0, int(y-.35*h)),
                             min(sample.width, int(x+1.25*w)), min(sample.height, int(y+1.25*h))))
+        gender = confidence = None
+        try:
+            from . import face_gender
+            if face_gender.available():
+                gender, confidence = face_gender.classify(cv2.cvtColor(np.asarray(crop), cv2.COLOR_RGB2BGR))
+        except Exception:
+            pass  # optional: the face choice still works without it
         crop.thumbnail((160, 160))
         buffer = io.BytesIO()
         crop.save(buffer, format='JPEG', quality=82)
         found.append({'id': f'face-{len(found)+1}',
                       'box': [round(left/sample.width, 5), round(top/sample.height, 5),
                               round((right-left)/sample.width, 5), round((bottom-top)/sample.height, 5)],
-                      'preview': 'data:image/jpeg;base64,'+base64.b64encode(buffer.getvalue()).decode('ascii')})
+                      'preview': 'data:image/jpeg;base64,'+base64.b64encode(buffer.getvalue()).decode('ascii'),
+                      'gender': gender, 'gender_confidence': confidence})
     revision = hashlib.sha256(f'{path}\0{size}\0{modified}\0yunet-still-v2'.encode()).hexdigest()[:24]
     return {'faces': found, 'revision': revision, 'width': photo.width, 'height': photo.height}
 

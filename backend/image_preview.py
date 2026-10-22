@@ -38,7 +38,7 @@ class LiveImagePreview:
             if self.bias is not None:
                 rgb += torch.tensor(self.bias, dtype=torch.float32, device=latent.device)
             picture = Image.fromarray(((rgb + 1) / 2).clamp(0, 1).mul(255).byte().cpu().numpy())
-            scale = 384 / max(picture.size)
+            scale = 768 / max(picture.size)
             picture = picture.resize(tuple(max(1, round(v * scale)) for v in picture.size), Image.Resampling.BILINEAR)
             temporary = self.directory / 'live-preview.tmp'
             picture.save(temporary, format='WEBP', quality=70, method=0)

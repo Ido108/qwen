@@ -178,7 +178,13 @@ def run():
         # Z-Image and MOSS redraw image 1, so the output keeps its shape.
         follow_first = tool or (images and entry(request['model_id']).get('family', '').startswith(('z-image','flux3-klein','moss-image')))
         width, height = output_dimensions(sizing, images, {'ratio_follow': '<image1>'} if follow_first else rewrite)
-    if images and entry(request['model_id']).get('family', '').startswith('krea-2') and (request.get('krea_reference_mode') or 'identity') == 'identity':
+    krea_family = entry(request['model_id']).get('family', '').startswith('krea-2')
+    identity = bool(images) and krea_family and (request.get('krea_reference_mode') or 'identity') == 'identity'
+    if krea_family and not tool and not identity and not request['custom_size'] and request.get('auto_resolution', 2048) <= 1024             and 0.87 <= width / height <= 1.15:
+        # Krea 2 at 1K crops in close on a square canvas: Auto makes it 3:4 (the user's choice, 2026-10-22).
+        area = width * height
+        width, height = int((area * 3 / 4) ** 0.5) // 16 * 16, int((area * 4 / 3) ** 0.5) // 16 * 16
+    if identity:
         # Krea 2 identity edit: the card says generate at 2 MP or less; the photo tokens double the sequence.
         from .krea_edit import identity_size
         if not request['custom_size'] and request.get('auto_resolution', 2048) <= 1024:
