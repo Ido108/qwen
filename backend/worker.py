@@ -71,10 +71,13 @@ def rewrite_prompt(images):
     key = enhance_cache.key(request['prompt'], chosen['label'], chosen['spec'], prompts().get(chosen['spec']) if chosen['spec'] else None,
                             request.get('text_encoder'), images=images)
     saved = enhance_cache.get(key)
-    from .prompt_enhancer import CJK
-    wrong_language = lambda result: bool(result) and not CJK.search(request['prompt']) and len(CJK.findall(result.get('positive_prompt') or '')) > 10
+    from .prompt_enhancer import CJK, CLOSE, asked_shot
+    # Answers in Chinese for a request without it, or a close-up when the request named another shot size, are not
+    # reused (some were saved before those retries existed) and not saved.
+    wrong_language = lambda result: bool(result) and ((not CJK.search(request['prompt']) and len(CJK.findall(result.get('positive_prompt') or '')) > 10)
+                                                      or (asked_shot(request['prompt']) and bool(CLOSE.search(result.get('positive_prompt') or ''))))
     if wrong_language(saved):
-        saved = None  # an answer saved before the English retry existed
+        saved = None
     if saved:
         update(stage='rewriting', message='Using the saved enhanced prompt (same prompt, images and enhancer)…', enhance_cached=True,
                rewrite_seconds=0, rewritten_prompt=saved['positive_prompt'],

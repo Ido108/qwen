@@ -102,6 +102,21 @@ def _parts_text(parts):
 LOCAL = 'local'
 FAST_OPENING = '{"rewritten_prompt": "'
 CJK = re.compile(r'[一-鿿]')
+# Shot sizes a user can ask for (English and Hebrew), and the phrases of a close crop.
+SHOTS = [('full body', re.compile(r'full[- ]?(body|length)|head[- ]to[- ](toe|feet)|גוף מלא', re.I)),
+         ('wide shot', re.compile(r'wide[- ]shot|long[- ]shot|וייד', re.I)),
+         ('medium shot', re.compile(r'medium[- ]shot|mid[- ]shot|cowboy[- ]shot|waist[- ]up|knees?[- ]up|מדיום', re.I))]
+CLOSE = re.compile(r'close[- ]?up|chest[- ]up|head[- ]and[- ]shoulders|קלוז', re.I)
+# An answer that is planning notes instead of the prompt (Krea's template on Qwen PE without thinking, 1 of 3 seeds
+# for a Hebrew request, 2026-10-22).
+PLANNING = re.compile(r'\s*#*\s*(reasoning|thinking|analysis)\b', re.I)
+
+
+def asked_shot(prompt):
+    """The shot size the request names, unless it also asks for a close-up."""
+    if CLOSE.search(prompt):
+        return None
+    return next((name for name, pattern in SHOTS if pattern.search(prompt)), None)
 # Every system prompt with its official source and generation settings (a Settings editor can change this file).
 PROMPTS_PATH = APP_DIR / 'reference' / 'prompt-enhancer-prompts.json'
 # Qwen's official Qwen-Image-2.1 prompt rewriters (fine-tuned Qwen3.5-VL 9B), Heretic builds without refusals, run in llama.cpp.
@@ -346,7 +361,9 @@ def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.
             # DRY stops repeated phrases: with presence penalty alone Z-Image's prompt still looped 2 of 6 times.
             # The cap: Qwen PE did not stop on Z-Image's prompt (21,436 characters); the text encoders read about
             # 512 tokens, so a longer answer only costs time. It is cut at its last full sentence below.
-            body.update(dry_multiplier=0.8, dry_base=1.75, dry_allowed_length=2, max_tokens=min(settings['max_tokens'], 800))
+            # llama.cpp counts the request's own words in these penalties, so presence 1.5 and DRY from 2 tokens pushed
+            # the answer away from "medium shot" (kept 7 of 12; presence 0 with DRY from 4 tokens: 9 of 12, no loops).
+            body.update(presence_penalty=0.0, dry_multiplier=0.8, dry_base=1.75, dry_allowed_length=4, max_tokens=min(settings['max_tokens'], 800))
         reply = server.chat(body)
         if key.startswith('qwen-image-2.1') and not CJK.search(prompt) and len(CJK.findall(reply['choices'][0]['message'].get('content') or '')) > 10:
             # Qwen PE answered some Hebrew edit requests in Chinese (4 of 12, Q6 and Q8 alike, by request, not seed);
@@ -354,6 +371,18 @@ def enhance_local(prompt, images, update=lambda **_: None, family='qwen-image-2.
             retry = messages(spec, prompt + ' (Write the rewritten prompt in English.)', pictures) + chat[len(chat) - (1 if opening else 0):]
             reply = server.chat({**body, 'messages': retry})
             update(sent_prompt={'label': 'Enhance: asked again for English (the first answer was in Chinese)', 'text': prompt + ' (Write the rewritten prompt in English.)'})
+        if not key.startswith('qwen-image-2.1') and PLANNING.match(reply['choices'][0]['message'].get('content') or ''):
+            note = ' (Write only the final image prompt paragraph.)'
+            retry = messages(spec, prompt + note, pictures) + chat[len(chat) - (1 if opening else 0):]
+            reply = server.chat({**body, 'messages': retry})
+            update(sent_prompt={'label': 'Enhance: asked again for the prompt only (the first answer was planning notes)', 'text': prompt + note})
+        shot = asked_shot(prompt)
+        if shot and CLOSE.search(reply['choices'][0]['message'].get('content') or ''):
+            # The request named a shot size and the answer described a close-up (Krea's template on Qwen PE, 2026-10-22).
+            note = f' (Framing: {shot}. Do not describe a close-up.)'
+            retry = messages(spec, prompt + note, pictures) + chat[len(chat) - (1 if opening else 0):]
+            reply = server.chat({**body, 'messages': retry})
+            update(sent_prompt={'label': f'Enhance: asked again for a {shot} (the first answer was a close-up)', 'text': prompt + note})
         marks.append(time.perf_counter())
         # Stay loaded only beside an image model that is already in the GPU, with room for its next encode and steps.
         kept = _image_model_loaded() and _free_vram() >= KEEP_FREE
