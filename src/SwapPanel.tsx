@@ -23,7 +23,8 @@ export type SwapState={tool:string;slots:(InputImage|null)[];strength:number;ext
   custom_size?:boolean;auto_resolution?:1024|2048;width?:number;height?:number};
 export const nonRealisticNegative='photorealism, photographic face, realistic skin pores, photographic skin texture, individual skin microdetails, photographic hair strands, photographic highlights, mismatched rendering style, pasted-on face';
 export function swapNegative(value:SwapState){return value.styleMode==='non-realistic'?(value.nonRealisticNegative??nonRealisticNegative):(value.negativePrompt??'');}
-export const swapDefaults:SwapState={tool:'head-swap',slots:[null,null],strength:1,extra:'',selection:null,poseSource:1,styleSource:1,styleMode:'realistic',negativePrompt:''};
+// Keep original face starts at 0.30 (the user's choice, 2026-10-22; the BFS author starts at 1.0).
+export const swapDefaults:SwapState={tool:'head-swap',slots:[null,null],strength:0.3,extra:'',selection:null,poseSource:1,styleSource:1,styleMode:'realistic',negativePrompt:''};
 
 // What each picture gives, per swap type (the author's docs: image 1 is the scene, image 2 the head or the person).
 const ROLES:Record<string,[string,string]>={

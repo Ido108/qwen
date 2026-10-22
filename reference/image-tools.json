@@ -361,7 +361,7 @@
     "swap": true,
     "summary": "Replace a head in picture 1 with a head from picture 2. Choose the face, pose and style sources below. Check the result for changes to the scene.",
     "lora": "lora-bfs-head",
-    "strength": 1.0,
+    "strength": 0.3,
     "families": [
       "qwen-image-2.1",
       "qwen-image-2.1-turbo"
@@ -402,7 +402,7 @@
     "swap": true,
     "summary": "Uses the alternate head-swap model. Its author reports stronger expression transfer from picture 1. It can change the head angle. Choose the pose and style sources below.",
     "lora": "lora-bfs-head-expression",
-    "strength": 1.0,
+    "strength": 0.3,
     "families": [
       "qwen-image-2.1",
       "qwen-image-2.1-turbo"
