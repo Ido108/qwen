@@ -73,7 +73,13 @@ export function LoraStack({value,onChange,loras,family,onBrowse,disabled,compact
     const id=focusId.current;focusId.current=null;
     if(id)Array.from(stack.current?.querySelectorAll<HTMLButtonElement>('.lora-select')||[]).find(button=>button.dataset.loraId===id)?.focus({preventScroll:true});
   }
-  const filtered=usable.filter(lora=>`${lora.title} ${lora.civitai?.creator||''} ${(lora.trained_words||[]).join(' ')}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  // Internal LoRAs are the ones the app's tools use (Swap, angles, outfit...); they list apart from your own.
+  const [showInternal,setShowInternal]=useState(()=>{try{return localStorage.getItem('qwen-lora-internal')!=='0';}catch{return true;}});
+  useEffect(()=>{try{localStorage.setItem('qwen-lora-internal',showInternal?'1':'0');}catch{}},[showInternal]);
+  const isInternal=(lora:ModelEntry)=>!!(lora as {internal?:boolean}).internal;
+  const hasInternal=usable.some(isInternal);
+  const filtered=usable.filter(lora=>(showInternal||!isInternal(lora))&&`${lora.title} ${lora.civitai?.creator||''} ${(lora.trained_words||[]).join(' ')}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const own=filtered.filter(lora=>!isInternal(lora)),internal=filtered.filter(isInternal);
   const setStrength=(id:string,strength:number)=>onChange(value.map(v=>v.id===id?{...v,strength}:v));
   return <div ref={stack} className={`lora-stack lora-controls ${compact?'compact':''}`}>
     <div className="lora-head"><b>LoRAs</b><span>{active.length?`${active.filter(({choice,fit})=>choice.enabled!==false&&fit.usable).length} on · ${active.length} saved`:compact?'':'Optional'}</span>
@@ -116,10 +122,13 @@ export function LoraStack({value,onChange,loras,family,onBrowse,disabled,compact
       }}>
       <div className="lora-picker-heading"><strong>{picking?.replaceId?'Replace LoRA':'Add a LoRA'}</strong><button type="button" className="icon-button" onClick={()=>{setPicking(null);anchor.current?.focus();}} aria-label="Close"><span aria-hidden="true">×</span></button></div>
       <div className="lora-search"><input type="search" aria-label="Search LoRAs" placeholder="Search LoRAs" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-      <div className="lora-picker-grid">{(picking?filtered:[]).map(lora=><button type="button" key={lora.id} className="lora-option" disabled={disabled||(selectedIds.has(lora.id)&&lora.id!==picking?.replaceId)||!loraFit(lora as LoraMeta,family).usable} aria-label={lora.title} onClick={()=>choose(lora)}>
+      {hasInternal?<label className="lora-internal-toggle"><input type="checkbox" checked={showInternal} onChange={e=>setShowInternal(e.target.checked)}/>Internal LoRAs</label>:null}
+      <div className="lora-picker-grid">{picking?[[own,'My LoRAs'],[internal,'Internal LoRAs']].map(([group,label])=>(group as ModelEntry[]).length?<div className="lora-group" key={label as string} role="group" aria-label={label as string}>
+        {hasInternal?<p className="lora-group-title">{label as string}</p>:null}
+        {(group as ModelEntry[]).map(lora=><button type="button" key={lora.id} className="lora-option" disabled={disabled||(selectedIds.has(lora.id)&&lora.id!==picking?.replaceId)||!loraFit(lora as LoraMeta,family).usable} aria-label={lora.title} onClick={()=>choose(lora)}>
         {lora.preview?<img src={lora.preview} alt="" loading="lazy"/>:<span className="lora-noimg"/>}<strong>{lora.title}</strong>
-        <small>{lora.id===picking?.replaceId?'Current LoRA':selectedIds.has(lora.id)?'Already added':(lora as LoraMeta).test_file?'Test file':(lora as LoraMeta).accelerator&&family.endsWith('turbo')?'Speed LoRA, not for Turbo':lora.civitai?.creator||'Installed'}</small></button>)}
-        {!filtered.length?<p className="recent-empty">{usable.length?'No matching LoRAs.':'You have no LoRAs for this model yet.'}</p>:null}</div>
+        <small>{lora.id===picking?.replaceId?'Current LoRA':selectedIds.has(lora.id)?'Already added':(lora as LoraMeta).test_file?'Test file':(lora as LoraMeta).accelerator&&family.endsWith('turbo')?'Speed LoRA, not for Turbo':isInternal(lora)?'Used by an app tool':lora.civitai?.creator||'Installed'}</small></button>)}</div>:null):null}
+        {!filtered.length?<p className="recent-empty">{usable.length?(search.trim()?'No matching LoRAs.':'You have no LoRAs of your own for this model. Turn on Internal LoRAs to see the tool LoRAs.'):'You have no LoRAs for this model yet.'}</p>:null}</div>
       <div className="lora-picker-footer"><button type="button" className="text-button" onClick={()=>{setPicking(null);onBrowse();}}>Browse Civitai</button></div>
     </div>
   </div>;

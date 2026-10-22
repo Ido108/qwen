@@ -58,11 +58,18 @@
 .lora-controls .lora-option img,.lora-controls .lora-option .lora-noimg{width:28px;height:28px;grid-row:1/3}
 .lora-controls .lora-option strong{overflow-wrap:anywhere}
 .lora-controls .lora-option small{grid-column:2;overflow-wrap:anywhere}
+.lora-internal-toggle{display:flex;align-items:center;gap:7px;padding:0 12px 6px;flex-shrink:0;font-size:12.5px;color:#2a2238;cursor:pointer}
+.lora-internal-toggle input{width:16px;height:16px;margin:0;accent-color:#6d4fd8}
+.lora-controls .lora-group{display:flex;flex-direction:column;gap:2px}
+.lora-controls .lora-group+.lora-group{margin-top:4px;padding-top:4px;border-top:1px solid var(--line)}
+.lora-group-title{margin:4px 7px 2px;font-size:11.5px;font-weight:600;color:#5d5675}
 .lora-picker-footer{padding:3px 10px;border-top:1px solid var(--line);flex-shrink:0}
 .lora-picker-footer .text-button{display:flex;align-items:center;gap:6px;min-height:32px;font-size:12px}
 @media(max-width:600px){
   .lora-search input{font-size:16px;height:40px;min-height:40px}
   .lora-controls .lora-option{min-height:44px}
+  .lora-internal-toggle{min-height:40px;padding-bottom:2px;font-size:14px}
+  .lora-internal-toggle input{width:20px;height:20px}
   .lora-picker-heading .icon-button{width:44px;min-height:44px}
   .lora-picker-footer .text-button{min-height:44px}
 }

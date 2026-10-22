@@ -141,7 +141,7 @@ function App(){
   // nodes, so they stay in their tools only.
   const toolFor=new Map(tools.filter(t=>!t.lora.startsWith('krea2-lora-')).map(t=>[t.lora,t]));
   const userLoras=(modelState?.models||[]).filter(m=>m.kind==='image-lora'&&!m.id.startsWith('krea2-lora-')&&m.id!==activeTool?.lora&&(!!m.families?.length||toolFor.has(m.id)))
-    .map(m=>{const tool=toolFor.get(m.id);return tool&&!m.families?.length?{...m,families:tool.families,title:`${m.title} (${tool.title} tool)`}:m;});
+    .map(m=>{const tool=toolFor.get(m.id);return !tool?m:m.families?.length?{...m,internal:true}:{...m,internal:true,families:tool.families,title:`${m.title} (${tool.title} tool)`};});
   const activeLoras=enabledLoras(params.loras,userLoras,family);
   // People the model (or an active LoRA) knows by trigger, offered in the @ menu (MOSS Serenity).
   const knownFrom=chosenModel?.known_people?.length?chosenModel:userLoras.find(l=>l.known_people?.length&&activeLoras.some(a=>a.id===l.id));
