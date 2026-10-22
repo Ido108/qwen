@@ -115,7 +115,7 @@ export function VramFitHint({selected,gpu,resident}:{models:ModelEntry[];selecte
   if(gpu.job_active)return null;
   const need=neededGb(selected);
   if(gpu.free_gb>=need)return null;
-  if((gpu.resident_image||resident)?.loaded)return <div className="vs-memory-note" role="status">An image model is kept ready in GPU memory. Qwen releases it before video generation. The current free memory does not show how much will be available for this video.</div>;
+  if((gpu.resident_image||resident)?.loaded)return <div className="vs-memory-note" role="status" title="The current free memory does not show how much will be available for this video.">An image model is in GPU memory; it is released before the video starts.</div>;
   return <div className="vs-vram" role="status"><AlertTriangle size={15}/><div>
     <p>{gpu.free_gb.toFixed(1)} of {gpu.total_gb?.toFixed(1)} GB is free now. The model weights use about {(selected.bytes/GIB).toFixed(1)} GB before working memory. Output size, duration and reference inputs also affect memory use.</p>
     <small>Qwen can move part of the model to RAM when needed. This can make generation slower. Your selected model stays unchanged.</small>

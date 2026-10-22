@@ -1,0 +1,108 @@
+/* Compact image page: right-sized photo tiles, less padding, short notes. Loaded last, so it sets the final sizes. */
+#root .studio-controls{--thumb-h:92px}
+#root .studio-controls .controls-scroll{gap:10px}
+#root .studio-controls .panel{padding:12px}
+#root .studio-controls .section-heading{margin-bottom:8px}
+
+/* Input images: the picture is the tile; its label sits on the picture, one small row below. */
+#root .studio-controls .upload-area.has-images{border:0;border-radius:0;background:none;min-height:0}
+#root .studio-controls .upload-area.has-images.dragging{outline:2px dashed var(--accent);outline-offset:2px}
+#root .studio-controls .input-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;padding:0;max-height:none;overflow:visible}
+#root .studio-controls .input-grid .input-thumb{width:auto;display:flex;flex-direction:column;gap:2px}
+#root .studio-controls .thumb-preview{height:var(--thumb-h);min-height:0;border-radius:8px}
+#root .studio-controls .add-image{height:var(--thumb-h);min-height:0;border-radius:8px;align-self:start}
+#root .studio-controls .input-thumb .image-label{position:absolute;left:4px;right:4px;top:calc(var(--thumb-h) - 26px);width:auto;z-index:2}
+#root .studio-controls .input-thumb .image-label:has(input){position:static}
+#root .studio-controls .input-thumb .image-label select{height:22px;min-height:0;padding:0 18px 0 6px;border:0;border-radius:5px;font-size:11px;font-weight:550;color:#fff;background:#211b35cc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0h8L4 5z' fill='%23fff'/%3E%3C/svg%3E") no-repeat right 6px center;appearance:none;-webkit-appearance:none;cursor:pointer}
+#root .studio-controls .input-thumb .image-label select option{color:#211b35;background:#fff}
+#root .studio-controls .input-thumb .image-label:has(input) select{color:#514467;background-color:#fff;border:1px solid #ded8ef;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0h8L4 5z' fill='%23514467'/%3E%3C/svg%3E")}
+#root .studio-controls .input-thumb .image-label input{height:24px;min-height:0;font-size:11px}
+#root .studio-controls .input-thumb .thumb-zoom{top:28px;bottom:auto;inset-inline-end:3px}
+#root .studio-controls .input-thumb .person-photo-cycle{margin:0}
+#root .studio-controls .input-thumb .reorder{display:flex;align-items:center;justify-content:space-between;gap:2px;height:22px;margin:0}
+#root .studio-controls .input-thumb .reorder>button:not(.thumb-upscale){min-width:22px;min-height:22px;justify-content:center;align-items:center;border-radius:5px}
+#root .studio-controls .input-thumb .reorder>button:not(.thumb-upscale):hover:not(:disabled){background:#f1edfc}
+#root .studio-controls .input-thumb .thumb-upscale{flex:1;width:auto;min-width:0;min-height:22px;margin:0;padding:0;border:0;border-radius:5px;background:none;font-size:11px}
+#root .studio-controls .input-thumb .thumb-upscale:hover:not(:disabled){background:#f1edfc}
+
+/* Notes under the pictures: one muted line, no colored box. */
+#root .studio-controls .input-note{margin:8px 0 0;padding:0;border:0;background:none;color:#6b6585;font-size:11.5px;line-height:1.45}
+#root .studio-controls .krea-mode{gap:6px}
+#root .studio-controls .krea-mode button{min-height:28px;padding:3px 10px;border:1px solid #d9d3e7;border-radius:7px;background:#fff;color:#3c3556;font-size:12px}
+#root .studio-controls .krea-mode button[aria-pressed="true"]{border-color:var(--accent);background:#f1edfc;color:var(--accent);font-weight:600}
+#root .studio-controls .krea-mode p{color:#6b6585}
+#root .studio-controls .krea-roles{flex-basis:100%;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px}
+#root .studio-controls .krea-roles label{font-size:11.5px;color:#3c3556;gap:3px}
+#root .studio-controls .krea-roles select{width:100%;height:30px;padding:0 8px;border:1px solid #d9d3e7;border-radius:7px;background-color:#fff;color:#211b35;font-size:12.5px}
+
+/* Prompt and LoRAs. */
+#root .studio-controls .prompt-input{height:96px;min-height:64px}
+#root .studio-controls .enhance-toggle{margin:4px 0 2px}
+#root .lora-controls .lora-head .lora-add{min-height:30px;padding:0 10px;font-size:12px}
+
+/* Swap: smaller photo slots, related fields side by side. */
+.swap-panel{gap:10px}
+.swap-panel .segmented{margin:0}
+.swap-turbo-note{margin:0;font-size:11.5px;color:#8c611c}
+.swap-turbo-note a{color:inherit;text-decoration:underline}
+.swap-image{height:150px}
+.swap-empty{height:96px}
+.swap-empty>span::before{font-size:22px;margin-bottom:2px}
+.swap-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 12px;align-items:start}
+.swap-row .field{min-width:0}
+.swap-row select{width:100%}
+.swap-panel .swap-dimensions{gap:10px 12px}
+.swap-panel .swap-output{margin:0}
+
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){
+  #root .studio-controls{--thumb-h:100px}
+  #root .studio-controls .input-grid{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;padding:2px 0 4px;scroll-snap-type:x proximity}
+  #root .studio-controls .input-grid .input-thumb{flex:0 0 108px;scroll-snap-align:start}
+  #root .studio-controls .add-image{flex:0 0 56px;height:var(--thumb-h)}
+  #root .studio-controls .input-thumb .image-label{top:calc(var(--thumb-h) - 30px)}
+  /* 16px keeps iOS Safari from zooming when the list opens. */
+  #root .studio-controls .input-thumb .image-label select{height:26px;font-size:16px;padding:0 20px 0 7px}
+  #root .studio-controls .input-thumb .image-label input{height:32px;font-size:16px}
+  #root .studio-controls .input-thumb .thumb-zoom{top:38px}
+  #root .studio-controls .input-thumb .reorder{height:34px}
+  #root .studio-controls .input-thumb .reorder>button:not(.thumb-upscale){min-width:32px;min-height:34px}
+  #root .studio-controls .input-thumb .thumb-upscale{min-height:34px;font-size:13px}
+  #root .studio-controls .prompt-input{height:104px}
+  #root .studio-controls .krea-mode button{min-height:36px;font-size:13px}
+  #root .studio-controls .krea-roles select{height:38px;font-size:16px}
+  #root .lora-controls .lora-head .lora-add{min-height:36px}
+  .swap-image{height:130px}
+  .swap-empty{height:84px}
+}
+
+/* Queue banner: one slim line while a job runs. */
+.queue-activity-main{padding:7px 12px;gap:10px}
+.queue-activity-icon{width:28px;height:28px;border-radius:8px}
+.queue-activity-detail:not(:has(span:not(:empty))){display:none}
+.queue-activity-copy progress{margin-top:5px;height:4px}
+.queue-activity-open{min-height:32px;padding:4px 10px}
+.queue-finished{padding:5px 12px}
+.queue-finished>.icon-button{width:28px;height:28px}
+@media(max-width:600px){.queue-activity-open{min-height:40px}}
+
+/* Phone strip of recent images: "Use as" shows whole, the restore button is smaller. */
+@media(max-width:759px),(max-width:1000px) and (pointer:coarse){
+  #root .mobile-results{margin:10px 0 12px;padding:10px 0}
+  #root .mobile-result-card{flex-basis:132px;height:132px}
+  #root .mobile-result-card>.use-image-as select{width:auto!important;field-sizing:content;min-width:58px;font-size:16px;padding:2px 0!important;min-height:32px}
+  #root .mobile-result-restore{width:36px;height:36px;border-radius:8px}
+}
+#root .studio-controls .mode-label{white-space:nowrap}
+
+/* Video pages: smaller empty drop areas and add tiles. */
+#root main.video-studio .reference-video-drop:not(:has(video)),#root .reference-workbench .reference-source-editor .reference-video-drop:not(:has(video)){min-height:0}
+#root main.video-studio .reference-video-drop>button,#root .reference-workbench .reference-video-drop>button{min-height:104px;gap:5px}
+#root .reference-person-new{width:88px;height:88px;min-height:88px}
+
+/* Settings: model memory on one line. */
+#root .resident-model,dialog .resident-model{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;padding:10px 14px;border-radius:10px}
+dialog .resident-model h3{margin:0;font-size:13px;flex-basis:100%}
+dialog .resident-model p[role=status]{flex:1 1 220px;margin:0;font-size:12.5px;line-height:1.45}
+dialog .resident-model .button{min-height:32px;padding:4px 12px;font-size:12.5px}
+dialog .resident-model #unload-model-help{flex-basis:100%;margin:0;font-size:12px}
+@media(max-width:600px){dialog .resident-model .button{min-height:40px}}

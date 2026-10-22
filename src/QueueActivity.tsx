@@ -47,7 +47,7 @@ export function QueueActivity({state,error,onOpen,onView,onResume}:{state:QueueS
       <span className="queue-activity-icon" aria-hidden="true">{active?<Loader2 size={20} className="spin"/>:state.paused?<Pause size={20}/>:<Clock size={20}/>}</span>
       <div className="queue-activity-copy">
         <div className="queue-activity-title"><strong role="status">{active?`${jobKindLabel(active)} · ${stage}`:stage}</strong><span>{steps}{steps&&elapsed?' · ':''}{elapsed?formatDuration(elapsed):''}</span></div>
-        <div className="queue-activity-detail"><span>{waiting?`${waiting} waiting${state.paused?' · Queue paused':''}`:state.paused?(active?'Current job continues · New jobs wait':'New jobs wait until you resume the queue'):active?'You can keep editing':''}</span>{error?<span className="queue-reconnecting">Reconnecting · Last known progress</span>:null}</div>
+        <div className="queue-activity-detail"><span>{waiting?`${waiting} waiting${state.paused?' · Queue paused':''}`:state.paused?(active?'Current job continues · New jobs wait':'New jobs wait until you resume the queue'):''}</span>{error?<span className="queue-reconnecting">Reconnecting · Last known progress</span>:null}</div>
         {active?<progress aria-label={download?'Model download progress':'Current stage progress'} value={maximum?value||0:undefined} max={maximum||1}/>:null}
       </div>
       {state.paused&&onResume?<button className="text-button queue-activity-resume" onClick={onResume}>Resume queue</button>:null}

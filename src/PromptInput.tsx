@@ -46,10 +46,10 @@ export const PromptInput=forwardRef<HTMLTextAreaElement,Props>(function PromptIn
         <span><strong>{option.label}</strong><small>{option.detail||option.tag}</small></span><b>{option.badge??option.tag}</b>
       </button>):<p>{mentions.length?'No matching image or person.':'Add an image or a person to mention it here.'}</p>}
     </div>:null}
-    <div className="prompt-mention-tools"><button type="button" disabled={props.disabled} aria-label="Mention an image or person" onClick={()=>{
+    <div className="prompt-mention-tools"><button type="button" disabled={props.disabled} aria-label="Mention an image or person" title="Or type @ to choose an image or person" onClick={()=>{
       const el=field.current;if(!el)return;const start=el.selectionStart??value.length,end=el.selectionEnd??start;
       const prefix=start>0&&!/\s/.test(value[start-1])?' @':'@';const next=value.slice(0,start)+prefix+value.slice(end);
       onValueChange(next);requestAnimationFrame(()=>{el.focus({preventScroll:true});el.setSelectionRange(start+prefix.length,start+prefix.length);track(next,start+prefix.length);});
-    }}><AtSign size={14}/>Mention</button>{tools}{used.length?<div className="prompt-used-mentions">{used.map(m=><button type="button" key={m.tag} title={`${m.tag}: ${m.label}`} disabled={props.disabled} onClick={()=>{const at=value.toLowerCase().indexOf(m.tag.toLowerCase());field.current?.focus({preventScroll:true});field.current?.setSelectionRange(at,at+m.tag.length);}}>{m.image?<img src={m.image} alt=""/>:null}<span>{m.label}</span><small>{m.tag}</small></button>)}</div>:<span>Type @ to choose an image or person</span>}</div>
+    }}><AtSign size={14}/>Mention</button>{tools}{used.length?<div className="prompt-used-mentions">{used.map(m=><button type="button" key={m.tag} title={`${m.tag}: ${m.label}`} disabled={props.disabled} onClick={()=>{const at=value.toLowerCase().indexOf(m.tag.toLowerCase());field.current?.focus({preventScroll:true});field.current?.setSelectionRange(at,at+m.tag.length);}}>{m.image?<img src={m.image} alt=""/>:null}<span>{m.label}</span><small>{m.tag}</small></button>)}</div>:null}</div>
   </div>;
 });
