@@ -602,6 +602,12 @@ async def local_only(request: Request, call_next):
 def health():
     return {'app': 'image-studio-qwen21', 'version': '1.0.0', 'app_dir':str(APP_DIR), 'data_dir':str(DATA_DIR)}
 
+@app.get('/api/this-pc')
+def this_pc():
+    from .moise_remote import gpu_info, worker_name
+    info = gpu_info()
+    return {'name': worker_name(), 'gpu': info.get('gpu', ''), 'vram_total_mb': info.get('vramTotalMb', 0)}
+
 @app.get('/api/gpu-memory')
 def gpu_memory_status():
     from .gpu_memory import dedicated_memory_snapshot
