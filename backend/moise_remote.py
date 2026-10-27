@@ -3,10 +3,13 @@
 The app keeps an outbound long poll to Moise (no open ports on this PC). Moise hands over each request of the
 remote page; it runs here against this app on 127.0.0.1 and the answer goes back. Moise checks the dashboard login.
 Settings: MOISE_SERVER_URL and MOISE_RELAY_TOKEN (Windows user environment variables, as for MoiseGpuServer).
+Several PCs can be connected to one Moise: each sends its name (COMPUTERNAME), GPU, VRAM and queue with every poll.
 """
 from __future__ import annotations
 import json
 import os
+import socket
+import subprocess
 import threading
 import time
 import uuid
@@ -73,6 +76,36 @@ class ConnectionReport:
                 self.outage, self.last_reason = False, ''
 
 
+def worker_name() -> str:
+    return (os.environ.get('COMPUTERNAME') or socket.gethostname() or '').strip()[:64]
+
+
+def gpu_info(cache={'until': 0.0, 'value': {}}) -> dict:
+    """Name and memory of the GPU from nvidia-smi, read at most every 30 seconds."""
+    if cache['until'] > time.monotonic():
+        return cache['value']
+    value = {}
+    try:
+        out = subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total,memory.free', '--format=csv,noheader,nounits'],
+                             capture_output=True, text=True, timeout=5,
+                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
+        name, total, free = [part.strip() for part in out.splitlines()[0].split(',')]
+        value = {'gpu': name, 'vramTotalMb': int(float(total)), 'vramFreeMb': int(float(free))}
+    except Exception:
+        pass
+    cache.update(until=time.monotonic() + 30, value=value)
+    return value
+
+
+def poll_body(worker: str, status) -> dict:
+    body = {'workerId': worker, 'name': worker_name(), **gpu_info()}
+    try:
+        body.update(status() if status else {})
+    except Exception:
+        pass
+    return body
+
+
 def setting(name: str) -> str:
     value = os.environ.get(name, '')
     if not value and os.name == 'nt':
@@ -113,7 +146,7 @@ def run_request(client: httpx.Client, app_url: str, job: dict, body: bytes) -> t
     return answer.status_code, {k: answer.headers[k] for k in RETURNED if k in answer.headers}, answer.content
 
 
-def serve(base: str, token: str, app_url: str, stop: threading.Event) -> None:
+def serve(base: str, token: str, app_url: str, stop: threading.Event, status=None) -> None:
     worker = str(uuid.uuid4())
     root = base + '/api/qwen-studio-worker'
     auth = {'Authorization': f'Bearer {token}', 'X-Qwen-Worker-Id': worker}
@@ -137,7 +170,7 @@ def serve(base: str, token: str, app_url: str, stop: threading.Event) -> None:
 
         while not stop.is_set():
             try:
-                answer = poller.post(root + '/poll', json={'workerId': worker}, headers=auth, timeout=httpx.Timeout(40, connect=10))
+                answer = poller.post(root + '/poll', json=poll_body(worker, status), headers=auth, timeout=httpx.Timeout(40, connect=10))
                 answer.raise_for_status()
                 report.succeeded(time.monotonic())
                 for job in answer.json().get('jobs') or []:
@@ -146,10 +179,11 @@ def serve(base: str, token: str, app_url: str, stop: threading.Event) -> None:
                 stop.wait(report.failed(error, time.monotonic()))
 
 
-def start(port: int) -> threading.Event | None:
+def start(port: int, status=None) -> threading.Event | None:
+    """status: returns {'busy': bool, 'queue': int} of this app, sent to Moise for the choice of PC."""
     base, token = server_url(), setting('MOISE_RELAY_TOKEN')
     if not base or not token or setting('QWEN_REMOTE') == '0':
         return None
     stop = threading.Event()
-    threading.Thread(target=serve, args=(base, token, f'http://127.0.0.1:{port}', stop), daemon=True, name='moise-remote').start()
+    threading.Thread(target=serve, args=(base, token, f'http://127.0.0.1:{port}', stop, status), daemon=True, name='moise-remote').start()
     return stop

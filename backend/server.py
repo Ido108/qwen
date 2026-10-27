@@ -551,7 +551,8 @@ async def lifespan(app):
             logging.exception('Could not preset People labels')
     threading.Thread(target=preset_people_labels, name='people-labels', daemon=True).start()
     # Remote use from the Moise dashboard (also on the phone), when this PC has the Moise connection settings.
-    remote = moise_remote.start(int(os.environ['QWEN_SERVER_PORT'])) if os.environ.get('QWEN_SERVER_PORT', '').isdigit() else None
+    remote = moise_remote.start(int(os.environ['QWEN_SERVER_PORT']),
+                                lambda: {'busy': active_job is not None, 'queue': len(pending_jobs)}) if os.environ.get('QWEN_SERVER_PORT', '').isdigit() else None
     idle_stop = threading.Event()
     idle_thread = threading.Thread(target=watch_idle_image_worker, args=(idle_stop,),
                                    name='image-idle-release', daemon=True)

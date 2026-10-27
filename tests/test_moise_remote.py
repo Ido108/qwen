@@ -114,5 +114,22 @@ class MoiseRemoteTests(unittest.TestCase):
             self.assertEqual(args[:3], ('https://moise.example', 'x', 'http://127.0.0.1:47821'))
 
 
+    def test_poll_tells_moise_the_pc_name_gpu_and_queue(self):
+        smi = mock.Mock(stdout='NVIDIA GeForce RTX 5090, 32607, 30001\n')
+        cache = {'until': 0.0, 'value': {}}
+        with mock.patch.object(moise_remote.subprocess, 'run', return_value=smi) as run:
+            info = moise_remote.gpu_info(cache)
+            self.assertEqual(moise_remote.gpu_info(cache), info)
+        self.assertEqual(run.call_count, 1, 'read once, then from the cache')
+        self.assertEqual(info, {'gpu': 'NVIDIA GeForce RTX 5090', 'vramTotalMb': 32607, 'vramFreeMb': 30001})
+        with mock.patch.dict(moise_remote.os.environ, {'COMPUTERNAME': 'PC-5090'}), \
+                mock.patch.object(moise_remote, 'gpu_info', return_value=info):
+            body = moise_remote.poll_body('w1', lambda: {'busy': True, 'queue': 3})
+            self.assertEqual(body, {'workerId': 'w1', 'name': 'PC-5090', **info, 'busy': True, 'queue': 3})
+            self.assertEqual(moise_remote.poll_body('w1', lambda: 1 / 0)['name'], 'PC-5090', 'a broken status never stops the poll')
+        with mock.patch.object(moise_remote.subprocess, 'run', side_effect=FileNotFoundError):
+            self.assertEqual(moise_remote.gpu_info({'until': 0.0, 'value': {}}), {}, 'no nvidia-smi: nothing is sent')
+
+
 if __name__ == '__main__':
     unittest.main()
