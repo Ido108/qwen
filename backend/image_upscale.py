@@ -10,11 +10,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .common import JOBS_DIR, OUTPUTS_DIR, read_json, resolve_image, write_json
+from .gpu_memory import large_vram
 
 # The longest output side and pixel count one job may produce. The DiT pass holds about 0.75 GB per output
-# megapixel on top of the 3B FP16 weights (17 MP peaked at 21.5 GB on the 5090), so 24 MP stays inside 32 GB.
+# megapixel on top of the 3B FP16 weights (17 MP peaked at 21.5 GB on the 5090), so 24 MP stays inside 32 GB
+# and 16 MP inside 24 GB.
 MAX_SIDE = 8192
-MAX_PIXELS = 24_000_000
+MAX_PIXELS = 24_000_000 if large_vram() else 16_000_000
 IMAGE_KINDS = ('image', 'image-upscale')
 # SeedVR2 phases as the CLI reports them, and the stage names and labels the queue shows.
 PHASES = {'encoding': ('encoding', 'Reading the image'),

@@ -187,8 +187,10 @@ def _decode(vae, audio_vae, latent, audio_latent, frames, want_audio, progress):
     from nodes import VAEDecodeTiled
     from comfy_extras.nodes_lt_audio import LTXVAudioVAEDecode
     progress(stage='decoding', message='Decoding video frames...')
-    # 32 GB holds larger tiles: 768 px covers a 1280x704 frame in 2 x 1 tiles instead of 3 x 2.
-    pixels = VAEDecodeTiled().decode(vae, latent, 768, 96, 64, 16)[0]
+    # 32 GB holds larger tiles: 768 px covers a 1280x704 frame in 2 x 1 tiles instead of 3 x 2. 24 GB keeps 512 px.
+    from .gpu_memory import large_vram
+    tile, overlap = (768, 96) if large_vram() else (512, 64)
+    pixels = VAEDecodeTiled().decode(vae, latent, tile, overlap, 64, 16)[0]
     pixels = pixels[:frames].float().cpu()
     del vae, latent
     _release()

@@ -222,10 +222,11 @@ def build_config(request: dict, dataset_dir: Path, output_dir: Path) -> dict:
     info = ARCHS[request['arch']]
     trigger = request.get('trigger_word') or None
     prompts = request.get('sample_prompts') or []
-    # 32 GB GPU: only Krea 2 (24.5 GB BF16, quantized while loading) keeps low_vram's CPU-first loading.
+    # 32 GB GPU: only Krea 2 (24.5 GB BF16, quantized while loading) keeps low_vram's CPU-first loading; smaller GPUs keep it for every model.
     # Z-Image's 12 GB BF16 transformer trains unquantized; FLUX.3 and Qwen use pre-quantized ConvRot files as they are.
+    from .gpu_memory import large_vram
     model = {'name_or_path': info['name_or_path'], 'arch': info['arch'], 'quantize': info.get('quantize', True), 'quantize_te': True,
-             'qtype': info.get('qtype', 'qfloat8'), 'qtype_te': info.get('qtype_te', 'qfloat8'), 'low_vram': info.get('low_vram', False),
+             'qtype': info.get('qtype', 'qfloat8'), 'qtype_te': info.get('qtype_te', 'qfloat8'), 'low_vram': info.get('low_vram', False) or not large_vram(),
              'model_kwargs': dict(info.get('model_kwargs', {}))}
     if info['arch']=='flux3':
         from .models import entry, local_path

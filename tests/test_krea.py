@@ -209,7 +209,11 @@ class KreaCivitaiTests(unittest.TestCase):
         usable = [f for f in files if civitai._usable_file('Checkpoint', f)]
         self.assertEqual({f['id'] for f in usable}, {'int4', 'int8', 'bf16', 'nvfp4', 'fp8', 'q8.gguf'})
         best = lambda candidates: [f['id'] for f in sorted(candidates, key=lambda f: civitai._file_rank(f, True))]
-        self.assertEqual(best(usable), ['fp8', 'nvfp4', 'bf16', 'int8', 'int4', 'q8.gguf'])
+        with patch('backend.gpu_memory.native_fp4', return_value=True):
+            self.assertEqual(best(usable), ['fp8', 'nvfp4', 'bf16', 'int8', 'int4', 'q8.gguf'])
+        # Before the RTX 50 series NVFP4 runs dequantized: INT8 comes first.
+        with patch('backend.gpu_memory.native_fp4', return_value=False):
+            self.assertEqual(best(usable), ['fp8', 'bf16', 'int8', 'nvfp4', 'int4', 'q8.gguf'])
         # A mislabeled small "fp8" file is likely 4-bit: the full-size one wins.
         self.assertEqual(best([file('small', 'fp8', size=7), file('full', 'fp8', size=12)])[0], 'full')
         for base in ('Qwen 2.1', 'Krea 2', 'Krea 2 Turbo'):

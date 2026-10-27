@@ -813,6 +813,8 @@ def _usable_file(model_type: str, file: dict) -> bool:
 
 
 CHECKPOINT_ORDER = {'fp8': 0, 'fp8_scaled': 0, 'mxfp8': 1, 'nvfp4': 2, 'bf16': 3, 'fp16': 4, 'fp32': 5, 'int8': 6, 'int4': 7}
+# Before the RTX 50 series, NVFP4 and MXFP8 files run dequantized, so they come after INT8.
+PRE_FP4_ORDER = {**CHECKPOINT_ORDER, 'mxfp8': 6.1, 'nvfp4': 6.2}
 
 
 def _best_quality(model_type: str, info: dict | None) -> bool:
@@ -826,7 +828,9 @@ def _file_rank(file: dict, best_quality: bool = False):
         # Precision alone cannot establish memory use or visual quality.
         gguf = file.get('format') == 'GGUF' or file.get('name', '').lower().endswith('.gguf')
         # Within one precision the larger file keeps more weights at full precision (a mislabeled small file is 4-bit).
-        return (gguf, CHECKPOINT_ORDER.get((file['precision'] or '').lower(), 8), not file['primary'], -file['bytes'])
+        from .gpu_memory import native_fp4
+        order = CHECKPOINT_ORDER if native_fp4() else PRE_FP4_ORDER
+        return (gguf, order.get((file['precision'] or '').lower(), 8), not file['primary'], -file['bytes'])
     # Prefer the primary file, then full precision, then smaller quantized files.
     order = {'bf16': 0, 'fp16': 1, 'fp8': 2, 'int8': 3}
     return (not file['primary'], order.get((file['precision'] or '').lower(), 4), file['bytes'])

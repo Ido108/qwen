@@ -30,7 +30,11 @@ class ConfigTests(unittest.TestCase):
                     'moss-image': ('moss_image', 'moss_image_base_int8_convrot.safetensors', 'shift', None, ['moss-image-base', 'moss-image'])}
         self.assertEqual(set(training.ARCHS), set(expected))
         for key, (arch, path, timestep, adapter, families) in expected.items():
-            config = training.build_config({**REQUEST, 'arch': key}, Path('data'), Path('out'))
+            with patch('backend.gpu_memory.large_vram', return_value=True):
+                config = training.build_config({**REQUEST, 'arch': key}, Path('data'), Path('out'))
+            # 24 GB GPU: every model keeps CPU-first loading.
+            with patch('backend.gpu_memory.large_vram', return_value=False):
+                self.assertTrue(training.build_config({**REQUEST, 'arch': key}, Path('data'), Path('out'))['config']['process'][0]['model']['low_vram'], key)
             process = config['config']['process'][0]
             selected_path=process['model']['name_or_path']
             if arch=='flux3':

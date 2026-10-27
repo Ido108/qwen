@@ -1,8 +1,11 @@
 """Account for dedicated VRAM already used by other Windows applications."""
+import functools
 import os
 import subprocess
 
 GIB = 1024 ** 3
+# Sizes measured on the 32 GB RTX 5090 apply from this much VRAM; a 24 GB RTX 4090 keeps the smaller ones.
+LARGE_VRAM_GB = 30
 
 
 def dedicated_memory_snapshot():
@@ -18,6 +21,29 @@ def dedicated_memory_snapshot():
                 'free_gb': round(int(free)/1024, 2)}
     except (OSError, ValueError, IndexError, subprocess.SubprocessError):
         return {'available': False}
+
+
+@functools.lru_cache(maxsize=1)
+def gpu_total_gb():
+    """Physical VRAM of this computer's GPU, or 0 without an NVIDIA GPU."""
+    snapshot = dedicated_memory_snapshot()
+    return snapshot['total_gb'] if snapshot['available'] else 0
+
+
+def large_vram():
+    return gpu_total_gb() >= LARGE_VRAM_GB
+
+
+@functools.lru_cache(maxsize=1)
+def native_fp4():
+    """RTX 50 (compute capability 12) runs NVFP4 and MXFP8 natively; older GPUs dequantize them. True when unknown."""
+    try:
+        result = subprocess.run(['nvidia-smi', '--query-gpu=compute_cap', '--format=csv,noheader'],
+                                capture_output=True, text=True, check=True, timeout=5,
+                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        return float(result.stdout.splitlines()[0]) >= 12
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return True
 
 
 def reserve_for_dedicated_memory(cuda_free, dedicated_free, safety=2 * GIB):
