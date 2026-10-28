@@ -20,7 +20,11 @@ class CreateSettingsTests(unittest.TestCase):
     def test_settings_are_kept_without_the_prompt_and_pictures(self):
         self.assertEqual(self.client.get('/api/create-settings').json(),{})
         self.assertEqual(self.put({'model_id':'krea2-turbo-fp8','steps':12,'loras':[{'id':'a','strength':0.8}],'prompt':'p','images':['x.png'],'image_labels':['person'],'seed':5,'source_prompt':'old job','output_dir':'E:\\AI\\qwen-image-studio\\images'}).status_code,200)
-        self.assertEqual(self.client.get('/api/create-settings').json(),{'model_id':'krea2-turbo-fp8','steps':12,'loras':[{'id':'a','strength':0.8}]})
+        saved=self.client.get('/api/create-settings').json()
+        model=saved.pop('model')
+        self.assertEqual(saved,{'model_id':'krea2-turbo-fp8','steps':12,'loras':[{'id':'a','strength':0.8}]})
+        # The model's name and family come with the settings, so Moise does not read the whole model list
+        self.assertEqual((model['id'],model['family']),('krea2-turbo-fp8','krea-2-turbo'))
 
     def test_an_output_folder_saved_earlier_is_not_returned(self):
         from backend.common import write_json

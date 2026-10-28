@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import httpx
 
 FORWARDED = ('content-type', 'range', 'x-studio-token')
-RETURNED = ('Content-Type', 'Content-Range', 'Accept-Ranges', 'Content-Disposition', 'Cache-Control')
+RETURNED = ('Content-Type', 'Content-Range', 'Accept-Ranges', 'Content-Disposition', 'Cache-Control', 'X-Job-Id')
 # A video asks for "bytes=N-": answer in parts, so one answer never carries a whole large file.
 RANGE_PART = 8 * 1024 * 1024
 

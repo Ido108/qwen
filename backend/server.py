@@ -1072,7 +1072,23 @@ CREATE_SETTINGS_SKIPPED = ('prompt', 'images', 'image_labels', 'seed', 'source',
 @app.get('/api/create-settings')
 def get_create_settings():
     saved = read_json(CREATE_SETTINGS_PATH) if CREATE_SETTINGS_PATH.is_file() else {}
-    return {key: value for key, value in saved.items() if key not in CREATE_SETTINGS_SKIPPED}
+    settings = {key: value for key, value in saved.items() if key not in CREATE_SETTINGS_SKIPPED}
+    # The model and LoRA names come with the settings, so Moise does not read the whole model list over its relay
+    try:
+        item = models.entry(settings['model_id'])
+        settings['model'] = {'id': item['id'], 'title': item.get('title') or item.get('name') or item['id'], 'family': item.get('family', ''),
+                             'default_steps': (item.get('generation_defaults') or {}).get('steps')}
+    except (KeyError, ValueError):
+        pass
+    titles = {}
+    for lora in settings.get('loras') or []:
+        try:
+            titles[lora['id']] = models.entry(lora['id']).get('title') or lora['id']
+        except (KeyError, ValueError, TypeError):
+            continue
+    if titles:
+        settings['lora_titles'] = titles
+    return settings
 
 
 @app.put('/api/create-settings')
@@ -1731,6 +1747,22 @@ def generate(body: GenerationRequest):
               f"cfg {data.get('cfg') or 'model'} | LoRAs {loras} | size {'%dx%d' % (data['width'], data['height']) if data['custom_size'] else 'auto %d' % data['auto_resolution']} | "
               f"pictures {pictures} | prompt: {body.prompt}", flush=True)
     return public_job(job)
+
+@app.post('/api/generate-and-wait')
+def generate_and_wait(body: GenerationRequest):
+    """One call for Moise over its relay: start the job, wait for it and answer with the PNG, instead of a status check
+    every 1.5 s and a separate download (each a round trip to Moise's server)."""
+    job_id = generate(body)['id']
+    deadline = time.monotonic() + 20 * 60
+    while time.monotonic() < deadline:
+        current = read_job(job_id)
+        if current['status'] == 'succeeded' and Path(current.get('output_path', '')).is_file():
+            return FileResponse(current['output_path'], media_type='image/png', headers={'X-Job-Id': job_id, 'Cache-Control': 'no-store'})
+        if current['status'] in ('failed', 'cancelled'):
+            raise HTTPException(500, current.get('message') or f'The image {current["status"]}.')
+        time.sleep(0.15)
+    raise HTTPException(504, 'The image did not finish in time.')
+
 
 @app.get('/api/jobs/{job_id}')
 def get_job(job_id: str):
