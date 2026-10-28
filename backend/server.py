@@ -1061,6 +1061,27 @@ def put_model_default(model_id: str, body: ModelDefaultSetting):
         raise HTTPException(400, str(exc))
 
 
+# The Create settings in use (model, steps, LoRAs, size...), sent by the page when they change. Moise starts its jobs
+# from them, so a picture from WhatsApp is made like one from the Create button.
+CREATE_SETTINGS_PATH = DATA_DIR / 'create-settings.json'
+
+
+@app.get('/api/create-settings')
+def get_create_settings():
+    return read_json(CREATE_SETTINGS_PATH) if CREATE_SETTINGS_PATH.is_file() else {}
+
+
+@app.put('/api/create-settings')
+def put_create_settings(body: dict):
+    # A restored job puts its own fields (source_prompt...) in the page settings; only job settings are kept.
+    keep = {key: value for key, value in body.items()
+            if key in GenerationRequest.model_fields and key not in ('prompt', 'images', 'image_labels', 'seed', 'source')}
+    if not isinstance(keep.get('model_id'), str) or not keep['model_id']:
+        raise HTTPException(400, 'Choose a model.')
+    write_json(CREATE_SETTINGS_PATH, keep)
+    return {'ok': True}
+
+
 @app.get('/api/loras/{model_id}/settings')
 def get_lora_settings(model_id: str):
     try:
@@ -1699,6 +1720,12 @@ def generate(body: GenerationRequest):
             data['seed'] = secrets.randbelow(2147483648)
         job = {'id': job_id, 'kind': 'image', 'status': 'queued', 'message': 'Waiting in queue', 'stage': 'queued', 'created_at': time.time(), 'seed': data['seed'], 'request': data, 'rewritten_prompt': '', 'step': 0, 'total_steps': data['steps']}
         enqueue_locked(job, data)
+    if body.source:
+        loras = ', '.join(f"{lora.id} {lora.strength:g}" for lora in body.loras) or 'none'
+        pictures = ', '.join(f"{image_id} ({label or 'picture'})" for image_id, label in zip(body.images, list(body.image_labels) + [''] * len(body.images))) or 'none'
+        print(f"[Moise] {body.source} | job {job_id[:8]} | model {models.entry(body.model_id).get('title', body.model_id)} | steps {data['steps']} | "
+              f"cfg {data.get('cfg') or 'model'} | LoRAs {loras} | size {'%dx%d' % (data['width'], data['height']) if data['custom_size'] else 'auto %d' % data['auto_resolution']} | "
+              f"pictures {pictures} | prompt: {body.prompt}", flush=True)
     return public_job(job)
 
 @app.get('/api/jobs/{job_id}')
