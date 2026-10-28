@@ -64,6 +64,13 @@ class ResultImageTests(unittest.TestCase):
         self.assertTrue(all(r.content==responses[0].content for r in responses))
         self.assertEqual(list(self.folder.glob('*.tmp')),[])
 
+    def test_parallel_first_thumbnails_share_one_copy(self):
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            responses=list(executor.map(lambda _:self.client.get(self.base+'/thumbnail'),range(8)))
+        self.assertTrue(all(r.status_code==200 for r in responses))
+        self.assertTrue(all(r.content==responses[0].content for r in responses))
+        self.assertEqual(list(self.folder.glob('*.tmp')),[])
+
     def test_thumbnails_cache_but_api_and_missing_outputs_do_not(self):
         thumb=self.client.get(self.base+'/thumbnail');self.assertEqual(thumb.status_code,200)
         self.assertIn('private',thumb.headers['cache-control']);self.assertIn('immutable',thumb.headers['cache-control'])

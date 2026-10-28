@@ -1337,7 +1337,12 @@ def uploaded_thumbnail(image_id: str):
             with Image.open(path) as picture:
                 picture.thumbnail((320, 320), Image.Resampling.LANCZOS)
                 picture.save(temporary, format='WEBP', quality=82)
-            temporary.replace(cached)
+            try:
+                temporary.replace(cached)
+            except PermissionError:
+                # Windows refuses while the old thumbnail is being sent; that one is shown until the next request.
+                if not cached.is_file():
+                    raise
         finally:
             temporary.unlink(missing_ok=True)
     return FileResponse(cached, media_type='image/webp', headers={'Cache-Control': 'private, max-age=86400'})
@@ -2390,18 +2395,20 @@ def thumbnail(job_id: str):
         raise HTTPException(404, 'Preview not found.')
     directory = JOBS_DIR / job_id
     cached = directory / 'thumbnail.webp'
-    if not cached.exists():
-        source = directory / 'poster.png' if job.get('kind') in VIDEO_KINDS else Path(job.get('output_path', ''))
-        if not source.is_file():
-            raise HTTPException(404, 'Saved result not found.')
-        temporary = directory / f'thumbnail-{uuid.uuid4().hex}.tmp'
-        try:
-            with Image.open(source) as picture:
-                picture.thumbnail((480, 360), Image.Resampling.LANCZOS)
-                picture.save(temporary, format='WEBP', quality=85)
-            temporary.replace(cached)
-        finally:
-            temporary.unlink(missing_ok=True)
+    # The gallery can request the same new thumbnail twice at once; Windows refuses to replace a file that is being sent.
+    with display_locks[int(job_id[:2], 16) % len(display_locks)]:
+        if not cached.exists():
+            source = directory / 'poster.png' if job.get('kind') in VIDEO_KINDS else Path(job.get('output_path', ''))
+            if not source.is_file():
+                raise HTTPException(404, 'Saved result not found.')
+            temporary = directory / f'thumbnail-{uuid.uuid4().hex}.tmp'
+            try:
+                with Image.open(source) as picture:
+                    picture.thumbnail((480, 360), Image.Resampling.LANCZOS)
+                    picture.save(temporary, format='WEBP', quality=85)
+                temporary.replace(cached)
+            finally:
+                temporary.unlink(missing_ok=True)
     return FileResponse(cached, media_type='image/webp', headers=RESULT_CACHE)
 
 @app.get('/api/jobs/{job_id}/metadata')
