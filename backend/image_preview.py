@@ -42,7 +42,15 @@ class LiveImagePreview:
             picture = picture.resize(tuple(max(1, round(v * scale)) for v in picture.size), Image.Resampling.BILINEAR)
             temporary = self.directory / 'live-preview.tmp'
             picture.save(temporary, format='WEBP', quality=70, method=0)
-            temporary.replace(self.directory / 'live-preview.webp')
+            for attempt in range(5):
+                try:
+                    temporary.replace(self.directory / 'live-preview.webp')
+                    break
+                except PermissionError:
+                    # Windows refuses to replace the file while the page reads the previous picture; skip this one.
+                    if attempt == 4:
+                        return
+                    time.sleep(0.02)
             self.progress(preview_url=f'/api/jobs/{self.directory.name}/live-preview', preview_step=step + 1,
                           preview_updated_at=time.time())
         except Exception:

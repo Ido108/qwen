@@ -44,7 +44,7 @@ import {JobQueue,useQueue,type SavedJob} from './JobQueue';
 import type {SendVideo,VideoInput} from './SendVideoTo';
 import type {UploadedVideo} from './mediaUpload';
 import {GenerationTiming,type Timing} from './GenerationTiming';
-import {ImageUpscaleDialog,InputUpscaleStatus,ResultUpscales,UPSCALE_KEYS,type InputUpscale,type UpscaleSettings,type UpscaleSource} from './ImageUpscale';
+import {ImageUpscaleDialog,InputUpscaleStatus,ResultUpscales,type InputUpscale,type UpscaleSettings,type UpscaleSource} from './ImageUpscale';
 import {en,type TextKey} from './i18n';
 import './style.css';
 import './workspace.css';
@@ -236,7 +236,8 @@ function App(){
   useEffect(()=>{const used=()=>{closeModal();setError('');};window.addEventListener('qwen-image-used',used);return()=>window.removeEventListener('qwen-image-used',used);},[]);
   const [imageRestoreKey,setImageRestoreKey]=useState(0);
   function restoreJob(saved:SavedJob){
-    if(saved.kind==='image-upscale'){const r=saved.request;setUpscaleTarget({source:{image:r.source_image,preview:inputImage(r.source_image).url,label:'Source image'},preset:Object.fromEntries(UPSCALE_KEYS.filter(key=>r[key]!==undefined).map(key=>[key,r[key]])),key:Date.now()});return;}
+    // An upscale has no image settings of its own: Use settings loads the image it was made from.
+    if(saved.kind==='image-upscale'){const original=saved.request.source_job;if(original)api(`/api/jobs/${original}`).then((job:SavedJob)=>restoreJob(job)).catch(()=>setError('The settings of the original image are not available.'));else setError('The settings of the original image are not available.');return;}
     setImageRestoreKey(key=>key+1);
     const restoredImage={...defaults,...saved.request,seed:saved.seed??saved.request.seed??0,randomize_seed:false,steps:saved.actual_steps??(saved.total_steps>0?saved.total_steps:saved.request.steps??null),cfg:resultCfg({cfg:saved.cfg,true_cfg_scale:saved.true_cfg_scale,guidance:saved.guidance})??saved.request.cfg??null};
     // A restored run keeps its exact sampling: the automatic LoRA advice does not overwrite it.
