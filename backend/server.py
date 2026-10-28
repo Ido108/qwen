@@ -1064,18 +1064,22 @@ def put_model_default(model_id: str, body: ModelDefaultSetting):
 # The Create settings in use (model, steps, LoRAs, size...), sent by the page when they change. Moise starts its jobs
 # from them, so a picture from WhatsApp is made like one from the Create button.
 CREATE_SETTINGS_PATH = DATA_DIR / 'create-settings.json'
+# Not taken from the page: the job's own content, and the output folder (a page draft from another PC carried its E:\
+# folder here, and every Moise job failed; each PC saves to its own folder).
+CREATE_SETTINGS_SKIPPED = ('prompt', 'images', 'image_labels', 'seed', 'source', 'output_dir')
 
 
 @app.get('/api/create-settings')
 def get_create_settings():
-    return read_json(CREATE_SETTINGS_PATH) if CREATE_SETTINGS_PATH.is_file() else {}
+    saved = read_json(CREATE_SETTINGS_PATH) if CREATE_SETTINGS_PATH.is_file() else {}
+    return {key: value for key, value in saved.items() if key not in CREATE_SETTINGS_SKIPPED}
 
 
 @app.put('/api/create-settings')
 def put_create_settings(body: dict):
     # A restored job puts its own fields (source_prompt...) in the page settings; only job settings are kept.
     keep = {key: value for key, value in body.items()
-            if key in GenerationRequest.model_fields and key not in ('prompt', 'images', 'image_labels', 'seed', 'source')}
+            if key in GenerationRequest.model_fields and key not in CREATE_SETTINGS_SKIPPED}
     if not isinstance(keep.get('model_id'), str) or not keep['model_id']:
         raise HTTPException(400, 'Choose a model.')
     write_json(CREATE_SETTINGS_PATH, keep)
