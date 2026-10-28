@@ -7,8 +7,19 @@ $ProgressPreference = 'SilentlyContinue'
 New-Item -ItemType Directory -Path $toolsRoot -Force | Out-Null
 $setupLock = $null
 try {
-    try { $setupLock = [IO.File]::Open((Join-Path $runtimeRoot 'setup.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None) }
-    catch { throw 'Another Qwen setup is running. Wait for that window to finish.' }
+    # Two launches at once: the second waits for the first setup instead of stopping with an error window.
+    $waited = $false
+    $deadline = (Get-Date).AddMinutes(30)
+    while (-not $setupLock) {
+        try { $setupLock = [IO.File]::Open((Join-Path $runtimeRoot 'setup.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None) }
+        catch {
+            if ((Get-Date) -gt $deadline) { throw 'Another Qwen setup is still running after 30 minutes. Wait for that window to finish.' }
+            if (-not $waited) { Write-Host 'Another Qwen setup is running. Waiting for it to finish...' }
+            $waited = $true
+            Start-Sleep -Seconds 2
+        }
+    }
+    if ($waited -and (Test-QwenSetup) -and -not $Force) { Write-Host 'Qwen is already installed.'; return }
     Write-Host 'Qwen setup - installing the app. Models are downloaded from Settings in the app.'
     Write-Host "App files: $appRoot"
     Write-Host "Python environment: $runtimeRoot"
