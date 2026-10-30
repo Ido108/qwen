@@ -73,7 +73,7 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
   const left=perStep&&counter&&counter.done<counter.total?perStep*(counter.total-counter.done):0;
   const offloaded=Number(job.model_offloaded_weight_gb)||0;
   const onGpu=Number(job.model_gpu_weight_gb)||0;
-  const chunk=upscale&&job.total_chunks>1&&job.chunk?`Clip ${job.chunk} of ${job.total_chunks}`:'';
+  const chunk=upscale&&job.total_chunks>1&&job.chunk?`Clip ${job.chunk} of ${job.total_chunks}`:job.total_shots>1&&job.shot?`Shot ${job.shot} of ${job.total_shots}`:'';
   return <div className="vp-card" role="status" aria-live="polite">
     <div className="vp-head"><Loader2 className="spin" size={16}/><span className="vp-badge">Stage {index+1} of {plan.length}</span><strong>{current.label}</strong>{pass?<span className="vp-badge vp-pass">Pass {pass} of 2</span>:null}{chunk?<span className="vp-badge vp-pass">{chunk}</span>:null}</div>
     <p className="vp-message" title={message}>{message}</p>

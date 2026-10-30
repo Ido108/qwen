@@ -193,7 +193,7 @@ class CloudTests(unittest.TestCase):
                 self.assertEqual(transferred['reference_people'], [{'id':'ref-person-a','images':transferred['reference_images']}])
                 self.assertEqual(transferred['person_assignments'], {'person-1':'ref-person-a'})
                 from backend.reference_prompt import build_reference_prompt
-                self.assertIn('identity in <Picture 1> and <Picture 2>',build_reference_prompt(transferred,replacement=True))
+                self.assertEqual(build_reference_prompt(transferred,replacement=True),'Faceswap')
             else:
                 self.assertEqual(transferred['reference_images'], ['cloud-ref-0.png'])
                 self.assertEqual(transferred['person_assignments'], {'person-1':'cloud-ref-0.png'})

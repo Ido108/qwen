@@ -118,9 +118,13 @@ def run(request, job, directory, update):
                 images['warp_video']=read_frames(warp_path,request['frames'],start_seconds=warp_start,
                                                  end_seconds=warp_start+selected_duration)
         update(stage='reading_references',message='Preparing reference images…')
+        swapping=request['workflow']=='faceswap' or request.get('replace_subjects_first')
         for index,image_id in enumerate(request['reference_images'],1):
             with Image.open(resolve_image(image_id)) as source_image:
                 images[f'ref_image_{index}']=source_image.convert('RGB')
+                if swapping:
+                    from .reference_people import crop_to_face
+                    images[f'ref_image_{index}']=crop_to_face(images[f'ref_image_{index}'])
                 images[f'ref_image_{index}'].save(directory/f'reference-{index}.png')
         from .reference_prompt import build_reference_prompt, reference_instructions
         instructions=reference_instructions(request)
@@ -191,6 +195,9 @@ def run(request, job, directory, update):
         # LTX 2.5 runs the official ComfyUI LTX workflows; MiniMax H3 keeps its own engine.
         from .ltx_engine import generate_video
         frames, audio = generate_video(request, prompt, images, update, preview_directory=directory)
+    elif reference and request['workflow']=='faceswap':
+        from .reference_shots import swap_by_shot
+        frames, audio = swap_by_shot(request, prompt, images, update, generate, preview_directory=directory)
     else:
         frames, audio = generate(request, prompt, images, update,preview_directory=directory)
     if reference:

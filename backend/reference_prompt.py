@@ -23,6 +23,12 @@ def build_reference_prompt(request: dict, instructions: str | None = None, *, re
     drop the selected identities or people marked Keep.
     """
     workflow = 'faceswap' if replacement else request['workflow']
+    if workflow == 'faceswap' and single_identity(request):
+        # The FaceSwap LoRA author's workflows send only the trigger word. With the
+        # longer identity text the swap faded back to the source face mid-shot and
+        # <Picture 1> appeared as a shot of its own (measured 2026-10-30).
+        extra = reference_instructions(request, replacement=replacement) if instructions is None else instructions.strip()
+        return 'Faceswap' + ('\n\n' + extra if extra else '')
     if workflow == 'faceswap':
         base = ('Faceswap. Change only the selected identities in <Video 1>. '
                 'Preserve the source actions, expressions, motion, clothing, timing, '
@@ -58,6 +64,25 @@ def build_reference_prompt(request: dict, instructions: str | None = None, *, re
                  'viewpoint, zoom, pan, crop, cut or camera motion. Change identities only.')
         return render_reference_prompt(base, request)
     return render_reference_prompt(base,request) if workflow=='reference' else base
+
+
+def single_identity(request: dict) -> bool:
+    """One source person (or none detected) becomes one reference identity; nobody to keep."""
+    if not request.get('reference_images'):
+        raise ValueError('Add a reference image for subject replacement.')
+    assignments = request.get('person_assignments') or {}
+    if assignments and not any(assignments.values()):
+        raise ValueError('Choose a reference image for at least one detected person.')
+    if len(assignments) > 1:
+        return False
+    groups = request.get('reference_people') or []
+    if assignments:
+        render_reference_prompt('', request)  # validates the assignment
+        chosen = next(iter(assignments.values()))
+        pictures = next((person['images'] for person in groups if person['id'] == chosen), [chosen])
+        # Every picture must show the chosen person; otherwise the model sees two identities.
+        return set(pictures) == set(request['reference_images'])
+    return len(groups) <= 1 if groups else len(request['reference_images']) == 1
 
 
 def group_pictures(person:dict,images:list[str])->str:

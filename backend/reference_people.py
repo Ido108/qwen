@@ -28,6 +28,29 @@ def face_detector():
                                     nms_threshold=0.3, top_k=500)
 
 
+def crop_to_face(image):
+    """Head-and-shoulders crop around the largest face, framed like the FaceSwap LoRA
+    author's reference (face about 47% of the width, 39% of the height).
+
+    Given a whole scene (a body on a sofa, a press photo), Ref2VA played the reference
+    photo as a shot instead of swapping the face (measured 2026-10-30). Without a face
+    the image is returned unchanged.
+    """
+    import numpy as np
+    bgr = np.ascontiguousarray(np.asarray(image.convert('RGB'))[..., ::-1])
+    height, width = bgr.shape[:2]
+    detector = face_detector()
+    detector.setInputSize((width, height))
+    _, faces = detector.detect(bgr)
+    if faces is None:
+        return image
+    x, y, w, h = max(faces, key=lambda face: face[2] * face[3])[:4]
+    crop_w, crop_h = min(width, w / 0.47), min(height, h / 0.39)
+    left = min(max(0, x + w / 2 - crop_w / 2), width - crop_w)
+    top = min(max(0, y + h / 2 - crop_h * 0.6), height - crop_h)
+    return image.crop((round(left), round(top), round(left + crop_w), round(top + crop_h)))
+
+
 def ensure_recognizer() -> Path:
     with _download_lock:
         if RECOGNIZER.is_file() and _sha256(RECOGNIZER) == RECOGNIZER_SHA256:

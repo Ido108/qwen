@@ -108,6 +108,23 @@ class ReferencePromptTests(unittest.TestCase):
         self.assertNotIn('<Picture',build_reference_prompt(request))
         self.assertIn('<Picture 1> and <Picture 2>',build_reference_prompt(request,replacement=True))
 
+    def test_one_person_one_identity_sends_only_the_trigger(self):
+        request=self.grouped();request.update(source_people=self.request['source_people'][:1],
+            person_assignments={'person-1':'ref-person-a'},reference_people=request['reference_people'][:1],
+            reference_images=['front.png','side.png'])
+        self.assertEqual(build_reference_prompt(request),'Faceswap')
+        request['prompt']='Keep the glasses on @Person1.'
+        self.assertEqual(build_reference_prompt(request),'Faceswap\n\nKeep the glasses on the person shown in <Picture 1> and <Picture 2>.')
+        request.update(source_people=[],person_assignments={},reference_people=[],reference_images=['only.png'],prompt='')
+        self.assertEqual(build_reference_prompt(request),'Faceswap')
+
+    def test_unused_reference_pictures_keep_the_assignment_text(self):
+        request=self.grouped();request.update(source_people=self.request['source_people'][:1],
+            person_assignments={'person-1':'ref-person-a'})
+        prompt=build_reference_prompt(request)
+        self.assertIn('Replace only the source person first seen at 1.0s',prompt)
+        self.assertIn('identity in <Picture 1> and <Picture 2>',prompt)
+
     def test_group_image_limit_duplicates_and_flat_order_are_validated(self):
         for groups,images in [([{'id':'ref-person-a','images':[]}],[]),
             ([{'id':'ref-person-a','images':['same.png','same.png']}],[]),
