@@ -195,7 +195,8 @@ def run():
         if not request['custom_size'] and request.get('auto_resolution', 2048) <= 1024:
             # At 1K the photo's own shape (often near square) made Krea crop in close; 3:4 (4:3 for a landscape
             # photo) leaves room for the body (the user's choice, 2026-10-22).
-            person = images[min(int(request.get('krea_person') or 0), len(images) - 1)]
+            from .krea_edit import identity_photos
+            person = identity_photos(images, request)[-1]
             area, portrait = width * height, person.height >= person.width
             width, height = (int((area * 3 / 4) ** 0.5) // 16 * 16, int((area * 4 / 3) ** 0.5) // 16 * 16) if portrait else \
                             (int((area * 4 / 3) ** 0.5) // 16 * 16, int((area * 3 / 4) ** 0.5) // 16 * 16)

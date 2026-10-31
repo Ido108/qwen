@@ -41,6 +41,28 @@ def image_mentions(text: str, count: int, notation: str = 'qwen', labels: list[s
     return IMAGE.sub(replace, text)
 
 
+def sheet_order(text: str, count: int, scene: int | None) -> list[int]:
+    """Krea 2 people sheet order: the mentioned photos in the order of their first mention, else every photo but the scene.
+    Krea places the people as they stand in the sheet (left to right) and does not follow the "Person N" tags to
+    another place, so the prompt order is the sheet order and a photo the prompt leaves out stays out."""
+    order = []
+    for match in IMAGE.finditer(text):
+        index = int(match[1] or match[2]) - 1
+        if 0 <= index < count and index != scene and index not in order:
+            order.append(index)
+    return order or [i for i in range(count) if i != scene]
+
+
+def sheet_mentions(text: str, count: int, scene: int | None, order: list[int]) -> str:
+    """Each photo in the sheet is a tile tagged "Person N", so its mention is that tag."""
+    def replace(match):
+        index = int(match[1] or match[2]) - 1
+        if not 0 <= index < count:
+            raise ValueError(f'Image {index + 1} is not selected. Add it or remove its mention.')
+        return 'the scene' if index == scene else f'Person {order.index(index) + 1}'
+    return IMAGE.sub(replace, text)
+
+
 def frame_mentions(text: str, first: bool, last: bool) -> str:
     def replace(match):
         is_first = match[1].lower() == 'firstframe'

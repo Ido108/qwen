@@ -7,6 +7,7 @@ placed beside the canvas (restaging); two photos (scene, then person): person 2.
 """
 from __future__ import annotations
 import importlib.util
+import math
 import sys
 from .common import APP_DIR
 
@@ -26,12 +27,55 @@ def pack():
 
 
 def identity_photos(images, request):
-    """The photos in the card's training order: the scene first when one is chosen, then the person."""
+    """The photos in the card's training order: the scene first when one is chosen, then the person.
+    With krea_combine, the krea_sheet photos (set by the server) go into one labelled sheet in the person's place."""
     person = min(int(request.get('krea_person') or 0), len(images) - 1)
     scene = request.get('krea_scene')
-    if scene is None or not 0 <= int(scene) < len(images) or int(scene) == person:
+    scene = None if scene is None or not 0 <= int(scene) < len(images) else int(scene)
+    order = [i for i in request.get('krea_sheet') or [] if 0 <= i < len(images) and i != scene]
+    if request.get('krea_combine') and len(order) >= 2:
+        sheet = people_sheet([images[i] for i in order])
+        return [sheet] if scene is None else [images[scene], sheet]
+    if scene is None or scene == person:
         return [images[person]]
-    return [images[int(scene)], images[person]]
+    return [images[scene], images[person]]
+
+
+SHEET_HEIGHT = 1024
+
+
+def people_sheet(photos):
+    """The photos side by side at one height (two rows from four photos), each tagged "Person N" in its top left corner.
+    The identity LoRA takes one person photo, so people from different photos reach it as one picture."""
+    from PIL import Image, ImageDraw, ImageFont
+    columns = len(photos) if len(photos) <= 3 else math.ceil(len(photos) / 2)
+    rows = math.ceil(len(photos) / columns)
+    height = SHEET_HEIGHT if rows == 1 else SHEET_HEIGHT * 3 // 4
+    tiles = [photo.convert('RGB').resize((max(1, round(photo.width * height / photo.height)), height), Image.Resampling.LANCZOS)
+             for photo in photos]
+    gap = height // 64
+    lines = [tiles[r * columns:(r + 1) * columns] for r in range(rows)]
+    width = max(sum(tile.width for tile in line) + gap * (len(line) - 1) for line in lines)
+    sheet = Image.new('RGB', (width, rows * height + gap * (rows - 1)), 'white')
+    try:
+        font = ImageFont.truetype('arialbd.ttf', height // 22)
+    except OSError:
+        font = ImageFont.load_default(height // 22)
+    draw = ImageDraw.Draw(sheet)
+    number = 0
+    for r, line in enumerate(lines):
+        x = 0
+        for tile in line:
+            number += 1
+            y = r * (height + gap)
+            sheet.paste(tile, (x, y))
+            label = f'Person {number}'
+            left, top, right, bottom = draw.textbbox((0, 0), label, font=font)
+            pad = height // 80
+            draw.rectangle((x + pad, y + pad, x + pad * 3 + right - left, y + pad * 3 + bottom - top), fill='black')
+            draw.text((x + pad * 2 - left, y + pad * 2 - top), label, fill='white', font=font)
+            x += tile.width + gap
+    return sheet
 
 
 def reference_settings(count):

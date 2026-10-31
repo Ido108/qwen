@@ -118,6 +118,10 @@ class GenerationRequest(ImageLabels):
     # Identity edit: which input photo is the person and which (optional) is the scene; the add order does not matter.
     krea_person: int = Field(default=0, ge=0, le=9)
     krea_scene: int | None = Field(default=None, ge=0, le=9)
+    # Identity edit with people from different photos: the photos (all but the scene) go in as one sheet tagged Person 1, 2...
+    krea_combine: bool = False
+    # Set by the server from the prompt: the input indexes in the sheet, in order (Person 1 first).
+    krea_sheet: list[int] | None = None
     # How strongly the person photo is followed (the node's ref_boost for the person). None: the card's 2, or 2.5 with a scene.
     krea_identity_strength: float | None = Field(default=None, ge=0.5, le=4)
     # Who sent the job when it is not this app, for example "Moise generate with: Dan".

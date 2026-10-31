@@ -155,6 +155,22 @@ class KreaIdentityPhotoTests(unittest.TestCase):
         self.assertEqual(identity_photos(photos, {'krea_person': 1, 'krea_scene': 1}), ['b'])  # the same photo is not both
         self.assertEqual(identity_photos(['a'], {'krea_person': 4, 'krea_scene': 3}), ['a'])  # removed photos fall back
 
+    def test_people_from_different_photos_go_in_one_sheet_in_prompt_order(self):
+        from PIL import Image
+        from backend.krea_edit import identity_photos
+        from backend.prompt_mentions import sheet_mentions, sheet_order
+        self.assertEqual(sheet_order('@Image3 and @Image1 at a bar', 3, None), [2, 0])  # the photo mentioned first is Person 1
+        self.assertEqual(sheet_order('@Image2 and @Image3 in @Image1', 3, 0), [1, 2])  # the scene is not in the sheet
+        self.assertEqual(sheet_order('two friends hugging', 3, 1), [0, 2])  # no mentions: every photo but the scene
+        self.assertEqual(sheet_order('@Image2 alone on a beach', 2, None), [1])
+        self.assertEqual(sheet_mentions('@Image3 and @Image2 in @Image1', 3, 0, [2, 1]), 'Person 1 and Person 2 in the scene')
+        photos = [Image.new('RGB', (300, 400), color) for color in ('red', 'green', 'blue')]
+        sheet = identity_photos(photos, {'krea_combine': True, 'krea_sheet': [2, 1], 'krea_scene': 0})
+        self.assertEqual(sheet[0], photos[0])  # scene first, then the sheet in the person's place
+        self.assertEqual(sheet[1].height, 1024)
+        self.assertEqual(sheet[1].getpixel((sheet[1].width // 4, 900)), (0, 0, 255))  # Person 1 is photo 3, on the left
+        self.assertEqual(identity_photos(photos, {'krea_combine': True, 'krea_sheet': [1]}), [photos[0]])  # one photo is no sheet
+
 
 class KreaCivitaiTests(unittest.TestCase):
     def test_base_models_and_variants(self):

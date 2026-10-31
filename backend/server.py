@@ -1683,6 +1683,18 @@ def generate(body: GenerationRequest):
             body.swap_selection = None
             from .prompt_mentions import image_mentions
             notation = 'qwen' if models.entry(body.model_id).get('family', '').startswith('qwen-image') else 'plain'
+            body.krea_sheet = None
+            if body.krea_combine and not body.tool_id and body.krea_reference_mode == 'identity' and models.is_krea(models.entry(body.model_id)):
+                from .prompt_mentions import sheet_mentions, sheet_order
+                scene = body.krea_scene if body.krea_scene is not None and body.krea_scene < len(body.images) else None
+                order = sheet_order(body.prompt, len(body.images), scene)
+                if len(order) >= 2:
+                    body.krea_sheet = order
+                    body.prompt = sheet_mentions(body.prompt, len(body.images), scene, order)
+                    body.negative_prompt = sheet_mentions(body.negative_prompt, len(body.images), scene, order)
+                elif order:
+                    # One person: the plain identity edit with that photo.
+                    body.krea_person, body.krea_combine = order[0], False
             body.prompt = image_mentions(body.prompt, len(body.images), notation, body.image_labels)
             body.negative_prompt = image_mentions(body.negative_prompt, len(body.images), notation, body.image_labels)
     except ValueError as exc:
