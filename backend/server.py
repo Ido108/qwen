@@ -1651,6 +1651,11 @@ def job_plan_preview(body: dict):
 @app.post('/api/generate', status_code=202)
 def generate(body: GenerationRequest):
     source_prompt, source_negative_prompt = body.prompt, body.negative_prompt
+    if body.images and not body.tool_id and body.krea_reference_mode == 'style':
+        turbo = models.krea_style_model(models.entry(body.model_id))
+        if turbo != body.model_id:
+            # Turbo's own settings: Raw's 52 steps and CFG 4.5 do not carry over.
+            body.model_id, body.steps, body.cfg, body.sampler, body.scheduler = turbo, None, None, None, None
     if not body.prompt.strip() and body.images:
         body.enhance = False
     try:

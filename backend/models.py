@@ -103,6 +103,20 @@ def is_krea(item):
     """Krea 2 (Raw or Turbo): its own DiT, Qwen3-VL 4B encoder and Qwen-Image VAE, run by krea_engine."""
     return item.get('family','').startswith('krea-2')
 
+def krea_style_model(item):
+    """The model a Krea 2 style reference job runs on. The style LoRA (ostris/krea2_turbo_style_reference) is trained
+    for Turbo; on Raw (52 steps, CFG 4.5) its pictures came out smeared at CFG 4.5 and 2.5 (2026-10-31), so a Raw
+    model hands the job to the official Turbo: an installed one in the same format first, else any installed one."""
+    if item.get('family')!='krea-2':
+        return item['id']
+    turbos=[candidate for candidate in catalog() if candidate.get('family')=='krea-2-turbo' and candidate.get('repo')!='civitai'
+            and candidate.get('source') not in ('civitai','library','trained')]
+    installed=[candidate for candidate in turbos if is_installed(candidate['id'])]
+    for pool in (installed,turbos):
+        for candidate in sorted(pool,key=lambda candidate:candidate.get('format')!=item.get('format')):
+            return candidate['id']
+    return item['id']
+
 def is_zimage(item):
     """Z-Image (Base or Turbo): its own DiT, Qwen3 4B encoder and Flux VAE, run by zimage_engine."""
     return item.get('family','').startswith('z-image')

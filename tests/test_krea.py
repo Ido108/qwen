@@ -155,6 +155,15 @@ class KreaIdentityPhotoTests(unittest.TestCase):
         self.assertEqual(identity_photos(photos, {'krea_person': 1, 'krea_scene': 1}), ['b'])  # the same photo is not both
         self.assertEqual(identity_photos(['a'], {'krea_person': 4, 'krea_scene': 3}), ['a'])  # removed photos fall back
 
+    def test_style_reference_on_raw_runs_on_turbo(self):
+        # The style LoRA is a Turbo LoRA: Raw hands the job to the official Turbo, in its own format when installed.
+        with patch.object(models, 'is_installed', return_value=True):
+            self.assertEqual(models.krea_style_model(models.entry('krea2-raw-fp8')), 'krea2-turbo-fp8')
+            self.assertEqual(models.krea_style_model(models.entry('krea2-raw-bf16')), 'krea2-turbo-bf16')
+            self.assertEqual(models.krea_style_model(models.entry('krea2-turbo-nvfp4')), 'krea2-turbo-nvfp4')
+        with patch.object(models, 'is_installed', side_effect=lambda model_id: model_id == 'krea2-turbo-nvfp4'):
+            self.assertEqual(models.krea_style_model(models.entry('krea2-raw-fp8')), 'krea2-turbo-nvfp4')
+
     def test_people_from_different_photos_go_in_one_sheet_in_prompt_order(self):
         from PIL import Image
         from backend.krea_edit import identity_photos
