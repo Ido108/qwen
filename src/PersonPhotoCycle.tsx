@@ -22,3 +22,18 @@ export function PersonPhotoCycle({image,people,onChange,disabled=false}:{image:I
     <button type="button" disabled={disabled} aria-label={`Next photo of ${person.name}`} onClick={()=>move(1)}><ChevronRight size={16}/></button>
   </div>;
 }
+
+/** Swap only this input for another person from People, of the same gender when it is known. */
+export function RandomPerson({image,people,inputs,onChange,disabled=false}:{image:InputImage;people:Person[];inputs:InputImage[];onChange:(image:InputImage)=>void;disabled?:boolean}){
+  const person=inputPerson(image,people);
+  if(!person)return null;
+  const gender=image.subjectLabel||person.label;
+  const free=people.filter(p=>p.id!==person.id&&!inputs.some(input=>inputPerson(input,people)?.id===p.id));
+  const same=free.filter(p=>p.label===gender);
+  const pool=(gender==='woman'||gender==='man')&&same.length?same:free;
+  function pick(){
+    const next=pool[Math.floor(Math.random()*pool.length)];
+    onChange({...image,id:next.image_id,name:next.name,url:next.url,personId:next.id,subjectLabel:next.label||image.subjectLabel});
+  }
+  return <button type="button" className="random-person" disabled={disabled||!pool.length} onClick={pick} title={`Another person instead of ${person.name}`}>Random</button>;
+}
