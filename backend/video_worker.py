@@ -94,19 +94,24 @@ def run(request, job, directory, update):
         request.update(quality=sampling['quality'],steps=sampling['steps'])
     images = {}
     source_audio=None
+    long_swap=False
     if reference:
         from .reference_media import read_frames,read_audio
         from .reference_timing import probe_video_duration
-        update(stage='decoding_source',message='Decoding selected source video…')
+        from .long_faceswap import is_long_faceswap
         source=resolve_video(request['source_video'])
         clip_start=request.get('source_start_seconds',0)
         clip_end=request.get('source_end_seconds')
-        images['source_video']=read_frames(source,request['frames'],start_seconds=clip_start,end_seconds=clip_end,
-            progress=lambda done,total:update(input_frames_done=done,input_frames_total=total))
-        update(stage='reading_audio',message='Preparing source audio…')
-        source_audio=read_audio(source,request['frames']/24,start_seconds=clip_start,end_seconds=clip_end) if request['source_audio'] or request['output_audio']=='source' else None
-        if request['source_audio']:
-            images['source_audio']=source_audio
+        # A long face swap reads its source one part at a time (long_faceswap.swap_long).
+        long_swap=is_long_faceswap(request)
+        if not long_swap:
+            update(stage='decoding_source',message='Decoding selected source video…')
+            images['source_video']=read_frames(source,request['frames'],start_seconds=clip_start,end_seconds=clip_end,
+                progress=lambda done,total:update(input_frames_done=done,input_frames_total=total))
+            update(stage='reading_audio',message='Preparing source audio…')
+            source_audio=read_audio(source,request['frames']/24,start_seconds=clip_start,end_seconds=clip_end) if request['source_audio'] or request['output_audio']=='source' else None
+            if request['source_audio']:
+                images['source_audio']=source_audio
         if request['workflow']=='crossview':
             if request.get('warp_video'):
                 warp_path=resolve_video(request['warp_video'])
@@ -154,6 +159,21 @@ def run(request, job, directory, update):
     from . import sent_prompts
     sent_prompts.clear()
     update(sent_prompt={'label': 'Prompt sent to the video model (after enhancement and LoRA words)', 'text': prompt})
+    if long_swap:
+        from .long_faceswap import swap_long
+        references={name:value for name,value in images.items() if name.startswith('ref_image_')}
+        destination = Path(request['output_dir']) / (time.strftime('%Y-%m-%d_%H-%M-%S') + '_' + job['id'][:8] + '.mp4')
+        count,first_frame,has_audio,size,rate=swap_long(request,prompt,references,source,update,generate,destination,preview_directory=directory)
+        Image.fromarray((first_frame.numpy().clip(0, 1) * 255).round().astype('uint8')).save(directory / 'poster.png')
+        sent_prompts.flush(update)
+        update(status='succeeded', stage='complete', message='Video saved.', output_path=str(destination),
+            video_url=f'/api/jobs/{job["id"]}/video', poster_url=f'/api/jobs/{job["id"]}/poster',
+            finished_at=time.time(), elapsed_seconds=round(time.time() - job['started_at'], 1),
+            duration_seconds=round(count / 24, 3), fps=24, frames=count, width=size[0], height=size[1],
+            has_audio=has_audio, audio_sample_rate=rate if has_audio else None,
+            actual_prompt=prompt, model_revision=entry(request['model_id'])['revision'])
+        write_json(destination.with_suffix('.json'), job)
+        return
     if reference and request['workflow']=='crossview' and request.get('replace_subjects_first'):
         steps=request['steps']
         def stage_progress(stage_number):

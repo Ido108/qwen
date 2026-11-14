@@ -3,13 +3,15 @@ export const REFERENCE_MIN_FRAMES=22;
 export const REFERENCE_MAX_FRAMES=362;
 
 export function nearestReferenceFrames(seconds:number,maxFrames=REFERENCE_MAX_FRAMES){
-  const maximum=Math.min(REFERENCE_MAX_FRAMES,maxFrames);
+  // Infinity: a face swap runs in parts, so the selection has no length limit
+  const maximum=Number.isFinite(maxFrames)?Math.min(REFERENCE_MAX_FRAMES,maxFrames):Infinity;
   const count=Math.round((seconds*REFERENCE_FPS-5)/17);
   return Math.min(maximum,Math.max(REFERENCE_MIN_FRAMES,5+17*count));
 }
 
 export function sourceClipDefault(duration:number,maxFrames=REFERENCE_MAX_FRAMES){
-  const end=Math.min(duration,maxFrames/REFERENCE_FPS);
+  // The first selection is at most one pass long; a longer one is chosen on the timeline
+  const end=Math.min(duration,Math.min(REFERENCE_MAX_FRAMES,maxFrames)/REFERENCE_FPS);
   return {start:0,end,frames:nearestReferenceFrames(end,maxFrames)};
 }
 

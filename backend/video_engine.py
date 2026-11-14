@@ -172,6 +172,9 @@ def _encode(request, prompt, images, reference, keyframes, read_weights, release
                 ref_video_audios=video_audios,ref_audios=voices or None)
             if request['workflow']=='crossview':
                 positive=MiniMaxH3AddGuide.execute(positive,latent,0,vae=vae,image=images['warp_video'])[0]
+            # A long face swap anchors the last frames of the previous part at the start of this one (long_faceswap.py).
+            if images.get('continuity_guide') is not None:
+                positive=MiniMaxH3AddGuide.execute(positive,latent,0,vae=vae,image=images['continuity_guide'])[0]
         else:
             positive, latent = MiniMaxH3ImageToVideo.execute(encoder, vae, prompt,
                 request['width'], request['height'], request['frames'], **tensors)

@@ -42,7 +42,7 @@ def probe_video_duration(path: Path) -> float:
         return last_time - origin + 1 / rate
 
 
-def resolve_reference_clip(request, source_duration: float, max_frames: int = MAX_FRAMES):
+def resolve_reference_clip(request, source_duration: float, max_frames: int = MAX_FRAMES, unlimited: bool = False):
     """Resolve a saved selection; legacy requests without an end use their frame length."""
     if not math.isfinite(source_duration) or source_duration <= 0:
         raise ValueError('Could not determine the source video duration.')
@@ -58,9 +58,11 @@ def resolve_reference_clip(request, source_duration: float, max_frames: int = MA
     selected_seconds = end - start
     if selected_seconds < MIN_FRAMES / FPS - 1 / FPS:
         raise ValueError('Select at least 0.9 seconds of source video.')
-    if selected_seconds > max_frames / FPS + 1 / FPS:
+    if not unlimited and selected_seconds > max_frames / FPS + 1 / FPS:
         raise ValueError(f'Select at most {max_frames / FPS:.1f} seconds for this model.')
-    frames = nearest_frames(selected_seconds, max_frames)
+    # unlimited: a face swap runs in parts of the selection, so any length is fine (17n+5 frames as one pass)
+    frames = (max(MIN_FRAMES, 5 + 17 * round((selected_seconds * FPS - 5) / 17)) if unlimited and selected_seconds * FPS > MAX_FRAMES
+              else nearest_frames(selected_seconds, max_frames))
     request.source_start_seconds = round(start, 4)
     request.source_end_seconds = round(end, 4)
     request.frames = frames
