@@ -140,7 +140,7 @@ def generate(request, prompt, images, progress, preview_directory=None):
 
 
 def _from_precomputed(request, positive, images, read_weights, progress):
-    """Conditioning of one part encoded ahead (ReferenceEncoder); adds the guides that depend on the previous part."""
+    """Conditioning of one part encoded ahead (ReferenceEncoder), with the camera guide of Camera view."""
     import torch
     import comfy.model_management as memory
     from .video_timing import gpu_load_stage
@@ -154,8 +154,6 @@ def _from_precomputed(request, positive, images, read_weights, progress):
     with torch.no_grad():
         if request['workflow'] == 'crossview':
             positive = MiniMaxH3AddGuide.execute(positive, latent, 0, vae=vae, image=images['warp_video'])[0]
-        if images.get('continuity_guide') is not None:
-            positive = MiniMaxH3AddGuide.execute(positive, latent, 0, vae=vae, image=images['continuity_guide'])[0]
     memory.unload_model_and_clones(shared.patcher)
     return positive, latent, [], shared
 
@@ -329,9 +327,6 @@ def _encode(request, prompt, images, reference, keyframes, read_weights, release
                 ref_video_audios=video_audios,ref_audios=voices or None)
             if request['workflow']=='crossview':
                 positive=MiniMaxH3AddGuide.execute(positive,latent,0,vae=vae,image=images['warp_video'])[0]
-            # A long face swap anchors the last frames of the previous part at the start of this one (long_faceswap.py).
-            if images.get('continuity_guide') is not None:
-                positive=MiniMaxH3AddGuide.execute(positive,latent,0,vae=vae,image=images['continuity_guide'])[0]
         else:
             positive, latent = MiniMaxH3ImageToVideo.execute(encoder, vae, prompt,
                 request['width'], request['height'], request['frames'], **tensors)
@@ -417,6 +412,12 @@ def _sample_and_decode(request, selected, fast, sampling, steps, cfg, model, pos
     packed_elements=sum(stream[0].numel() for stream in streams)
     from .reference_memory import account_for_reference_memory
     reference_elements = account_for_reference_memory(model.model, positive) if reference else 0
+    known = request.get('working_memory_gb') if reference else None
+    if known:
+        # A later part of a long video: the working memory measured on the part before it, with a margin. ComfyUI's
+        # estimate for H3 with references (and a doubled batch for CFG, which H3 does not use) is far above what a
+        # part really uses, so it left gigabytes of weights in RAM that fit on the GPU.
+        model.model.memory_required = lambda input_shape, cond_shapes=None: known * GIB
     progress(model_format=selected['format'],
              reference_latent_elements=reference_elements,video_sigma_shift=video_shift,audio_sigma_shift=audio_shift,
              model_weight_gb=round(model.model_size()/GIB,2),
@@ -446,11 +447,14 @@ def _sample_and_decode(request, selected, fast, sampling, steps, cfg, model, pos
     sigmas = scheduler_sigmas(sampling, model, MiniMaxH3SigmaShift.execute, comfy.samplers.calculate_sigmas)
     progress(stage='generating', message='Generating video and audio…' if request.get('audio',True) else 'Generating video…', step=0, guidance=cfg, sampler=sampler, scheduler=scheduler)
     with torch.inference_mode():
+        torch.cuda.reset_peak_memory_stats()
         with gpu_load_stage(memory,progress,torch.cuda.synchronize,'loading_model_gpu',
                 'Moving video model to GPU and applying LoRAs…','generating',
                 'Generating video and audio…' if request.get('audio',True) else 'Generating video…'):
             samples = comfy.sample.sample(model, noise, steps, cfg, sampler, scheduler,
                 positive, negative, samples, sigmas=sigmas, callback=callback, seed=request['seed'])
+        # Real working memory of this sampling (peak minus the weights on the GPU); the next part of a long video uses it.
+        progress(sampling_working_gb=round((torch.cuda.max_memory_allocated() - model.loaded_size()) / GIB, 2))
         progress(stage='releasing_model',message='Releasing video model for decoding…')
         del model, positive, negative, noise, latent
         release()

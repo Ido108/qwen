@@ -31,7 +31,10 @@ class PartPlanTests(unittest.TestCase):
         self.assertTrue(is_long_faceswap({'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 141}))
         self.assertFalse(is_long_faceswap({'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 124}))
         self.assertTrue(is_long_faceswap({'kind': 'reference-video', 'workflow': 'reference', 'frames': 141}))
-        self.assertFalse(is_long_faceswap({'kind': 'reference-video', 'workflow': 'crossview', 'frames': 362}))
+        self.assertTrue(is_long_faceswap({'kind': 'reference-video', 'workflow': 'crossview', 'frames': 362}))
+        # Camera view with its own guide video, or with Replace subjects first (two passes), keeps one pass.
+        self.assertFalse(is_long_faceswap({'kind': 'reference-video', 'workflow': 'crossview', 'frames': 362, 'warp_video': 'w.mp4'}))
+        self.assertFalse(is_long_faceswap({'kind': 'reference-video', 'workflow': 'crossview', 'frames': 362, 'replace_subjects_first': True}))
 
 
 class LengthLimitTests(unittest.TestCase):
@@ -46,11 +49,11 @@ class LengthLimitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'at most 15.1 seconds'):
             resolve_reference_clip(SimpleNamespace(source_start_seconds=0.0, source_end_seconds=31.0, frames=124), 70.92, 362)
         base = dict(source_video='x.mp4', reference_images=['a.png'], width=1024, height=576)
-        for workflow in ('faceswap', 'reference'):
+        for workflow in ('faceswap', 'reference', 'crossview'):
             self.assertEqual(ReferenceVideoRequest(**base, workflow=workflow, frames=1705).frames, 1705)
-        for workflow in ('crossview',):
+        for extra in ({'warp_video': 'w.mp4'}, {'replace_subjects_first': True}):
             with self.assertRaisesRegex(ValueError, 'at most 15.1 seconds'):
-                ReferenceVideoRequest(**base, workflow=workflow, frames=1433)
+                ReferenceVideoRequest(**base, workflow='crossview', frames=1433, **extra)
 
 
 class SwapLongTests(unittest.TestCase):
@@ -92,11 +95,11 @@ class SwapLongTests(unittest.TestCase):
             self.assertEqual((count, has_audio, size, rate), (400, True, (64, 64), 32000))
             self.assertEqual(len(reads), 3, '400 frames: parts of 124, 119 and 157 (the last 38 frames join the third part), each read on its own')
             self.assertEqual([r[0] for r in reads], [124, 124, 175], 'each part is read on the 17n+5 grid')
-            # Parts after the first start 5 frames early, where the previous part's last 5 frames are anchored.
+            # Parts after the first start 5 frames early: they also make the previous part's last 5 frames (the seam).
             self.assertEqual([r[1] for r in reads], [2.0, round(2.0 + 119 / 24, 4), round(2.0 + 238 / 24, 4)])
             self.assertEqual([c[0] for c in calls], [124, 124, 175])
-            # The guide is the previous part's last 5 written frames: frames 119-123 and 238-242 of the selection.
-            self.assertEqual([c[1] for c in calls], [None, 48 + 119, 48 + 238])
+            # No part is anchored to frames an earlier part made (that chain drifted part after part).
+            self.assertEqual([c[1] for c in calls], [None, None, None])
             self.assertTrue(any(u.get('part') == 3 and u.get('total_parts') == 3 for u in updates))
             self.assertFalse((Path(folder) / 'out.video.mp4').exists(), 'the video-only file is removed')
             # Each finished part is saved as its own MP4 with a poster, and stays next to the whole video.
@@ -147,8 +150,83 @@ class TwoPassTests(unittest.TestCase):
                                                 generate, Path(folder) / 'out.mp4', encoder=Encoder())
         self.assertEqual(count, 400)
         self.assertEqual(events, [('prepare', 124, False), ('prepare', 124, False), ('prepare', 175, False), ('encode_all', 3),
-                                  ('generate', 124, 'positive-1', False), ('generate', 124, 'positive-2', True),
-                                  ('generate', 175, 'positive-3', True)])
+                                  ('generate', 124, 'positive-1', False), ('generate', 124, 'positive-2', False),
+                                  ('generate', 175, 'positive-3', False)])
+
+
+class WorkingMemoryTests(unittest.TestCase):
+    def test_later_parts_reserve_the_working_memory_measured_on_the_part_before(self):
+        import torch
+        from backend import long_faceswap
+        reserved = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            reserved.append(request.get('working_memory_gb'))
+            progress(sampling_working_gb=5.0)
+            return images['source_video'].clone(), None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16}
+        with tempfile.TemporaryDirectory() as folder,                 mock.patch('backend.reference_media.read_frames', read_frames),                 mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]):
+            long_faceswap.swap_long(request, 'Faceswap', {}, Path('source.mp4'), lambda **values: None, generate, Path(folder) / 'out.mp4')
+        # Part 1 keeps ComfyUI's estimate; part 2 (124 frames) 5 + 2 GB; part 3 (175 frames) scaled to its length.
+        self.assertEqual(reserved, [None, 7.0, round(5.0 * 175 / 124 + 2.0, 2)])
+
+
+class CameraViewPartsTests(unittest.TestCase):
+    def test_camera_view_parts_are_whole_parts_without_the_continuity_anchor(self):
+        import torch
+        from backend import long_faceswap
+        calls = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            calls.append((request['frames'], 'continuity_guide' in images))
+            return images['source_video'].clone(), None
+
+        request = {'kind': 'reference-video', 'workflow': 'crossview', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16}
+        cuts = mock.Mock(side_effect=AssertionError('Camera view parts are not split by shot'))
+        with tempfile.TemporaryDirectory() as folder,                 mock.patch('backend.reference_media.read_frames', read_frames),                 mock.patch('backend.reference_shots.shot_bounds', cuts):
+            count, *_ = long_faceswap.swap_long(request, 'crossview', {}, Path('source.mp4'), lambda **values: None, generate, Path(folder) / 'out.mp4')
+        self.assertEqual(count, 400)
+        self.assertEqual(calls, [(124, False), (124, False), (175, False)])
+
+
+class SeamTests(unittest.TestCase):
+    def test_the_previous_part_fades_into_the_next_over_the_overlap_frames(self):
+        import av
+        import numpy as np
+        import torch
+        from backend import long_faceswap
+        made = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.zeros(count, 64, 64, 3)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            made.append(request['frames'])
+            return torch.full((request['frames'], 64, 64, 3), 0.2 if len(made) == 1 else 0.6), None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 243, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 64, 'height': 64}
+        with tempfile.TemporaryDirectory() as folder,                 mock.patch('backend.reference_media.read_frames', read_frames),                 mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]):
+            destination = Path(folder) / 'out.mp4'
+            count, *_ = long_faceswap.swap_long(request, 'Faceswap', {}, Path('source.mp4'), lambda **values: None, generate, destination)
+            with av.open(str(destination)) as container:
+                levels = [float(frame.to_ndarray(format='rgb24').mean()) / 255 for frame in container.decode(container.streams.video[0])]
+        self.assertEqual((count, len(levels), made), (243, 243, [124, 124]))
+        # Frames 0-118 are part 1, 119-123 the seam (part 1 fading into part 2), 124-242 part 2.
+        self.assertAlmostEqual(levels[100], 0.2, delta=0.02)
+        self.assertAlmostEqual(levels[200], 0.6, delta=0.02)
+        seam = levels[119:124]
+        self.assertTrue(all(a < b for a, b in zip(seam, seam[1:])), seam)
+        self.assertTrue(0.2 < seam[0] < 0.35 and 0.45 < seam[-1] < 0.6, seam)
 
 
 if __name__ == '__main__':

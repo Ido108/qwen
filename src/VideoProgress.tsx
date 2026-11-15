@@ -7,6 +7,9 @@ import {formatDuration as time} from './duration';
 import {formatClipTime} from './referenceTiming';
 
 type Step={label:string;stages:string[]};
+// Up to 2.9 GB of H3 weights in RAM did not change the step time on the RTX 5090 (10.13 s per step with 2.9 GB
+// and with 1.0 GB, measured 2026-11-15), so smaller amounts show no warning.
+const OFFLOAD_WARNING_GB=4;
 const START=['queued','downloading_models','waiting_for_download','loading','uploading','waiting','processing'];
 const SAVE=['saving','muxing_audio','downloading','complete'];
 
@@ -124,7 +127,7 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
         {generating?<><span className="vp-count">step {step} of {steps}</span><progress className="vp-inline" aria-label={`Step ${step} of ${steps} in part ${part}`} max={steps} value={step}/>{partLeft?<span className="vp-muted">about {time(partLeft)} left in this part</span>:null}</>
           :<span className="vp-muted">stage {index+1} of {plan.length} · {time(stageTime)}</span>}
         {saved?<span className="vp-muted vp-right" title={job.parts_folder||''}>{saved} part{saved>1?'s':''} saved</span>:null}</div>
-      {generating&&offloaded>=0.1?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of model weights are in RAM.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU.`:''} Transfers can increase generation time.</span></p>:null}
+      {generating&&offloaded>=OFFLOAD_WARNING_GB?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of model weights are in RAM.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU.`:''} Transfers can increase generation time.</span></p>:null}
     </div>;
   }
   return <div className="vp-card" role="status" aria-live="polite">
@@ -137,7 +140,7 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
       {left?<span className="vp-eta">About {time(left)} left · {time(perStep)} per {upscale?'batch':'step'}</span>:null}
     </div>
     {job.stage==='generating'&&!step&&!job.preview_unavailable?<small className="vp-note">The first step takes longest. The preview appears after it finishes. The time estimate starts after two steps.</small>:null}
-    {job.stage==='generating'&&offloaded>=0.1?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of model weights are in RAM.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU.`:''} Transfers can increase generation time.</span></p>:null}
+    {job.stage==='generating'&&offloaded>=OFFLOAD_WARNING_GB?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of model weights are in RAM.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU.`:''} Transfers can increase generation time.</span></p>:null}
     <ol className="vp-steps" aria-label="Stages">{plan.map((item,i)=><li key={item.label} className={i<index?'done':i===index?'current':''} title={`${i+1}. ${item.label}`}><span className="sr-only">{i+1}. {item.label}{i<index?' (done)':i===index?' (current)':''}</span></li>)}</ol>
     {next?<small className="vp-next">Next: {next.label}</small>:null}
   </div>;

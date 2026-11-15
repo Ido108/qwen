@@ -15,8 +15,10 @@ from pathlib import Path
 
 FPS = 24
 PART_FRAMES = 124
-# Each part after the first starts this many frames early; the last frames made by the previous part are
-# anchored there as a guide clip (H3 anchors clips of 5, 22, 39... frames), and the repeated frames are dropped.
+# Each part after the first starts this many frames early, so it also makes the last frames of the part before it;
+# the two versions of those frames are blended into one seam. Parts are never anchored to frames an earlier part
+# made: on 2026-11-15 a 15-part run anchored that way drifted part after part (brightness 64 to 70, sharpness
+# 675 to 1319), and the last parts came out orange and over-sharpened.
 OVERLAP_FRAMES = 5
 # A shorter last part joins the part before it: one longer pass (at most 192 frames, still mostly on the GPU)
 # costs less than a part of its own, which pays the whole fixed cost of a part (about 65 s on the RTX 5090).
@@ -37,13 +39,20 @@ def part_plan(total_frames: int) -> list[tuple[int, int]]:
     return list(zip(edges, edges[1:]))
 
 
-# Video to video workflows that run in parts. Camera view also anchors its camera guide at the first frame, so it
-# keeps one pass until joining its parts is tested.
-PART_WORKFLOWS = ('faceswap', 'reference')
+# Video to video workflows that run in parts. Camera view builds the camera guide of each part from that part of
+# the source; with its own guide video or with Replace subjects first (two passes) it keeps one pass.
+PART_WORKFLOWS = ('faceswap', 'reference', 'crossview')
+
+
+def runs_in_parts(request) -> bool:
+    """The workflow, without its length: can this request run in parts?"""
+    if request.get('kind') != 'reference-video' or request.get('workflow') not in PART_WORKFLOWS:
+        return False
+    return request['workflow'] != 'crossview' or not (request.get('warp_video') or request.get('replace_subjects_first'))
 
 
 def is_long_faceswap(request) -> bool:
-    return request.get('kind') == 'reference-video' and request.get('workflow') in PART_WORKFLOWS and int(request['frames']) > PART_FRAMES
+    return runs_in_parts(request) and int(request['frames']) > PART_FRAMES
 
 
 class Mp4PartWriter:
@@ -142,7 +151,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     # a stopped run keeps its work, and each part can be watched on its own.
     parts_folder = Path(destination).with_name(Path(destination).stem + ' parts')
     parts_folder.mkdir(parents=True, exist_ok=True)
-    sounds, first_frame, rate, tail, durations, saved_parts = [], None, None, None, [], []
+    sounds, first_frame, rate, held, durations, saved_parts = [], None, None, None, [], []
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
 
     def bounds(index):
@@ -178,9 +187,15 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             images['source_audio'] = source_audio
         return images
 
+    measured = {}
+
     def part_request(index):
         _, length, part_start, part_end = bounds(index)
-        return {**request, 'frames': length, 'source_start_seconds': part_start, 'source_end_seconds': part_end}
+        part = {**request, 'frames': length, 'source_start_seconds': part_start, 'source_end_seconds': part_end}
+        if measured:
+            # The working memory the part before used, scaled to this part's length, with 2 GB of margin.
+            part['working_memory_gb'] = round(measured['gb'] * max(1.0, length / measured['frames']) + 2.0, 2)
+        return part
 
     # A replacement is swapped shot by shot (reference_shots); Reference-guided follows the whole part at once.
     by_shot = swap_by_shot if request['workflow'] == 'faceswap' else (
@@ -226,22 +241,28 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                part_start_seconds=round(clip_start + start / FPS, 3), part_end_seconds=round(clip_start + end / FPS, 3),
                message=f'Decoding source video, part {index + 1} of {len(plan)}…')
         images = part_images(frames, source_audio)
-        if tail is not None:
-            images['continuity_guide'] = tail
 
         def relay(**values):
             values.setdefault('part', index + 1)
             values.setdefault('total_parts', len(plan))
             if 'preview_step' in values:
                 values['preview_part'] = index + 1
+            if values.get('sampling_working_gb'):
+                measured.update(gb=max(values['sampling_working_gb'], measured.get('gb', 0)), frames=length)
             update(**values)
 
-        pixels, audio = by_shot(part_request(index), prompt, images, relay, run, preview_directory=preview_directory)
-        pixels = pixels[lead:lead + keep]
+        made, audio = by_shot(part_request(index), prompt, images, relay, run, preview_directory=preview_directory)
+        pixels = made[lead:lead + keep]
         if first_frame is None:
             first_frame = pixels[0].clone()
-        writer.add(pixels)
-        tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
+        if held is not None and lead:
+            # The seam: the previous part's last frames fade into this part's version of the same frames.
+            weight = (torch.arange(1, lead + 1, dtype=held.dtype) / (lead + 1)).view(-1, 1, 1, 1)
+            writer.add(held * (1 - weight) + made[:lead].to(held.dtype) * weight)
+        last = index == len(plan) - 1
+        hold = 0 if last or keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
+        writer.add(pixels[:keep - hold])
+        held = pixels[keep - hold:].clone() if hold else None
         if request['output_audio'] == 'source':
             audio = source_audio
         elif request['output_audio'] == 'mute':
@@ -264,7 +285,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         durations.append(round(time.monotonic() - began, 1))
         saved_parts.append({'index': index + 1, 'start_seconds': round(start / FPS, 3), 'end_seconds': round(end / FPS, 3)})
         update(parts_saved=index + 1, parts_folder=str(parts_folder), part_seconds=durations, parts=saved_parts)
-        del frames, pixels, images, source_audio, audio
+        del frames, made, pixels, images, source_audio, audio
         torch.cuda.empty_cache()
     combined = None
     if rate:

@@ -1849,7 +1849,8 @@ def generate_reference_video(body: ReferenceVideoRequest):
         metadata=read_json(metadata_path) if metadata_path.is_file() else {}
         duration=metadata.get('duration_seconds') or probe_video_duration(source)
         maximum=models.entry(body.model_id).get('generation_defaults',{}).get('max_frames',362)
-        resolve_reference_clip(body,duration,maximum,unlimited=body.workflow in ('faceswap','reference'))
+        from .long_faceswap import runs_in_parts
+        resolve_reference_clip(body,duration,maximum,unlimited=runs_in_parts({**body.model_dump(),'kind':'reference-video'}))
         if body.person_assignments and body.workflow=='crossview' and not body.replace_subjects_first:
             raise ValueError('Enable Replace subjects first to use person assignments in Camera view.')
         for person in body.source_people:
