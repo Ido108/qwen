@@ -1519,9 +1519,11 @@ def video_upload_people(video_id: str, body: PeopleAnalysisRequest):
         duration = probe_video_duration(source)
         if body.end_seconds <= body.start_seconds or body.end_seconds > duration + 1/24:
             raise ValueError('Select a valid part of the source video.')
-        from .reference_people import analyze_people
-        people = analyze_people(source, body.start_seconds, min(duration,body.end_seconds))
-        return {'people':people,'start_seconds':body.start_seconds,'end_seconds':body.end_seconds}
+        from .reference_people import analyze_people, scan_times
+        end = min(duration, body.end_seconds)
+        people = analyze_people(source, body.start_seconds, end)
+        return {'people':people,'start_seconds':body.start_seconds,'end_seconds':body.end_seconds,
+                'sample_times':[round(t,3) for t in scan_times(body.start_seconds, end)]}
     except (ValueError,OSError) as exc:
         raise HTTPException(400,str(exc))
 

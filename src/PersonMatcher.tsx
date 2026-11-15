@@ -1,7 +1,7 @@
 ﻿import {Loader2,RefreshCw} from 'lucide-react';
 import {ReferenceChoice} from './ReferenceChoice';
 
-export type SourcePerson={id:string;time:number;preview:string;box:number[];hits:number};
+export type SourcePerson={id:string;time:number;preview:string;box:number[];hits:number;appearances?:[number,number[]][]};
 
 export function PersonMatcher({people,references,assignments,status,error,stale,active,onActive,onAssign,onSeek,onRescan}:{
   people:SourcePerson[];references:{id:string;url:string;count?:number}[];assignments:Record<string,string|null>;

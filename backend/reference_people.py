@@ -80,6 +80,15 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def scan_times(start: float, end: float) -> list[float]:
+    """The source times a people scan looks at: about one per second (12 to 240), so the people of any
+    shorter clip inside a scanned selection can be read from its appearances without scanning again."""
+    import numpy as np
+    count = int(min(240, max(12, round(end - start))))
+    first = start + min(0.15, (end - start) / 4)
+    return [float(t) for t in np.linspace(first, max(first, end - 0.15), count)]
+
+
 def analyze_people(path: Path, start: float, end: float, max_people: int = 12) -> list[dict]:
     import av
     import cv2
@@ -90,8 +99,7 @@ def analyze_people(path: Path, start: float, end: float, max_people: int = 12) -
         raise ValueError('Select a source segment before detecting people.')
     recognizer = cv2.FaceRecognizerSF.create(str(ensure_recognizer()), '')
     detector = face_detector()
-    targets = np.linspace(start + min(0.15, (end-start)/4),
-                          max(start + min(0.15, (end-start)/4), end-0.15), 12)
+    targets = scan_times(start, end)
     groups: list[dict] = []
     with av.open(str(path)) as media:
         stream = next((s for s in media.streams if s.type == 'video'), None)
@@ -131,8 +139,11 @@ def analyze_people(path: Path, start: float, end: float, max_people: int = 12) -
                         score = float(np.dot(embedding, group['embedding']))
                         if score > best:
                             matched, best = group, score
+                    box = [round(float(x/scale/width),4),round(float(y/scale/height),4),
+                           round(float(w/scale/width),4),round(float(h/scale/height),4)]
                     if matched is not None:
                         matched['hits'] += 1
+                        matched['appearances'].append([round(seconds,2), box])
                         matched['embedding'] = matched['embedding']*0.8 + embedding*0.2
                         matched['embedding'] /= np.linalg.norm(matched['embedding'])
                         continue
@@ -149,8 +160,7 @@ def analyze_people(path: Path, start: float, end: float, max_people: int = 12) -
                     photo.save(buffer,format='JPEG',quality=82)
                     groups.append({'id':f'person-{len(groups)+1}','time':round(seconds,2),
                                    'preview':'data:image/jpeg;base64,'+base64.b64encode(buffer.getvalue()).decode('ascii'),
-                                   'box':[round(float(x/scale/width),4),round(float(y/scale/height),4),
-                                          round(float(w/scale/width),4),round(float(h/scale/height),4)],
+                                   'box':box,'appearances':[[round(seconds,2), box]],
                                    'hits':1,'embedding':embedding})
             while target_index < len(targets) and seconds + 1/48 >= targets[target_index]:
                 target_index += 1

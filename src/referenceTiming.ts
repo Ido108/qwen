@@ -10,8 +10,8 @@ export function nearestReferenceFrames(seconds:number,maxFrames=REFERENCE_MAX_FR
 }
 
 export function sourceClipDefault(duration:number,maxFrames=REFERENCE_MAX_FRAMES){
-  // The first selection is at most one pass long; a longer one is chosen on the timeline
-  const end=Math.min(duration,Math.min(REFERENCE_MAX_FRAMES,maxFrames)/REFERENCE_FPS);
+  // The whole video where the workflow runs in parts (no limit); otherwise at most one pass
+  const end=Number.isFinite(maxFrames)?Math.min(duration,Math.min(REFERENCE_MAX_FRAMES,maxFrames)/REFERENCE_FPS):duration;
   return {start:0,end,frames:nearestReferenceFrames(end,maxFrames)};
 }
 
