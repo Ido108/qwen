@@ -279,7 +279,36 @@ class FaceGuardTests(unittest.TestCase):
         # Part 2 runs twice: the same prepared conditioning, the next seed. Parts 1 and 3 run once.
         self.assertEqual(made, [(124, 100, 'positive-1'), (124, 100, 'positive-2'), (124, 101, 'positive-2'),
                                 (175, 100, 'positive-3')])
-        self.assertTrue(any(u.get('face_retries') == 1 for u in updates))
+        self.assertTrue(any(u.get('part_retries') == 1 for u in updates))
+
+    def test_a_part_whose_scene_leaves_part_1_is_made_again_with_another_seed(self):
+        import torch
+        from PIL import Image
+        from backend import long_faceswap
+        made = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            made.append((request['frames'], request['seed']))
+            frames = images['source_video'].clone()
+            if len(made) == 2:
+                # The first try of part 2: a dark garment over the lower half of the frame.
+                frames[:, 8:] = 0.05
+            return frames, None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png'],
+                   'seed': 100, 'long_parts': 'independent'}
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch('backend.reference_media.read_frames', read_frames), \
+                mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \
+                mock.patch.object(long_faceswap, 'face_likeness', lambda *a, **k: [0.8, 0.8]):
+            count, *_ = long_faceswap.swap_long(request, 'Faceswap', {'ref_image_1': Image.new('RGB', (8, 8), 'blue')},
+                                                Path('source.mp4'), lambda **values: None, generate, Path(folder) / 'out.mp4')
+        self.assertEqual(count, 400)
+        self.assertEqual(made, [(124, 100), (124, 100), (124, 101), (175, 100)])
 
 
 class IndependentPartsTests(unittest.TestCase):

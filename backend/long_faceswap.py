@@ -39,10 +39,15 @@ OVERLAP_FRAMES = 5
 # longer identity text in the prompt makes the swap fade, see reference_prompt). Those parts do not also start from
 # the last frames of the part before.
 FOLLOW_PROMPT = '\n\nThe clothing, background and lighting are exactly as in <Picture 2>.'
-# A part is made again (another seed, up to FACE_RETRIES times) when the face in any of its checked frames is less
-# like the input image than FACE_KEPT of part 1's likeness: the swap can fade back to the source face mid-part.
+# A part is made again (another seed, up to PART_RETRIES times) when it does not hold what part 1 set:
+# - the face: in any of its checked frames less like the input image than FACE_KEPT of part 1's likeness (the swap
+#   can fade back to the source face in the middle of a part);
+# - the scene: its still picture (scene_plate) differs from part 1's by more than SCENE_LIMIT beyond what the source
+#   itself changed between the two parts (2026-11-15: the short last part of a video came out in a dark jacket where
+#   parts 1 to 15 had a white T-shirt; made on their own, parts came out with other backgrounds).
 FACE_KEPT = 0.6
-FACE_RETRIES = 2
+SCENE_LIMIT = 3.0
+PART_RETRIES = 3
 
 
 def seam_morph(held, ahead):
@@ -92,6 +97,17 @@ def _face_embedder():
         return embedding / norm if norm else None
 
     return embed
+
+
+def scene_plate(frames, count=12):
+    """The still picture of a part: the median of count evenly spaced frames ([N, H, W, 3] in 0..1), small, in Lab.
+    The median keeps what stays in place (background, clothing) and drops what moves."""
+    import cv2
+    import numpy as np
+    picks = sorted({round(i * (frames.shape[0] - 1) / max(1, count - 1)) for i in range(count)})
+    small = [cv2.cvtColor(cv2.resize((frames[i].clamp(0, 1).numpy() * 255).round().astype(np.uint8), (64, 36),
+                                     interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2LAB).astype(np.float32) for i in picks]
+    return np.median(np.stack(small), axis=0)
 
 
 def face_likeness(frames, reference, count=12):
@@ -502,6 +518,13 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     guard = (request['workflow'] != 'crossview' and len(request.get('reference_images') or []) == 1
              and references.get('ref_image_1') is not None)
     face_level = {}
+    # The still pictures of part 1 and of its source (scene_plate).
+    scene = {}
+
+    def scene_change(made, source_frames):
+        """How far this part's still picture is from part 1's, beyond the change in the source itself."""
+        import numpy as np
+        return float(np.abs(scene_plate(made) - scene['made']).mean() - np.abs(scene_plate(source_frames) - scene['source']).mean())
 
     def follow_part_1(frames):
         """Parts 2 and later: part 1's stillest frame most like the input image becomes their second picture."""
@@ -635,8 +658,15 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             # Kept from the original video, frames and sound as they are.
             pixels = kept_frames[start:end].float() / 255
             if index == 0:
-                # The kept part 1 sets the look the new parts are matched to.
-                looks.set_reference(pixels, read_part(0)[0])
+                # The kept part 1 sets the look the new parts are matched to, and what the new parts must hold.
+                first_source = read_part(0)[0]
+                looks.set_reference(pixels, first_source)
+                if guard:
+                    scene.update(made=scene_plate(pixels), source=scene_plate(first_source[:pixels.shape[0]]))
+                    values = face_likeness(pixels, references['ref_image_1'])
+                    if values:
+                        face_level['value'] = sorted(values)[len(values) // 2]
+                del first_source
             if first_frame is None:
                 first_frame = pixels[0].clone()
             if held is not None:
@@ -687,18 +717,24 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                 # Part 1 sets how alike the swapped face is to the input image (its middle value).
                 face_level['value'] = sorted(values)[len(values) // 2]
             lowest = min(values) if values else None
-            if best is None or (lowest is not None and (best[0] is None or lowest > best[0])):
-                best = (lowest, made, audio)
-            if (not face_level or lowest is None or lowest >= FACE_KEPT * face_level['value'] or tries == FACE_RETRIES):
+            face_kept = not face_level.get('value') or lowest is None or lowest >= FACE_KEPT * face_level['value']
+            change = scene_change(made, frames) if guard and scene else 0.0
+            scene_kept = change <= SCENE_LIMIT
+            rank = (face_kept and scene_kept, face_kept, -change)
+            if best is None or rank > best[0]:
+                best = (rank, made, audio)
+            if (face_kept and scene_kept) or tries == PART_RETRIES:
                 made, audio = best[1], best[2]
                 break
-            # The face is lost somewhere in this part: the same part again, with another seed.
+            # The face or the scene of part 1 is lost in this part: the same part again, with another seed.
             tries += 1
             replay[:] = list(used)
             attempt = {**attempt, 'seed': int(request['seed']) + tries}
-            update(face_retries=face_level.setdefault('retries', 0) + 1)
-            face_level['retries'] += 1
+            face_level['retries'] = face_level.get('retries', 0) + 1
+            update(part_retries=face_level['retries'])
         best = None
+        if index == 0 and guard and not scene:
+            scene.update(made=scene_plate(made), source=scene_plate(frames))
         made = looks.apply(made, frames[:made.shape[0]])
         pixels = made[lead:lead + keep]
         if index == 0 and split:
