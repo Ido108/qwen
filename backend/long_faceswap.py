@@ -16,8 +16,10 @@ from pathlib import Path
 FPS = 24
 PART_FRAMES = 124
 # Each part after the first starts this many frames early, anchored there to the last frames of the part before it
-# (H3 anchors clips of 5, 22, 39... frames), so the background, clothing and light carry over; the two versions of
-# those frames are blended into one seam. Parts made without that anchor did not match: with a prompt that asks for
+# (H3 anchors clips of 5, 22, 39... frames), so the background, clothing and light carry over. Of the two versions
+# of those frames, the seam keeps the previous part's and cuts to the new part's at the frame where the two are most
+# alike: blended, two versions that differ showed two faces at once (2026-11-15, parts made without the anchor).
+# Parts made without that anchor did not match: with a prompt that asks for
 # a new background ("make the background nvidia office"), part 1 came out in an open office, part 2 in the source
 # room and part 14 with a large logo (2026-11-15). The anchor frames are first matched to the look of part 1 and
 # softened (LookMatcher.guide), because the model adds fine detail to the frames it starts from: anchored on the
@@ -503,9 +505,11 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         if first_frame is None:
             first_frame = pixels[0].clone()
         if held is not None and lead:
-            # The seam: the previous part's last frames fade into this part's version of the same frames.
-            weight = (torch.arange(1, lead + 1, dtype=held.dtype) / (lead + 1)).view(-1, 1, 1, 1)
-            writer.add(held * (1 - weight) + made[:lead].to(held.dtype) * weight)
+            # The seam: the previous part's last frames, then this part's version of the same frames from the frame
+            # where the two are most alike. Never a mix of the two, which shows two faces at once when they differ.
+            ahead = made[:lead].to(held.dtype)
+            cut = int((held - ahead).abs().mean(dim=(1, 2, 3)).argmin())
+            writer.add(torch.cat([held[:cut], ahead[cut:]]))
         last = index == len(plan) - 1
         hold = 0 if last or keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
         writer.add(pixels[:keep - hold])

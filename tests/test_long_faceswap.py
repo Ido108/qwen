@@ -301,7 +301,7 @@ class CameraViewPartsTests(unittest.TestCase):
 
 
 class SeamTests(unittest.TestCase):
-    def test_the_previous_part_fades_into_the_next_over_the_overlap_frames(self):
+    def test_the_seam_cuts_from_the_previous_part_to_the_next_and_never_mixes_them(self):
         import av
         import numpy as np
         import torch
@@ -324,12 +324,53 @@ class SeamTests(unittest.TestCase):
             with av.open(str(destination)) as container:
                 levels = [float(frame.to_ndarray(format='rgb24').mean()) / 255 for frame in container.decode(container.streams.video[0])]
         self.assertEqual((count, len(levels), made), (243, 243, [124, 124]))
-        # Frames 0-118 are part 1, 119-123 the seam (part 1 fading into part 2), 124-242 part 2.
+        # Frames 0-118 are part 1, 119-123 the seam (part 1, then part 2 from one frame on), 124-242 part 2.
         self.assertAlmostEqual(levels[100], 0.2, delta=0.02)
         self.assertAlmostEqual(levels[200], 0.6, delta=0.02)
         seam = levels[119:124]
-        self.assertTrue(all(a < b for a, b in zip(seam, seam[1:])), seam)
-        self.assertTrue(0.2 < seam[0] < 0.35 and 0.45 < seam[-1] < 0.6, seam)
+        # Every seam frame is one version or the other, never a mix, and once part 2 starts it stays.
+        self.assertTrue(all(abs(v - 0.2) < 0.03 or abs(v - 0.6) < 0.03 for v in seam), seam)
+        self.assertEqual(seam, sorted(seam))
+
+    def test_the_cut_is_at_the_overlap_frame_where_the_two_versions_are_most_alike(self):
+        import torch
+        from backend import long_faceswap
+        written = []
+
+        class Writer:
+            def __init__(self, destination):
+                self.frames, self.size = 0, (8, 8)
+
+            def add(self, frames):
+                written.append(frames.clone())
+                self.frames += frames.shape[0]
+
+            def finish(self, audio):
+                pass
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 8, 8, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            frames = images['source_video'].clone()
+            if generate.calls:
+                # Part 2's version of the 5 overlap frames: alike to part 1's only at the fourth (index 3).
+                frames[:5] = torch.tensor([0.9, 0.8, 0.7, 0.5, 0.3]).view(5, 1, 1, 1)
+            generate.calls += 1
+            return frames, None
+        generate.calls = 0
+
+        request = {'kind': 'reference-video', 'workflow': 'reference', 'frames': 243, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 8, 'height': 8}
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch('backend.reference_media.read_frames', read_frames), \
+                mock.patch.object(long_faceswap, 'Mp4PartWriter', Writer), \
+                mock.patch.object(long_faceswap.LookMatcher, 'apply', lambda self, frames, source: frames), \
+                mock.patch.object(long_faceswap, '_save_part', lambda *a: None):
+            long_faceswap.swap_long(request, 'Prompt', {}, Path('source.mp4'), lambda **values: None, generate,
+                                    Path(folder) / 'out.mp4')
+        seam = [round(float(v), 2) for v in written[1][:, 0, 0, 0]]
+        self.assertEqual(seam, [0.5, 0.5, 0.5, 0.5, 0.3])
 
 
 class RepairTests(unittest.TestCase):
