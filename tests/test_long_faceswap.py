@@ -187,7 +187,8 @@ class FollowPartOneTests(unittest.TestCase):
             return picked, 40, 0.71
 
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
-                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32, 'reference_images': ['a.png']}
+                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32, 'reference_images': ['a.png'],
+                   'long_parts': 'follow'}
         updates = []
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch('backend.reference_media.read_frames', read_frames), \
@@ -220,7 +221,8 @@ class FollowPartOneTests(unittest.TestCase):
             return images['source_video'].clone(), None
 
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
-                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png', 'b.png']}
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png', 'b.png'],
+                   'long_parts': 'follow'}
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch('backend.reference_media.read_frames', read_frames), \
                 mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \

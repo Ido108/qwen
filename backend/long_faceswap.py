@@ -21,10 +21,11 @@ PART_FRAMES = 124
 # alike: blended, two versions that differ showed two faces at once (2026-11-15, parts made without the anchor).
 # Parts made without that anchor did not match: with a prompt that asks for
 # a new background ("make the background nvidia office"), part 1 came out in an open office, part 2 in the source
-# room and part 14 with a large logo (2026-11-15). The anchor frames are first matched to the look of part 1 and
-# softened (LookMatcher.guide), because the model adds fine detail to the frames it starts from: anchored on the
-# plain frames, a chain drifted part after part (brightness 64 to 70 over 15 parts; with the color matched, the
-# fine texture on the face still rose 4.20, 4.99, 5.49 in parts 1 to 3).
+# room and part 14 with a large logo (2026-11-15). The model makes its output sharper than its input (the face
+# about 1.5 times its source), so a part that starts from the frames of the part before sharpens them again: a plain
+# chain drifted part after part (brightness 64 to 70 over 15 parts; face sharpness against the source 1.47, 1.56,
+# 2.00, 2.36 in parts 1 to 4). Each part is therefore matched to part 1 before the next part starts from it, the
+# whole frame and the face area on its own (LookMatcher): every part then starts from frames at part 1's level.
 OVERLAP_FRAMES = 5
 
 
@@ -32,9 +33,9 @@ OVERLAP_FRAMES = 5
 # their input image, with this added to the prompt: the person, clothing and background part 1 made stay the same
 # in every part, also when the prompt asks for a new background (2026-11-15: with "make the background nvidia
 # office" the parts, made on their own, showed an open office, the source room and a large logo). Those parts do
-# not also start from the last frames of the part before: with both, the face still got crunchier part after part
-# (face sharpness against the source 1.47, 1.56, 2.00, 2.36 in parts 1 to 4), and with the fixed frame of part 1
-# nothing passes from one part to the next.
+# not also start from the last frames of the part before. Used with long_parts 'follow' only: from part 2 on the face
+# came out crunchier than in part 1 (face sharpness against the source 1.47, 1.59, 1.82, 1.97 in parts 1 to 4),
+# because the model copies a face it made and adds detail to it again.
 FOLLOW_PROMPT = ('\n\nEverything looks exactly as in the input image: the same person, face, hair, clothing, '
                  'background and lighting.')
 
@@ -87,59 +88,162 @@ def best_reference_frame(frames, reference):
 class LookMatcher:
     """Keeps every part of a long video in the look of its first part.
 
-    Part 1 sets the reference: its color statistics (Lab mean and spread) and sharpness, and those of its source.
-    Each later part is mapped to part 1's statistics shifted by the change in its own source, so a real change of
-    light in the source carries through while the drift a chain of anchored parts adds does not. A part sharper than
-    the reference (relative to its source) is softened to it; detail is never added.
+    Part 1 sets the reference: its color statistics (Lab mean and spread) and the strength of its fine, medium and
+    coarse detail (the spread of each band of the brightness), and those of its source. Each later part is mapped to
+    part 1's statistics shifted by the change in its own source, so a real change of light in the source carries
+    through while the drift a chain of parts adds does not. A detail band stronger than part 1's is turned down to
+    it; detail is never added. The face area gets the same match on its own, frame by frame, under a soft oval mask.
+
+    The model makes its output sharper and more contrasty than its input, so in a chain each part did that again to
+    the part before (2026-11-15: the wall broke into blocks, the face turned orange and crunchy by part 15). Turning
+    down only the finest detail (a blur) brought the measured sharpness back but left the stronger wrinkles and
+    local contrast, which sit in the medium band; each band is therefore matched.
     """
-    SIGMAS = (0.4, 0.6, 0.8, 1.0, 1.3, 1.6)
-    # The model added about 10 to 19% fine detail to the frames a part starts from (face texture 4.20, 4.99, 5.49
-    # in an anchored chain); the anchor frames are softened by that much, so each part makes its own detail.
-    GUIDE_SHARPNESS = 0.85
+    BAND_SIGMAS = (1.0, 2.5, 6.0)
+    # A detail band is never turned down below half, and only when stronger than part 1's by more than 3%.
+    MIN_GAIN = 0.5
+    # Limits of the change a source can carry through to the targets, and of one face color correction.
+    SOURCE_RATIO = (0.8, 1.25)
+    FACE_SCALE = (0.7, 1.3)
+    FACE_SHIFT = 15.0
 
     def __init__(self):
         self.reference = None
+        self.face = None
 
     @staticmethod
     def _uint8(frames):
         return (frames.clamp(0, 1).numpy() * 255).round().astype('uint8')
 
     @classmethod
-    def _sharpness(cls, frames, step=6):
+    def _split(cls, lum):
+        """Detail bands (fine to coarse) and the rest of a float brightness image."""
+        import cv2
+        blurred = [lum] + [cv2.GaussianBlur(lum, (0, 0), s) for s in cls.BAND_SIGMAS]
+        return [blurred[i] - blurred[i + 1] for i in range(len(cls.BAND_SIGMAS))], blurred[-1]
+
+    @classmethod
+    def _bands(cls, images):
+        """Mean spread of each detail band over uint8 RGB images (frames or face crops)."""
         import cv2
         import numpy as np
-        return float(np.mean([cv2.Laplacian(cv2.cvtColor(cv2.resize(f, (512, 288), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY),
-                                            cv2.CV_32F).var() for f in frames[::step]]))
+        values = []
+        for image in images:
+            bands, _ = cls._split(cv2.cvtColor(image, cv2.COLOR_RGB2LAB)[..., 0].astype(np.float32))
+            values.append([float(b.std()) for b in bands])
+        return np.mean(values, 0) if values else None
+
+    @classmethod
+    def _gains(cls, current, reference, source, reference_source):
+        """Gain of each detail band (MIN_GAIN to 1) that brings current to reference, shifted by the source change."""
+        import numpy as np
+        low, high = cls.SOURCE_RATIO
+        change = np.clip(np.where(reference_source > 1e-3, source / np.maximum(reference_source, 1e-3), 1.0), low, high)
+        gains = np.clip(reference * change / np.maximum(current, 1e-3), cls.MIN_GAIN, 1.0)
+        return np.where(gains > 0.97, 1.0, gains)
+
+    @classmethod
+    def _apply_gains(cls, lab, gains):
+        """lab (float Lab image) with its detail bands scaled by gains."""
+        import numpy as np
+        bands, rest = cls._split(lab[..., 0])
+        lab = lab.copy()
+        lab[..., 0] = np.clip(rest + sum(g * b for g, b in zip(gains, bands)), 0, 255)
+        return lab
 
     @classmethod
     def look(cls, frames):
-        """(Lab mean, Lab spread, sharpness) of [N, H, W, 3] frames in 0..1."""
+        """(Lab mean, Lab spread, detail bands) of [N, H, W, 3] frames in 0..1."""
         import cv2
         import numpy as np
         pixels = cls._uint8(frames)
         lab = np.stack([cv2.cvtColor(cv2.resize(f, (256, 144), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2LAB)
                         for f in pixels[::4]]).astype(np.float32).reshape(-1, 3)
-        return lab.mean(0), lab.std(0), cls._sharpness(pixels)
+        return lab.mean(0), lab.std(0), cls._bands(pixels[::6])
+
+    @staticmethod
+    def _face_boxes(pixels, step=2):
+        """(x, y, w, h) of the largest face in each frame of uint8 RGB pixels, or None; found every step frames."""
+        import numpy as np
+        from .reference_people import face_detector
+        detector = face_detector()
+        boxes, box = [], None
+        for index, frame in enumerate(pixels):
+            if index % step == 0:
+                bgr = np.ascontiguousarray(frame[..., ::-1])
+                detector.setInputSize((bgr.shape[1], bgr.shape[0]))
+                _, faces = detector.detect(bgr)
+                box = None
+                if faces is not None:
+                    x, y, w, h = max(faces, key=lambda item: item[2] * item[3])[:4]
+                    if w >= 24 and h >= 24:
+                        box = (int(x), int(y), int(w), int(h))
+            boxes.append(box)
+        return boxes
+
+    @staticmethod
+    def _crop(frame, box):
+        x, y, w, h = box
+        return frame[max(0, y):max(0, y) + h, max(0, x):max(0, x) + w]
+
+    @classmethod
+    def face_look(cls, pixels, boxes):
+        """(Lab mean, Lab spread, detail bands) of the face area over the frames, or None without a face."""
+        import cv2
+        import numpy as np
+        crops = [cls._crop(f, b) for f, b in zip(pixels, boxes) if b is not None]
+        crops = [c for c in crops if c.size][::3]
+        if len(crops) < 2:
+            return None
+        lab = np.concatenate([cv2.cvtColor(cv2.resize(c, (64, 64), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2LAB).reshape(-1, 3)
+                              for c in crops]).astype(np.float32)
+        # Detail measured on crops of one size, so a face nearer the camera does not count as more detailed.
+        return lab.mean(0), lab.std(0), cls._bands([cv2.resize(c, (160, 160), interpolation=cv2.INTER_AREA) for c in crops])
+
+    @staticmethod
+    def _mask(shape, box):
+        """Soft oval over the face, hair and jaw: 1 inside, fading to 0."""
+        import cv2
+        import numpy as np
+        x, y, w, h = box
+        mask = np.zeros(shape[:2], np.float32)
+        cv2.ellipse(mask, (int(x + w / 2), int(y + h * 0.42)), (int(w * 0.72), int(h * 0.88)), 0, 0, 360, 1.0, -1)
+        return cv2.GaussianBlur(mask, (0, 0), max(2.0, w * 0.12))[..., None]
 
     def set_reference(self, frames, source):
         self.reference = (self.look(frames), self.look(source))
+        pixels, source_pixels = self._uint8(frames), self._uint8(source)
+        face, source_face = self.face_look(pixels, self._face_boxes(pixels)), self.face_look(source_pixels, self._face_boxes(source_pixels))
+        self.face = (face, source_face) if face is not None and source_face is not None else None
 
-    def guide(self, frames, source=None):
-        """The last frames of a part (already matched) softened for the next part to start from."""
+    def _match_face(self, pixels, source):
+        """pixels (uint8, already matched as a whole) with the face area matched to part 1's face, frame by frame."""
         import cv2
         import numpy as np
-        import torch
-        if self.reference is None:
-            return frames
-        (_, _, ref_sharp), (_, _, ref_src_sharp) = self.reference
-        pixels = self._uint8(frames)
-        src_sharp = self._sharpness(self._uint8(source), step=1) if source is not None else ref_src_sharp
-        ratio = src_sharp / ref_src_sharp if ref_src_sharp > 1.0 and src_sharp > 1.0 else 1.0
-        target = self.GUIDE_SHARPNESS * ref_sharp * ratio
-        if target <= 0 or self._sharpness(pixels, step=1) <= target:
-            return frames
-        sigma = min(self.SIGMAS, key=lambda s: abs(self._sharpness(np.stack([cv2.GaussianBlur(f, (0, 0), s) for f in pixels]), step=1) - target))
-        return torch.from_numpy(np.stack([cv2.GaussianBlur(f, (0, 0), sigma) for f in pixels]).astype(np.float32) / 255)
+        (ref_mean, ref_spread, ref_bands), (src0_mean, src0_spread, src0_bands) = self.face
+        boxes = self._face_boxes(pixels)
+        look, source_look = self.face_look(pixels, boxes), self.face_look(source, self._face_boxes(source))
+        if look is None or source_look is None:
+            return pixels
+        mean, spread, bands = look
+        src_mean, src_spread, src_bands = source_look
+        low, high = self.SOURCE_RATIO
+        target_mean = ref_mean + np.clip(src_mean - src0_mean, -self.FACE_SHIFT, self.FACE_SHIFT)
+        target_spread = ref_spread * np.clip(np.where(src0_spread > 1.0, src_spread / np.maximum(src0_spread, 1e-3), 1.0), low, high)
+        scale = np.clip(target_spread / np.maximum(spread, 1e-3), *self.FACE_SCALE)
+        shift = np.clip(target_mean - mean, -self.FACE_SHIFT, self.FACE_SHIFT)
+        gains = self._gains(bands, ref_bands, src_bands, src0_bands)
+        out = pixels.copy()
+        for index, (frame, box) in enumerate(zip(pixels, boxes)):
+            if box is None:
+                continue
+            lab = (cv2.cvtColor(frame, cv2.COLOR_RGB2LAB).astype(np.float32) - mean) * scale + mean + shift
+            if (gains < 1.0).any():
+                lab = self._apply_gains(lab, gains)
+            fixed = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
+            mask = self._mask(frame.shape, box)
+            out[index] = np.clip(frame * (1 - mask) + fixed * mask, 0, 255).round().astype(np.uint8)
+        return out
 
     def apply(self, frames, source):
         """frames matched to the reference look; the first call sets the reference and returns frames unchanged."""
@@ -149,24 +253,27 @@ class LookMatcher:
         if self.reference is None:
             self.set_reference(frames, source)
             return frames
-        (ref_mean, ref_spread, ref_sharp), (ref_src_mean, ref_src_spread, ref_src_sharp) = self.reference
+        (ref_mean, ref_spread, ref_bands), (ref_src_mean, ref_src_spread, ref_src_bands) = self.reference
         mean, spread, _ = self.look(frames)
-        src_mean, src_spread, src_sharp = self.look(source)
+        src_mean, src_spread, src_bands = self.look(source)
         ratio = np.where(ref_src_spread > 1.0, src_spread / np.maximum(ref_src_spread, 1e-3), 1.0)
         target_mean, target_spread = ref_mean + (src_mean - ref_src_mean), ref_spread * ratio
         scale = target_spread / np.maximum(spread, 1e-3)
         pixels = self._uint8(frames)
-        matched = np.empty_like(pixels)
-        for i, frame in enumerate(pixels):
-            lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB).astype(np.float32)
-            matched[i] = cv2.cvtColor(np.clip((lab - mean) * scale + target_mean, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
-        target_sharp = ref_sharp * (src_sharp / ref_src_sharp if ref_src_sharp > 1.0 and src_sharp > 1.0 else 1.0)
-        sharp = self._sharpness(matched)
-        if target_sharp > 0 and sharp > 1.08 * target_sharp:
-            sample = matched[::6]
-            sigma = min(self.SIGMAS, key=lambda s: abs(self._sharpness(np.stack([cv2.GaussianBlur(f, (0, 0), s) for f in sample]), step=1) - target_sharp))
-            matched = np.stack([cv2.GaussianBlur(f, (0, 0), sigma) for f in matched])
+        labs = [(cv2.cvtColor(frame, cv2.COLOR_RGB2LAB).astype(np.float32) - mean) * scale + target_mean for frame in pixels]
+        # Detail bands measured after the color match, on the frames as they will be.
+        colored = np.stack([cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB) for lab in labs])
+        gains = self._gains(self._bands(colored[::6]), ref_bands, src_bands, ref_src_bands)
+        if (gains < 1.0).any():
+            matched = np.stack([cv2.cvtColor(np.clip(self._apply_gains(lab, gains), 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
+                                for lab in labs])
+        else:
+            matched = colored
+        if self.face is not None:
+            matched = self._match_face(matched, self._uint8(source))
         return torch.from_numpy(matched.astype(np.float32) / 255)
+
+
 # A shorter last part joins the part before it: one longer pass (at most 192 frames, still mostly on the GPU)
 # costs less than a part of its own, which pays the whole fixed cost of a part (about 65 s on the RTX 5090).
 MIN_LAST_PART = 60
@@ -322,11 +429,12 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     sounds, first_frame, rate, held, tail, durations, saved_parts = [], None, None, None, None, [], []
     looks = LookMatcher()
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
-    # With one input image, the later parts take their input image from part 1 (best_reference_frame).
-    # long_parts 'independent': every part from the input images and the source only, with no anchor between parts.
+    # long_parts: by default each part starts from the last frames of the part before (the chain); 'independent':
+    # every part from the input images and the source only; 'follow': with one input image, the later parts take
+    # their input image from part 1 (best_reference_frame) and do not start from the part before.
     independent = request.get('long_parts') == 'independent'
-    follow = (request['workflow'] != 'crossview' and len(request.get('reference_images') or []) == 1 and len(plan) > 1
-              and not independent)
+    follow = (request.get('long_parts') == 'follow' and request['workflow'] != 'crossview'
+              and len(request.get('reference_images') or []) == 1 and len(plan) > 1)
     current = {'references': references, 'prompt': prompt}
 
     def follow_part_1(frames):
@@ -461,7 +569,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             hold = 0 if keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
             writer.add(pixels[:keep - hold])
             held = pixels[keep - hold:].clone() if hold else None
-            tail = looks.guide(pixels[-OVERLAP_FRAMES:]) if keep >= OVERLAP_FRAMES else None
+            tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
             audio = None
             if request['output_audio'] == 'source':
                 audio = read_audio(source_path, keep / FPS, start_seconds=clip_start + start / FPS, end_seconds=clip_start + end / FPS)
@@ -514,8 +622,8 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         hold = 0 if last or keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
         writer.add(pixels[:keep - hold])
         held = pixels[keep - hold:].clone() if hold else None
-        tail = (looks.guide(pixels[-OVERLAP_FRAMES:], frames[lead + keep - OVERLAP_FRAMES:lead + keep])
-                if keep >= OVERLAP_FRAMES else None)
+        # Matched to part 1 above, so the next part starts from frames at part 1's level.
+        tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
         if request['output_audio'] == 'source':
             audio = source_audio
         elif request['output_audio'] == 'mute':
