@@ -822,6 +822,14 @@ def _original_parts(request, total):
                 break
     if len(frames) != count:
         raise ValueError('The original video is shorter than its parts. Run the whole video again.')
+    # The last frames of the last kept part are a seam in the original video, already morphed toward the part that is
+    # made again; its own version of them is in its saved part file.
+    part_file = Path(original.get('parts_folder') or '') / f'part-{first_new:03d}.mp4'
+    if original.get('parts_folder') and part_file.is_file():
+        with av.open(str(part_file)) as container:
+            own = [frame.to_ndarray(format='rgb24') for frame in container.decode(container.streams.video[0])]
+        if len(own) == plan[first_new - 1][1] - plan[first_new - 1][0] and own[0].shape == frames[0].shape:
+            frames[-OVERLAP_FRAMES:] = own[-OVERLAP_FRAMES:]
     kept = torch.from_numpy(np.stack(frames))  # 8-bit; each kept part is converted when it is written
     audio = read_audio(video, count / FPS, start_seconds=0, end_seconds=count / FPS) if original.get('has_audio') else None
     return plan, first_new, kept, audio
