@@ -4,6 +4,7 @@ import type {SavedJob} from './JobQueue';
 import type {Api,ModelEntry} from './ModelSettings';
 import {ModelDownloadProgress} from './ModelDownloadProgress';
 import {formatDuration as time} from './duration';
+import {formatClipTime} from './referenceTiming';
 
 type Step={label:string;stages:string[]};
 const START=['queued','downloading_models','waiting_for_download','loading','uploading','waiting','processing'];
@@ -36,6 +37,19 @@ function stagePlan(job:SavedJob):Step[]{
     ['loading_video_vae','loading_vae_gpu','preparing_conditioning','encoding_prompt','encoding_reference_image','loading_audio_vae','loading_audio_encoder_gpu','encoding_source_video','encoding_source_audio']);
   add('Load video model',['loading_model','loading_model_gpu']);add('Generate',['generating']);add('Decode',['releasing_model','loading_video_decoder','loading_decoder_gpu','loading_audio_decoder','loading_audio_decoder_gpu','decoding','decoding_audio']);add('Save video',SAVE);
   return plan;
+}
+
+/** Frame edges of each part of a long replacement, as backend/long_faceswap.part_plan makes them. A short last part
+ *  joins the one before it: under 60 frames now, under 17 in jobs made before; the job's part count tells which. */
+function partEdges(total:number,parts:number){
+  const plan=(shortest:number)=>{
+    const edges=[0,Math.min(total,124)];
+    while(edges[edges.length-1]<total)edges.push(Math.min(total,edges[edges.length-1]+119));
+    if(edges.length>2&&edges[edges.length-1]-edges[edges.length-2]<shortest)edges.splice(edges.length-2,1);
+    return edges;
+  };
+  const current=plan(60);
+  return current.length-1===parts?current:plan(17);
 }
 
 export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
@@ -74,6 +88,53 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
   const offloaded=Number(job.model_offloaded_weight_gb)||0;
   const onGpu=Number(job.model_gpu_weight_gb)||0;
   const chunk=upscale&&job.total_chunks>1&&job.chunk?`Clip ${job.chunk} of ${job.total_chunks}`:job.total_parts>1&&job.part?`Part ${job.part} of ${job.total_parts}${job.total_shots>1&&job.shot?` · Shot ${job.shot} of ${job.total_shots}`:''}`:job.total_shots>1&&job.shot?`Shot ${job.shot} of ${job.total_shots}`:'';
+  if(job.kind==='reference-video'&&job.total_parts>1&&job.part){
+    // A long video runs in parts; every part goes through all the stages, so the part leads and the stage is secondary.
+    const parts=job.total_parts,part=job.part,frames=Number(job.request?.frames)||0;
+    const edges=partEdges(frames,parts);
+    const range=(n:number)=>`${formatClipTime((edges[n-1]??0)/24)} to ${formatClipTime((edges[n]??frames)/24)}`;
+    const clipStart=Number(job.request?.source_start_seconds)||0;
+    const from=job.part_start_seconds!=null?job.part_start_seconds-clipStart:(edges[part-1]??0)/24;
+    const to=job.part_end_seconds!=null?job.part_end_seconds-clipStart:(edges[part]??frames)/24;
+    const generate=plan.findIndex(item=>item.label==='Generate');
+    const inPart=index>generate?1:job.stage==='generating'&&steps>0?step/steps:0;
+    const done=part-1+inPart;
+    const times:number[]=Array.isArray(job.part_seconds)?job.part_seconds:[];
+    const perPart=times.length?times.reduce((sum,value)=>sum+value,0)/times.length:part>2?total/done:0;
+    const wholeLeft=perPart?perPart*(parts-done):0;
+    const partLeft=job.stage==='generating'&&perStep&&steps?perStep*(steps-step):0;
+    const saved=Number(job.parts_saved)||0;
+    const percent=Math.floor(100*done/parts);
+    return <div className="vp-card" role="status" aria-live="polite" aria-label={`Part ${part} of ${parts}, ${percent}% of the whole video done`}>
+      <div className="vp-head"><Loader2 className="spin" size={16}/><span className="vp-badge">Part {part} of {parts}</span><strong>Clip {formatClipTime(from)} to {formatClipTime(to)}</strong><span className="vp-muted">of {formatClipTime(frames/24)}</span></div>
+      <p className="vp-explain">The video is made in {parts} parts of about 5 seconds, one after another.</p>
+      <ol className="vp-parts" aria-label="Parts of the video">{Array.from({length:parts},(_,i)=>{const n=i+1;const state=n<part?'done':n===part?'current':'';const word=n<part?'done':n===part?'in progress':'waiting';return <li key={n} className={state} title={`Part ${n}: ${range(n)} (${word})`}><span className="sr-only">Part {n}, {range(n)}, {word}</span></li>;})}</ol>
+      <div className="vp-times">
+        <span className="vp-count">Whole video: {part-1} of {parts} parts done · {percent}%</span>
+        <span>Running for {time(total)}</span>
+        {wholeLeft?<span className="vp-eta">About {time(wholeLeft)} left{times.length?` · about ${time(perPart)} per part`:''}</span>:null}
+      </div>
+      {saved?<p className="vp-saved" title={job.parts_folder||''}>Saved so far: part{saved>1?`s 1 to ${saved}`:' 1'} as MP4 files in <span className="vp-path">{job.parts_folder}</span></p>:null}
+      <section className="vp-part" aria-label={`Part ${part} now`}>
+        <div className="vp-part-head"><span>Now in part {part}:</span><strong>{current.label}</strong><span className="vp-muted">stage {index+1} of {plan.length}</span>{job.total_shots>1&&job.shot?<span className="vp-muted">shot {job.shot} of {job.total_shots}</span>:null}</div>
+        <p className="vp-message" title={message}>{message}</p>
+        {job.stage==='generating'&&steps>0?<>
+          <progress aria-label={`Step ${step} of ${steps} in part ${part}`} max={steps} value={step}/>
+          <div className="vp-times">
+            <span className="vp-count">Step {step} of {steps}</span>
+            {perStep?<span>about {time(perStep)} per step</span>:null}
+            {partLeft?<span className="vp-eta">about {time(partLeft)} left in this part</span>:null}
+          </div>
+          <small className="vp-note">In each step the model refines all the frames of this part once.</small>
+        </>:counter?<div className="vp-times"><span className="vp-count">{counter.done} / {counter.total} {counter.unit}</span><span>{time(stageTime)} this stage</span></div>
+        :<div className="vp-times"><span>{time(stageTime)} this stage</span></div>}
+        {job.stage==='generating'&&offloaded>=0.1?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of model weights are in RAM.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU.`:''} Transfers can increase generation time.</span></p>:null}
+        <small className="vp-label">Stages of part {part}</small>
+        <ol className="vp-steps" aria-label={`Stages of part ${part}`}>{plan.map((item,i)=><li key={item.label} className={i<index?'done':i===index?'current':''} title={`${i+1}. ${item.label}${i<index?' (done)':i===index?' (now)':''}`}><span className="sr-only">{i+1}. {item.label}{i<index?' (done)':i===index?' (now)':''}</span></li>)}</ol>
+        {next?<small className="vp-next">Next in this part: {next.label}</small>:part<parts?<small className="vp-next">Next: part {part+1}</small>:null}
+      </section>
+    </div>;
+  }
   return <div className="vp-card" role="status" aria-live="polite">
     <div className="vp-head"><Loader2 className="spin" size={16}/><span className="vp-badge">Stage {index+1} of {plan.length}</span><strong>{current.label}</strong>{pass?<span className="vp-badge vp-pass">Pass {pass} of 2</span>:null}{chunk?<span className="vp-badge vp-pass">{chunk}</span>:null}</div>
     <p className="vp-message" title={message}>{message}</p>

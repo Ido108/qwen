@@ -12,7 +12,7 @@ from backend.reference_timing import resolve_reference_clip
 
 class PartPlanTests(unittest.TestCase):
     def test_every_part_is_one_124_frame_pass_with_its_overlap(self):
-        from backend.long_faceswap import OVERLAP_FRAMES
+        from backend.long_faceswap import OVERLAP_FRAMES, MIN_LAST_PART
         from backend.reference_shots import grid_length
         for total in (22, 124, 125, 362, 497, 720, 1433, 1705, 86405):
             plan = part_plan(total)
@@ -21,11 +21,11 @@ class PartPlanTests(unittest.TestCase):
             self.assertEqual(plan[-1][1], total)
             self.assertTrue(all(plan[i][1] == plan[i + 1][0] for i in range(len(plan) - 1)))
             reads = [grid_length(size + (OVERLAP_FRAMES if index else 0)) for index, size in enumerate(sizes)]
-            # Every part but the last reads exactly one 124-frame pass; the last one at most one grid step more.
+            # Every part but the last reads exactly one 124-frame pass; a short last part joins the one before it.
             self.assertTrue(all(read == PART_FRAMES for read in reads[:-1]), (total, reads))
-            self.assertLessEqual(reads[-1], PART_FRAMES + 17)
+            self.assertLessEqual(reads[-1], grid_length(PART_FRAMES + MIN_LAST_PART))
             if len(sizes) > 1:
-                self.assertGreaterEqual(sizes[-1], 17, 'a tiny last part joins the part before it')
+                self.assertGreaterEqual(sizes[-1], MIN_LAST_PART, 'a short last part joins the part before it')
 
     def test_only_a_face_swap_longer_than_one_part_runs_in_parts(self):
         self.assertTrue(is_long_faceswap({'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 141}))
@@ -78,7 +78,7 @@ class SwapLongTests(unittest.TestCase):
             return images['source_video'].clone(), {'waveform': torch.ones(1, 2, round(request['frames'] / 24 * 32000)) * 0.2, 'sample_rate': 32000}
 
         updates = []
-        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 300, 'steps': 8, 'source_start_seconds': 2.0,
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 2.0,
                    'source_audio': True, 'output_audio': 'generated', 'width': 64, 'height': 64}
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch('backend.reference_media.read_frames', read_frames), \
@@ -87,22 +87,27 @@ class SwapLongTests(unittest.TestCase):
             destination = Path(folder) / 'out.mp4'
             count, first, has_audio, size, rate = long_faceswap.swap_long(request, 'Faceswap', {}, Path('source.mp4'),
                                                                           lambda **values: updates.append(values), generate, destination)
-            self.assertEqual((count, has_audio, size, rate), (300, True, (64, 64), 32000))
-            self.assertEqual(len(reads), 3, '300 frames: parts of 124, 119 and 57, each read on its own')
-            self.assertEqual([r[0] for r in reads], [124, 124, 73], 'each part is read on the 17n+5 grid')
+            self.assertEqual((count, has_audio, size, rate), (400, True, (64, 64), 32000))
+            self.assertEqual(len(reads), 3, '400 frames: parts of 124, 119 and 157 (the last 38 frames join the third part), each read on its own')
+            self.assertEqual([r[0] for r in reads], [124, 124, 175], 'each part is read on the 17n+5 grid')
             # Parts after the first start 5 frames early, where the previous part's last 5 frames are anchored.
             self.assertEqual([r[1] for r in reads], [2.0, round(2.0 + 119 / 24, 4), round(2.0 + 238 / 24, 4)])
-            self.assertEqual([c[0] for c in calls], [124, 124, 73])
+            self.assertEqual([c[0] for c in calls], [124, 124, 175])
             # The guide is the previous part's last 5 written frames: frames 119-123 and 238-242 of the selection.
             self.assertEqual([c[1] for c in calls], [None, 48 + 119, 48 + 238])
             self.assertTrue(any(u.get('part') == 3 and u.get('total_parts') == 3 for u in updates))
             self.assertFalse((Path(folder) / 'out.video.mp4').exists(), 'the video-only file is removed')
+            # Each finished part was saved as its own MP4; after the whole video is written they are removed.
+            self.assertEqual([u['parts_saved'] for u in updates if 'parts_saved' in u], [1, 2, 3])
+            self.assertEqual([(u['part_start_seconds'], u['part_end_seconds']) for u in updates if 'part_start_seconds' in u],
+                             [(2.0, round(2 + 124 / 24, 3)), (round(2 + 124 / 24, 3), round(2 + 243 / 24, 3)), (round(2 + 243 / 24, 3), round(2 + 400 / 24, 3))])
+            self.assertFalse((Path(folder) / 'out parts').exists(), 'the saved parts are removed after the whole video is saved')
             with av.open(str(destination)) as container:
                 video = container.streams.video[0]
                 frames = sum(1 for _ in container.decode(video))
-                self.assertEqual(frames, 300)
+                self.assertEqual(frames, 400)
                 self.assertEqual(len(container.streams.audio), 1)
-                self.assertAlmostEqual(float(container.duration) / 1e6, 300 / 24, delta=0.2)
+                self.assertAlmostEqual(float(container.duration) / 1e6, 400 / 24, delta=0.2)
 
 
 if __name__ == '__main__':

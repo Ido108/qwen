@@ -6,6 +6,11 @@ import {upscaleFraction,upscaleStageLabel} from './upscaleProgress';
 import './queue-activity.css';
 
 export function stageLabel(job:SavedJob){
+  const stage=jobStage(job);
+  // A long video runs in parts, and every part repeats the stages.
+  return job.status==='running'&&job.total_parts>1&&job.part?`Part ${job.part} of ${job.total_parts} · ${stage}`:stage;
+}
+function jobStage(job:SavedJob){
   if(job.status==='queued')return 'Waiting';
   // Upscale stages (encode, upscale, decode frames) have their own progress text from the worker.
   if((job.kind==='upscale'||job.kind==='image-upscale')&&job.message&&job.status==='running')return job.message;

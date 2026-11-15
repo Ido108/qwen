@@ -18,18 +18,21 @@ PART_FRAMES = 124
 # Each part after the first starts this many frames early; the last frames made by the previous part are
 # anchored there as a guide clip (H3 anchors clips of 5, 22, 39... frames), and the repeated frames are dropped.
 OVERLAP_FRAMES = 5
+# A shorter last part joins the part before it: one longer pass (at most 192 frames, still mostly on the GPU)
+# costs less than a part of its own, which pays the whole fixed cost of a part (about 65 s on the RTX 5090).
+MIN_LAST_PART = 60
 
 
 def part_plan(total_frames: int) -> list[tuple[int, int]]:
     """[start, end) frame ranges of the parts, in order. Every part is one 124-frame pass: the first
     part 124 frames, each later part 119 frames plus the 5 overlap frames. Only the last part is
-    shorter; a last part under 17 frames joins the part before it instead of paying a whole pass."""
+    shorter; a last part under MIN_LAST_PART frames joins the part before it instead of paying a whole pass."""
     if total_frames < 1:
         raise ValueError('Select a longer video segment.')
     edges = [0, min(total_frames, PART_FRAMES)]
     while edges[-1] < total_frames:
         edges.append(min(total_frames, edges[-1] + PART_FRAMES - OVERLAP_FRAMES))
-    if len(edges) > 2 and edges[-1] - edges[-2] < 17:
+    if len(edges) > 2 and edges[-1] - edges[-2] < MIN_LAST_PART:
         edges.pop(-2)
     return list(zip(edges, edges[1:]))
 
@@ -118,7 +121,9 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
 
     references: the reference images (ref_image_n). Returns (frames written, first frame, has audio).
     """
+    import time
     import torch
+    from concurrent.futures import ThreadPoolExecutor
     from .reference_media import read_frames, read_audio
     from .reference_shots import grid_length, swap_by_shot, _fit_audio
 
@@ -126,56 +131,89 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     total = int(request['frames'])
     plan = part_plan(total)
     writer = Mp4PartWriter(destination)
-    sounds, first_frame, rate, tail = [], None, None, None
+    # Every finished part is also saved as a playable MP4 with its sound, so a stopped run keeps its work.
+    parts_folder = Path(destination).with_name(Path(destination).stem + ' parts')
+    parts_folder.mkdir(parents=True, exist_ok=True)
+    sounds, first_frame, rate, tail, durations = [], None, None, None, []
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
-    for index, (start, end) in enumerate(plan):
-        keep = end - start
-        lead = OVERLAP_FRAMES if tail is not None else 0
-        length = grid_length(keep + lead)
+
+    def bounds(index):
+        start, end = plan[index]
+        # Every part after the first starts OVERLAP_FRAMES early, where the previous part's last frames are anchored.
+        lead = OVERLAP_FRAMES if index else 0
+        length = grid_length(end - start + lead)
         part_start = clip_start + (start - lead) / FPS
-        part_end = part_start + length / FPS
-        update(part=index + 1, total_parts=len(plan), stage='decoding_source',
-               message=f'Decoding source video, part {index + 1} of {len(plan)}…')
-        frames = read_frames(source_path, length, start_seconds=part_start, end_seconds=part_end,
-                             progress=lambda done, count: update(input_frames_done=done, input_frames_total=count))
-        source_audio = read_audio(source_path, length / FPS, start_seconds=part_start, end_seconds=part_end) if want_audio else None
-        images = {**references, 'source_video': frames}
-        if tail is not None:
-            images['continuity_guide'] = tail
-        if request['source_audio'] and source_audio is not None:
-            images['source_audio'] = source_audio
-        part_request = {**request, 'frames': length, 'source_start_seconds': part_start, 'source_end_seconds': part_end}
+        return lead, length, part_start, part_start + length / FPS
 
-        def relay(**values):
-            values.setdefault('part', index + 1)
-            values.setdefault('total_parts', len(plan))
-            update(**values)
+    def read_part(index):
+        _, length, part_start, part_end = bounds(index)
+        frames = read_frames(source_path, length, start_seconds=part_start, end_seconds=part_end)
+        audio = read_audio(source_path, length / FPS, start_seconds=part_start, end_seconds=part_end) if want_audio else None
+        return frames, audio
 
-        pixels, audio = swap_by_shot(part_request, prompt, images, relay, generate, preview_directory=preview_directory)
-        pixels = pixels[lead:lead + keep]
-        if first_frame is None:
-            first_frame = pixels[0].clone()
-        writer.add(pixels)
-        tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
-        if request['output_audio'] == 'source':
-            audio = source_audio
-        elif request['output_audio'] == 'mute':
-            audio = None
-        if audio is not None and lead:
-            # The overlap frames were written by the previous part; drop their sound too.
-            skip = round(lead / FPS * int(audio['sample_rate']))
-            audio = {'waveform': audio['waveform'][..., skip:], 'sample_rate': audio['sample_rate']}
-        if audio is not None:
-            rate = rate or int(audio['sample_rate'])
-            sounds.append((keep, _fit_audio(audio, rate, round(keep / FPS * rate))))
-        else:
-            sounds.append((keep, None))
-        del frames, pixels, images, source_audio, audio
-        torch.cuda.empty_cache()
+    # The next part of the source is read on the CPU while the GPU generates the current one.
+    reader = ThreadPoolExecutor(max_workers=1)
+    pending = reader.submit(read_part, 0)
+    try:
+        for index, (start, end) in enumerate(plan):
+            began = time.monotonic()
+            keep = end - start
+            lead, length, part_start, part_end = bounds(index)
+            update(part=index + 1, total_parts=len(plan), stage='decoding_source',
+                   part_start_seconds=round(clip_start + start / FPS, 3), part_end_seconds=round(clip_start + end / FPS, 3),
+                   message=f'Decoding source video, part {index + 1} of {len(plan)}…')
+            frames, source_audio = pending.result()
+            if index + 1 < len(plan):
+                pending = reader.submit(read_part, index + 1)
+            images = {**references, 'source_video': frames}
+            if tail is not None:
+                images['continuity_guide'] = tail
+            if request['source_audio'] and source_audio is not None:
+                images['source_audio'] = source_audio
+            part_request = {**request, 'frames': length, 'source_start_seconds': part_start, 'source_end_seconds': part_end}
+
+            def relay(**values):
+                values.setdefault('part', index + 1)
+                values.setdefault('total_parts', len(plan))
+                if 'preview_step' in values:
+                    values['preview_part'] = index + 1
+                update(**values)
+
+            pixels, audio = swap_by_shot(part_request, prompt, images, relay, generate, preview_directory=preview_directory)
+            pixels = pixels[lead:lead + keep]
+            if first_frame is None:
+                first_frame = pixels[0].clone()
+            writer.add(pixels)
+            tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
+            if request['output_audio'] == 'source':
+                audio = source_audio
+            elif request['output_audio'] == 'mute':
+                audio = None
+            if audio is not None and lead:
+                # The overlap frames were written by the previous part; drop their sound too.
+                skip = round(lead / FPS * int(audio['sample_rate']))
+                audio = {'waveform': audio['waveform'][..., skip:], 'sample_rate': audio['sample_rate']}
+            if audio is not None:
+                rate = rate or int(audio['sample_rate'])
+                sounds.append((keep, _fit_audio(audio, rate, round(keep / FPS * rate))))
+            else:
+                sounds.append((keep, None))
+            from .video_worker import save_mp4
+            part_sound = {'waveform': sounds[-1][1], 'sample_rate': rate} if sounds[-1][1] is not None else None
+            save_mp4(parts_folder / f'part-{index + 1:03d}.mp4', pixels, part_sound)
+            durations.append(round(time.monotonic() - began, 1))
+            update(parts_saved=index + 1, parts_folder=str(parts_folder), part_seconds=durations)
+            del frames, pixels, images, source_audio, audio
+            torch.cuda.empty_cache()
+    finally:
+        reader.shutdown(cancel_futures=True)
     combined = None
     if rate:
         pieces = [piece if piece is not None else torch.zeros(1, 2, round(keep / FPS * rate)) for keep, piece in sounds]
         combined = {'waveform': torch.cat(pieces, dim=-1), 'sample_rate': rate}
     update(stage='saving', message='Saving MP4…')
     writer.finish(combined)
+    # The whole video is saved; the separate parts are no longer needed.
+    import shutil
+    shutil.rmtree(parts_folder, ignore_errors=True)
     return writer.frames, first_frame, combined is not None, writer.size, rate
