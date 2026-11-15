@@ -310,6 +310,33 @@ class FaceGuardTests(unittest.TestCase):
         self.assertEqual(count, 400)
         self.assertEqual(made, [(124, 100), (124, 100), (124, 101), (175, 100)])
 
+    def test_the_last_try_starts_from_the_last_frames_of_the_part_before(self):
+        import torch
+        from PIL import Image
+        from backend import long_faceswap
+        made = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            guided = 'continuity_guide' in images
+            made.append((request['frames'], request['seed'], guided))
+            frames = images['source_video'].clone()
+            if len(made) > 1 and not guided:
+                # Part 2 comes out with a dark garment until it starts from the frames of part 1.
+                frames[:, 8:] = 0.05
+            return frames, None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 243, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png'],
+                   'seed': 100, 'long_parts': 'independent'}
+        with tempfile.TemporaryDirectory() as folder,                 mock.patch('backend.reference_media.read_frames', read_frames),                 mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]),                 mock.patch.object(long_faceswap, 'face_likeness', lambda *a, **k: [0.8, 0.8]):
+            long_faceswap.swap_long(request, 'Faceswap', {'ref_image_1': Image.new('RGB', (8, 8), 'blue')},
+                                    Path('source.mp4'), lambda **values: None, generate, Path(folder) / 'out.mp4')
+        # Part 2: the first try, two more seeds, then the try that starts from the last frames of part 1.
+        self.assertEqual(made, [(124, 100, False), (124, 100, False), (124, 101, False), (124, 102, False), (124, 100, True)])
+
 
 class IndependentPartsTests(unittest.TestCase):
     def test_independent_parts_use_the_input_image_and_no_anchor(self):

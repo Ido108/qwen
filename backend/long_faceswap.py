@@ -39,7 +39,8 @@ OVERLAP_FRAMES = 5
 # longer identity text in the prompt makes the swap fade, see reference_prompt). Those parts do not also start from
 # the last frames of the part before.
 FOLLOW_PROMPT = '\n\nThe clothing, background and lighting are exactly as in <Picture 2>.'
-# A part is made again (another seed, up to PART_RETRIES times) when it does not hold what part 1 set:
+# A part is made again (another seed; the last of PART_RETRIES tries starts from the last frames of the part before)
+# when it does not hold what part 1 set:
 # - the face: in any of its checked frames less like the input image than FACE_KEPT of part 1's likeness (the swap
 #   can fade back to the source face in the middle of a part);
 # - the scene: its still picture (scene_plate) differs from part 1's by more than SCENE_LIMIT beyond what the source
@@ -726,10 +727,16 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             if (face_kept and scene_kept) or tries == PART_RETRIES:
                 made, audio = best[1], best[2]
                 break
-            # The face or the scene of part 1 is lost in this part: the same part again, with another seed.
+            # The face or the scene of part 1 is lost in this part: the same part again, with another seed. The last
+            # try starts from the last frames of the part before, which already has the face and the scene (one such
+            # start is a small step; only a chain of them lost quality).
             tries += 1
             replay[:] = list(used)
-            attempt = {**attempt, 'seed': int(request['seed']) + tries}
+            if tries == PART_RETRIES and tail is not None and request['workflow'] != 'crossview':
+                images = {**images, 'continuity_guide': tail}
+                attempt = {**attempt, 'seed': int(request['seed'])}
+            else:
+                attempt = {**attempt, 'seed': int(request['seed']) + tries}
             face_level['retries'] = face_level.get('retries', 0) + 1
             update(part_retries=face_level['retries'])
         best = None
