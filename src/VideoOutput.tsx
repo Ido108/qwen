@@ -6,6 +6,7 @@ import {VideoProgress} from './VideoProgress';
 import {GenerationTiming} from './GenerationTiming';
 import {SendVideoTo,type SendVideo} from './SendVideoTo';
 import './video-output.css';
+import {ShowInFolder} from './ShowInFolder';
 
 export function VideoOutput({job,result,busy,clock,models,onSendVideo,upscale=false}:{job:SavedJob|null;result:SavedJob|null;busy:boolean;clock:number;models:ModelState|null;onSendVideo:SendVideo;upscale?:boolean}){
   const [view,setView]=useState<'live'|'result'>(busy?'live':'result');
@@ -23,6 +24,6 @@ export function VideoOutput({job,result,busy,clock,models,onSendVideo,upscale=fa
     </div>
     {preview?<p className="reference-preview-caption">{upscale?'Completed section · updates as more frames finish.':'Intermediate result · updates after each generation step.'}</p>:null}
     {busy&&job?<VideoProgress job={job} clock={clock}/>:null}
-    {!live&&result?<><GenerationTiming job={result} models={models}/><div className="result-actions"><SendVideoTo jobId={result.id} onSend={onSendVideo}/><a className="button secondary" href={`${result.video_url}?download=true`}><Download size={15}/>Download MP4</a><a className="text-button" href={`/api/jobs/${result.id}/metadata`}>Download settings</a></div>{playError?<small role="alert" className="send-video-error">This video could not be played. Try downloading it to view the saved file.</small>:null}</>:null}
+    {!live&&result?<><GenerationTiming job={result} models={models}/><div className="result-actions"><SendVideoTo jobId={result.id} onSend={onSendVideo}/><a className="button secondary" href={`${result.video_url}?download=true`}><Download size={15}/>Download MP4</a><a className="text-button" href={`/api/jobs/${result.id}/metadata`}>Download settings</a><ShowInFolder jobId={result.id}/></div>{playError?<small role="alert" className="send-video-error">This video could not be played. Try downloading it to view the saved file.</small>:null}</>:null}
   </>;
 }

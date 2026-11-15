@@ -11,7 +11,8 @@ from .models import entry, local_path
 CONDITIONING_DIR = DATA_DIR / 'cache' / 'h3-conditioning'
 
 
-def generate(request, prompt, images, progress, preview_directory=None):
+def _runtime(progress):
+    """ComfyUI set up for H3 in this worker process, and the helpers every pass uses."""
     progress(stage='initializing_video', message='Initializing video processing…')
     logging.basicConfig(level=logging.INFO, format='%(message)s')
     import torch
@@ -51,6 +52,26 @@ def generate(request, prompt, images, progress, preview_directory=None):
         memory.cleanup_models()
         memory.soft_empty_cache()
 
+    return path_of, read_weights, release
+
+
+# A long replacement keeps the video VAE in RAM between its parts instead of reading it again for each part.
+_SHARED_VAE = {}
+
+
+def _shared_video_vae(read_weights):
+    import comfy.sd
+    if 'video' not in _SHARED_VAE:
+        weights, _ = read_weights('h3-video-vae')
+        _SHARED_VAE['video'] = comfy.sd.VAE(sd=weights)
+    return _SHARED_VAE['video']
+
+
+def generate(request, prompt, images, progress, preview_directory=None):
+    path_of, read_weights, release = _runtime(progress)
+    import torch
+    import comfy.model_management as memory
+    from .gpu_memory import GIB
     selected = entry(request['model_id'])
     reference = request.get('kind') == 'reference-video'
     if reference and request['workflow']=='crossview' and 'warp_video' not in images:
@@ -74,17 +95,21 @@ def generate(request, prompt, images, progress, preview_directory=None):
     cache_key = None if reference else conditioning_key({'encoder': entry('h3-encoder')['files'][0], 'vae': entry('h3-video-vae')['files'][0],
         'prompt': prompt, 'width': request['width'], 'height': request['height'], 'frames': request['frames']}, keyframes)
     cached = load_conditioning(CONDITIONING_DIR, cache_key) if cache_key else None
+    # A part of a long replacement arrives with its conditioning already encoded (ReferenceEncoder).
+    precomputed = images.get('precomputed_positive') if reference else None
     lora_ids = [sampling.get('lora_id')] + (['h3-ref-faceswap' if request['workflow'] == 'faceswap' else 'h3-ref-crossview']
         if reference and request['workflow'] in ('faceswap', 'crossview') else []) + [choice['id'] for choice in request.get('loras') or []]
     # Large sequential reads into the file cache, in the order the job needs the files.
-    prefetch(*(path_of(i) for i in ([] if cached is not None else ['h3-encoder']) + (['h3-video-vae'] if images or reference else [])
+    prefetch(*(path_of(i) for i in ([] if cached is not None or precomputed is not None else ['h3-encoder']) + (['h3-video-vae'] if images or reference else [])
                + (['h3-audio-vae'] if reference else [])), path_of(selected['id']), *(path_of(i) for i in lora_ids if i),
              path_of('h3-video-vae'), path_of('h3-audio-vae'))
     progress(stage='loading_encoder', message='Using saved prompt and keyframe data.' if cached is not None else 'Loading the video text encoder…',
              total_steps=steps, text_encoder_id='h3-encoder', vae_id='h3-video-vae', audio_vae_id='h3-audio-vae',
              conditioning_reused=cached is not None, fps=24, frames=request['frames'], width=request['width'], height=request['height'])
     decoder = None
-    if cached is not None:
+    if precomputed is not None:
+        positive, latent, negative, decoder = _from_precomputed(request, precomputed, images, read_weights, progress)
+    elif cached is not None:
         from comfy_extras.nodes_minimax_h3 import _empty_av_latent
         positive, latent, negative = cached, _empty_av_latent(request['width'], request['height'], request['frames'])[0], []
     else:
@@ -112,6 +137,138 @@ def generate(request, prompt, images, progress, preview_directory=None):
     progress(lora_checks=checks)
     return _sample_and_decode(request, selected, fast, sampling, steps, cfg, model, positive, negative, latent, decoder,
                               reference, read_weights, release, progress, preview_directory)
+
+
+def _from_precomputed(request, positive, images, read_weights, progress):
+    """Conditioning of one part encoded ahead (ReferenceEncoder); adds the guides that depend on the previous part."""
+    import torch
+    import comfy.model_management as memory
+    from .video_timing import gpu_load_stage
+    from .video_conditioning import ProgressVAE
+    from comfy_extras.nodes_minimax_h3 import _empty_av_latent, MiniMaxH3AddGuide
+    latent = _empty_av_latent(request['width'], request['height'], request['frames'])[0]
+    shared = _shared_video_vae(read_weights)
+    shared.qwen_timing = lambda stage, message: gpu_load_stage(memory, progress, torch.cuda.synchronize,
+        'loading_vae_gpu', 'Moving video encoder to GPU…', stage, message)
+    vae = ProgressVAE(shared, progress)
+    with torch.no_grad():
+        if request['workflow'] == 'crossview':
+            positive = MiniMaxH3AddGuide.execute(positive, latent, 0, vae=vae, image=images['warp_video'])[0]
+        if images.get('continuity_guide') is not None:
+            positive = MiniMaxH3AddGuide.execute(positive, latent, 0, vae=vae, image=images['continuity_guide'])[0]
+    memory.unload_model_and_clones(shared.patcher)
+    return positive, latent, [], shared
+
+
+class _RecordingClip:
+    """Stands in for the text encoder while the VAE pass runs MiniMaxH3ReferenceToVideo: it keeps the
+    encoder input (prompt and reference items) for the encoder pass and returns an empty conditioning."""
+    def __init__(self):
+        self.prompt, self.items = None, None
+
+    def tokenize(self, prompt, minimax_ref_items=None, **kwargs):
+        self.prompt, self.items = prompt, minimax_ref_items
+        return None
+
+    def encode_from_tokens_scheduled(self, tokens):
+        import torch
+        return [[torch.zeros(1, 1, 1), {}]]
+
+
+class ReferenceEncoder:
+    """Encodes the parts of a long replacement with one load of each encoder, in two passes.
+
+    MiniMaxH3ReferenceToVideo encodes the references with the VAE and then the prompt with the 32B text encoder.
+    Run once per part, it loads the text encoder for every part. Here pass 1 (prepare) runs the node's VAE work
+    for every part with a recording stand-in for the text encoder, and pass 2 (encode_all) loads the text encoder
+    once for every part's prompt. The text encoder never shares the GPU with a VAE, so it is never partly evicted,
+    and it is dropped at the end, never copied back to the CPU (that copy can crash on Windows, see
+    SingleUseEncoder). Each part gets the conditioning MiniMaxH3ReferenceToVideo gives for the same inputs.
+    """
+    def __init__(self, progress):
+        self.progress = progress
+        self.path_of, self.read_weights, self.release = _runtime(progress)
+        self.audio_vae = None
+
+    def prepare(self, request, prompt, images):
+        import numpy as np
+        import torch
+        import comfy.sd
+        import comfy.model_management as memory
+        from .video_timing import gpu_load_stage
+        from .video_conditioning import ProgressVAE
+        from comfy_extras.nodes_minimax_h3 import MiniMaxH3ReferenceToVideo
+        progress = self.progress
+        shared = _shared_video_vae(self.read_weights)
+        shared.qwen_timing = lambda stage, message: gpu_load_stage(memory, progress, torch.cuda.synchronize,
+            'loading_vae_gpu', 'Moving video encoder to GPU…', stage, message)
+        vae = ProgressVAE(shared, progress)
+        voices = images.get('ref_audios') or {}
+        audio_vae = None
+        if images.get('source_audio') is not None or voices:
+            if self.audio_vae is None:
+                weights, _ = self.read_weights('h3-audio-vae')
+                self.audio_vae = comfy.sd.VAE(sd=weights)
+                del weights
+            self.audio_vae.qwen_timing = lambda stage, message: gpu_load_stage(memory, progress, torch.cuda.synchronize,
+                'loading_audio_encoder_gpu', 'Moving audio encoder to GPU…', stage, message)
+            audio_vae = ProgressVAE(self.audio_vae, progress, audio=True)
+        references = {f'ref_image_{i + 1}': torch.from_numpy(np.asarray(images[f'ref_image_{i + 1}'].convert('RGB'), dtype=np.float32) / 255).unsqueeze(0)
+                      for i in range(len(request['reference_images']))}
+        source = images.get('source_video')
+        soundtrack = {'ref_video_audio_1': images['source_audio']} if source is not None and images.get('source_audio') is not None else None
+        clip = _RecordingClip()
+        with torch.no_grad():
+            positive, _ = MiniMaxH3ReferenceToVideo.execute(clip, prompt, request['width'], request['height'], request['frames'],
+                ref_image_size=request['reference_image_size'], vae=vae, audio_vae=audio_vae, ref_images=references,
+                ref_videos={'ref_video_1': source} if source is not None else None,
+                ref_video_audios=soundtrack, ref_audios=voices or None)
+        return {'prompt': clip.prompt, 'items': clip.items, 'refs': positive[0][1].get('minimax_refs'), 'frames': request['frames']}
+
+    def encode_all(self, units):
+        """The conditioning of every prepared part, with one load of the text encoder."""
+        import torch
+        import comfy.sd
+        import comfy.utils
+        import comfy.model_management as memory
+        import node_helpers
+        from .gpu_memory import GIB
+        from .video_timing import gpu_load_stage
+        progress = self.progress
+        # The VAEs wait in RAM; the text encoder gets the GPU to itself.
+        memory.unload_model_and_clones(_shared_video_vae(self.read_weights).patcher)
+        if self.audio_vae is not None:
+            memory.unload_model_and_clones(self.audio_vae.patcher)
+        self.release()
+        progress(stage='loading_encoder', message='Loading the video text encoder…')
+        weights, metadata = self.read_weights('h3-encoder')
+        weights, _ = comfy.utils.convert_old_quants(weights, model_prefix='', metadata=metadata)
+        clip = comfy.sd.load_text_encoder_state_dicts([weights], clip_type=comfy.sd.CLIPType.MINIMAX,
+            model_options={'initial_device': torch.device('cpu')}, disable_dynamic=True)
+        del weights, metadata
+        scratch = 4 * GIB
+        clip.cond_stage_model.memory_estimation_function = lambda tokens, device=None: scratch
+        positives = []
+        try:
+            with torch.no_grad():
+                for index, unit in enumerate(units):
+                    progress(stage='encoding_prompt', preparing_part=index + 1,
+                             message=f'Encoding the prompt and references of part {index + 1} of {len(units)}…')
+                    tokens = clip.tokenize(unit['prompt'], minimax_ref_items=unit['items'])
+                    if index == 0:
+                        with gpu_load_stage(memory, progress, torch.cuda.synchronize, 'loading_encoder_gpu', 'Moving text encoder to GPU…',
+                                            'encoding_prompt', 'Encoding prompt and visual references on GPU…'):
+                            cond = clip.encode_from_tokens_scheduled(tokens)
+                    else:
+                        cond = clip.encode_from_tokens_scheduled(tokens)
+                    if unit['refs']:
+                        cond = node_helpers.conditioning_set_values(cond, {'minimax_refs': unit['refs']})
+                    positives.append(cond)
+        finally:
+            # Dropped, never copied back to the CPU (see SingleUseEncoder).
+            clip = None
+            self.release()
+        return positives
 
 
 def _encode(request, prompt, images, reference, keyframes, read_weights, release, progress, cache_key):

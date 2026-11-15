@@ -30,6 +30,7 @@ class PartPlanTests(unittest.TestCase):
     def test_only_a_face_swap_longer_than_one_part_runs_in_parts(self):
         self.assertTrue(is_long_faceswap({'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 141}))
         self.assertFalse(is_long_faceswap({'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 124}))
+        self.assertTrue(is_long_faceswap({'kind': 'reference-video', 'workflow': 'reference', 'frames': 141}))
         self.assertFalse(is_long_faceswap({'kind': 'reference-video', 'workflow': 'crossview', 'frames': 362}))
 
 
@@ -45,8 +46,9 @@ class LengthLimitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'at most 15.1 seconds'):
             resolve_reference_clip(SimpleNamespace(source_start_seconds=0.0, source_end_seconds=31.0, frames=124), 70.92, 362)
         base = dict(source_video='x.mp4', reference_images=['a.png'], width=1024, height=576)
-        self.assertEqual(ReferenceVideoRequest(**base, workflow='faceswap', frames=1705).frames, 1705)
-        for workflow in ('crossview', 'reference'):
+        for workflow in ('faceswap', 'reference'):
+            self.assertEqual(ReferenceVideoRequest(**base, workflow=workflow, frames=1705).frames, 1705)
+        for workflow in ('crossview',):
             with self.assertRaisesRegex(ValueError, 'at most 15.1 seconds'):
                 ReferenceVideoRequest(**base, workflow=workflow, frames=1433)
 
@@ -97,17 +99,56 @@ class SwapLongTests(unittest.TestCase):
             self.assertEqual([c[1] for c in calls], [None, 48 + 119, 48 + 238])
             self.assertTrue(any(u.get('part') == 3 and u.get('total_parts') == 3 for u in updates))
             self.assertFalse((Path(folder) / 'out.video.mp4').exists(), 'the video-only file is removed')
-            # Each finished part was saved as its own MP4; after the whole video is written they are removed.
+            # Each finished part is saved as its own MP4 with a poster, and stays next to the whole video.
             self.assertEqual([u['parts_saved'] for u in updates if 'parts_saved' in u], [1, 2, 3])
             self.assertEqual([(u['part_start_seconds'], u['part_end_seconds']) for u in updates if 'part_start_seconds' in u],
                              [(2.0, round(2 + 124 / 24, 3)), (round(2 + 124 / 24, 3), round(2 + 243 / 24, 3)), (round(2 + 243 / 24, 3), round(2 + 400 / 24, 3))])
-            self.assertFalse((Path(folder) / 'out parts').exists(), 'the saved parts are removed after the whole video is saved')
+            parts = Path(folder) / 'out parts'
+            self.assertEqual(sorted(path.name for path in parts.iterdir()),
+                             ['part-001.jpg', 'part-001.mp4', 'part-002.jpg', 'part-002.mp4', 'part-003.jpg', 'part-003.mp4'])
+            self.assertEqual([part['index'] for part in [u for u in updates if 'parts' in u][-1]['parts']], [1, 2, 3])
+            with av.open(str(parts / 'part-002.mp4')) as container:
+                self.assertEqual(sum(1 for _ in container.decode(container.streams.video[0])), 119)
+                self.assertEqual(len(container.streams.audio), 1)
             with av.open(str(destination)) as container:
                 video = container.streams.video[0]
                 frames = sum(1 for _ in container.decode(video))
                 self.assertEqual(frames, 400)
                 self.assertEqual(len(container.streams.audio), 1)
                 self.assertAlmostEqual(float(container.duration) / 1e6, 400 / 24, delta=0.2)
+
+
+class TwoPassTests(unittest.TestCase):
+    def test_every_part_is_prepared_and_encoded_before_the_parts_are_generated_in_order(self):
+        import torch
+        from backend import long_faceswap
+        events = []
+
+        class Encoder:
+            def prepare(self, request, prompt, images):
+                events.append(('prepare', request['frames'], 'continuity_guide' in images))
+                return {'frames': request['frames'], 'id': len([e for e in events if e[0] == 'prepare'])}
+
+            def encode_all(self, units):
+                events.append(('encode_all', len(units)))
+                return [f'positive-{unit["id"]}' for unit in units]
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 32, 32, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            events.append(('generate', request['frames'], images.get('precomputed_positive'), 'continuity_guide' in images))
+            return images['source_video'].clone(), None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32}
+        with tempfile.TemporaryDirectory() as folder,                 mock.patch('backend.reference_media.read_frames', read_frames),                 mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]):
+            count, *_ = long_faceswap.swap_long(request, 'Faceswap', {}, Path('source.mp4'), lambda **values: None,
+                                                generate, Path(folder) / 'out.mp4', encoder=Encoder())
+        self.assertEqual(count, 400)
+        self.assertEqual(events, [('prepare', 124, False), ('prepare', 124, False), ('prepare', 175, False), ('encode_all', 3),
+                                  ('generate', 124, 'positive-1', False), ('generate', 124, 'positive-2', True),
+                                  ('generate', 175, 'positive-3', True)])
 
 
 if __name__ == '__main__':

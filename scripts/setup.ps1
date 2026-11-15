@@ -69,8 +69,24 @@ try {
             }
             $env:PATH = $nodeDir + ';' + $env:PATH
         }
-        & npm.cmd ci --no-audit --no-fund
-        if ($LASTEXITCODE -ne 0) { throw 'Could not install the interface packages. Run Start Qwen.bat again to retry.' }
+        # A screen change needs only a new build. npm ci deletes node_modules and installs it again, so it runs only
+        # when package-lock.json changed: Windows refuses to delete the files of a Qwen window that is open.
+        $lockFile = Join-Path $appRoot 'package-lock.json'
+        $installedLock = Join-Path $appRoot 'node_modules\.package-lock.json'
+        $packagesHash = (Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash
+        $previousPackages = $null
+        try { $previousPackages = (Get-Content -Raw -LiteralPath $setupStamp | ConvertFrom-Json).packages } catch { }
+        $packagesReady = (Test-Path -LiteralPath $installedLock) -and (
+            ($previousPackages -eq $packagesHash) -or
+            (-not $previousPackages -and (Get-Item -LiteralPath $installedLock).LastWriteTimeUtc -ge (Get-Item -LiteralPath $lockFile).LastWriteTimeUtc))
+        if (-not $packagesReady) {
+            # The open Qwen window runs from node_modules. Closing it keeps the server and its jobs running.
+            $electron = Join-Path $appRoot 'node_modules\electron\dist\electron.exe'
+            Get-CimInstance Win32_Process -Filter "Name='electron.exe'" | Where-Object { $_.ExecutablePath -eq $electron } |
+                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+            & npm.cmd ci --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'Could not install the interface packages. Run Start Qwen.bat again to retry.' }
+        }
         & $pythonPath -u (Join-Path $PSScriptRoot 'download_examples.py')
         if ($LASTEXITCODE -ne 0) { throw 'Some example images could not be downloaded. Run Start Qwen.bat again to retry.' }
         & npm.cmd run build
@@ -79,7 +95,7 @@ try {
         & $pythonPath (Join-Path $PSScriptRoot 'check_runtime.py')
         if ($LASTEXITCODE -ne 0) { throw 'The graphics check failed. See the message above before generating images or videos.' }
         & (Join-Path $PSScriptRoot 'create_shortcut.ps1')
-        @{ fingerprint=(Get-QwenSetupFingerprint); completed_at=(Get-Date -Format o) } | ConvertTo-Json | Set-Content -LiteralPath $setupStamp -Encoding UTF8
+        @{ fingerprint=(Get-QwenSetupFingerprint); packages=$packagesHash; completed_at=(Get-Date -Format o) } | ConvertTo-Json | Set-Content -LiteralPath $setupStamp -Encoding UTF8
     } finally { Pop-Location }
     Write-Host 'Setup complete. Choose a model and create; missing model files download automatically.'
 } finally { if ($setupLock) { $setupLock.Dispose() } }

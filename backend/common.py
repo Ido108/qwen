@@ -223,7 +223,7 @@ class ReferenceVideoRequest(BaseModel):
     prompt: str = Field(default='', max_length=16000)
     width: int = Field(default=768, ge=256, le=1344)
     height: int = Field(default=448, ge=256, le=1344)
-    frames: int = Field(default=124, ge=22)  # one pass: up to 362 (checked below); a face swap runs in parts (long_faceswap)
+    frames: int = Field(default=124, ge=22)  # one pass: up to 362 (checked below); Replace subjects and Reference-guided run in parts (long_faceswap)
     steps: int | None = Field(default=None, ge=1, le=60)
     quality: Literal['standard', 'turbo'] | None = None
     seed: int = Field(default=0, ge=0, le=2147483647)
@@ -237,7 +237,7 @@ class ReferenceVideoRequest(BaseModel):
 
     @model_validator(mode='after')
     def grouped_references(self):
-        if self.workflow!='faceswap' and self.frames>362:
+        if self.workflow=='crossview' and self.frames>362:
             raise ValueError('Select at most 15.1 seconds for this workflow.')
         if self.reference_people:
             ids=[person.id for person in self.reference_people]

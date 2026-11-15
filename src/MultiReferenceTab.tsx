@@ -23,6 +23,7 @@ import {LoraStack,enabledLoras,type LoraChoice} from './LoraStack';
 import {compatibleLoras} from './loraChoices';
 import {familyLabel,fitSize,groupByFamily,isRef2va,nearestFrames,REF2VA_FRAMES,sizeFits,supports,videoModelsFor} from './videoModels';
 import {useLastSeed} from './lastSeed';
+import {ShowInFolder} from './ShowInFolder';
 
 type Params={model_id:string;prompt:string;reference_images:string[];reference_labels:string[];background_label:string;background:string|null;audio_references:(string|null)[];width:number;height:number;frames:number;fps:24|25;seed:number;randomize_seed:boolean;reference_strength:number;lora_strength:number;reference_frames:25|33;refine:boolean;audio:boolean;enhance:false;output_dir:string;steps:number|null;quality:'standard'|'turbo'|null;loras:LoraChoice[]};
 const initial:Params={model_id:'ltx25-msr-q4_k_m',prompt:'',reference_images:[],reference_labels:[],background_label:'background',background:null,audio_references:[],width:768,height:448,frames:121,fps:24,seed:0,randomize_seed:true,reference_strength:1,lora_strength:1,reference_frames:33,refine:false,audio:true,enhance:false,output_dir:'',steps:null,quality:null,loras:[]};
@@ -132,7 +133,7 @@ export function MultiReferenceTab({modelChoice,addLora,library,api,onSendVideo,v
       <div className="msr-result vs-stage">{running?<div className="msr-draft">{running.preview_url?<img src={`${running.preview_url}?v=${running.preview_updated_at}`} alt="Live generation preview"/>:<><Film size={38}/><p>{running.stage==='downloading_models'?'Downloading required model files':running.status==='queued'?'Waiting in queue':running.preview_unavailable?'Preview is unavailable for this run.':'The preview appears after the first generation step.'}</p></>}</div>:result?<video src={result.video_url} poster={result.poster_url} controls playsInline/>:<div className="msr-draft"><Film size={38}/><strong>Your video will appear here</strong><p>Add references and describe their action.</p></div>}</div>
       {running?<VideoProgress job={running} clock={clock}/>:null}
       {!running&&result?<GenerationTiming job={result} models={models}/>:null}
-      {!running&&result?<div className="result-actions"><SendVideoTo jobId={result.id} onSend={onSendVideo}/><a className="button secondary" href={`${result.video_url}?download=true`}><Download size={15}/>Download video</a></div>:null}
+      {!running&&result?<div className="result-actions"><SendVideoTo jobId={result.id} onSend={onSendVideo}/><a className="button secondary" href={`${result.video_url}?download=true`}><Download size={15}/>Download video</a><ShowInFolder jobId={result.id}/></div>:null}
       {job?.status==='failed'?<div role="alert" className="message error">{job.message}</div>:null}
       {history.length?<details className="disclosure vs-history"><summary>Recent videos <span>{history.length}</span></summary><div className="vs-history-grid">{history.slice(0,12).map(item=><button key={item.id} onClick={()=>onView(item)}><img src={item.poster_url} alt=""/>{item.request.reference_images?.[0]?<img className="msr-source-badge" src={inputImage(item.request.reference_images[0]).url} alt="Source reference"/>:null}<span>{item.request.prompt}</span></button>)}</div></details>:null}
     </section>

@@ -88,6 +88,16 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
   const offloaded=Number(job.model_offloaded_weight_gb)||0;
   const onGpu=Number(job.model_gpu_weight_gb)||0;
   const chunk=upscale&&job.total_chunks>1&&job.chunk?`Clip ${job.chunk} of ${job.total_chunks}`:job.total_parts>1&&job.part?`Part ${job.part} of ${job.total_parts}${job.total_shots>1&&job.shot?` · Shot ${job.shot} of ${job.total_shots}`:''}`:job.total_shots>1&&job.shot?`Shot ${job.shot} of ${job.total_shots}`:'';
+  if(job.kind==='reference-video'&&job.total_parts>1&&job.parts_phase==='prepare'){
+    // Before the parts are generated, every part's source video and prompt are encoded, each in one pass.
+    const parts=job.total_parts,at=Number(job.preparing_part)||0;
+    const pass=['loading_encoder','loading_encoder_gpu','encoding_prompt'].includes(job.stage)?2:1;
+    const done=pass===2?parts+at-1:at-1;
+    return <div className="vp-card vp-compact" role="status" aria-live="polite" aria-label={`Preparing the ${parts} parts: pass ${pass} of 2, part ${at}`}>
+      <div className="vp-row"><Loader2 className="spin" size={14}/><span className="vp-badge">Preparing {parts} parts</span><strong>{pass===1?'Encoding source video':'Encoding prompt and references'} · part {at} of {parts}</strong><span className="vp-muted vp-right">pass {pass} of 2 · {time(total)}</span></div>
+      <progress aria-label="Preparing progress" max={2*parts} value={Math.max(0,done)}/>
+    </div>;
+  }
   if(job.kind==='reference-video'&&job.total_parts>1&&job.part){
     // A long video runs in parts; every part goes through all the stages, so the part leads and the stage is secondary.
     const parts=job.total_parts,part=job.part,frames=Number(job.request?.frames)||0;
@@ -102,37 +112,19 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
     const times:number[]=Array.isArray(job.part_seconds)?job.part_seconds:[];
     const perPart=times.length?times.reduce((sum,value)=>sum+value,0)/times.length:part>2?total/done:0;
     const wholeLeft=perPart?perPart*(parts-done):0;
-    const partLeft=job.stage==='generating'&&perStep&&steps?perStep*(steps-step):0;
+    const generating=job.stage==='generating'&&steps>0;
+    const partLeft=generating&&perStep?perStep*(steps-step):0;
     const saved=Number(job.parts_saved)||0;
     const percent=Math.floor(100*done/parts);
-    return <div className="vp-card" role="status" aria-live="polite" aria-label={`Part ${part} of ${parts}, ${percent}% of the whole video done`}>
-      <div className="vp-head"><Loader2 className="spin" size={16}/><span className="vp-badge">Part {part} of {parts}</span><strong>Clip {formatClipTime(from)} to {formatClipTime(to)}</strong><span className="vp-muted">of {formatClipTime(frames/24)}</span></div>
-      <p className="vp-explain">The video is made in {parts} parts of about 5 seconds, one after another.</p>
+    return <div className="vp-card vp-compact" role="status" aria-live="polite" aria-label={`Part ${part} of ${parts}, ${percent}% of the whole video done`}>
+      <div className="vp-row"><Loader2 className="spin" size={14}/><span className="vp-badge">Part {part} of {parts}</span><strong>Clip {formatClipTime(from)} to {formatClipTime(to)}</strong><span className="vp-muted">of {formatClipTime(frames/24)}</span>
+        <span className="vp-right"><span className="vp-count">{percent}%</span> · {time(total)}{wholeLeft?<span className="vp-eta"> · about {time(wholeLeft)} left</span>:null}</span></div>
       <ol className="vp-parts" aria-label="Parts of the video">{Array.from({length:parts},(_,i)=>{const n=i+1;const state=n<part?'done':n===part?'current':'';const word=n<part?'done':n===part?'in progress':'waiting';return <li key={n} className={state} title={`Part ${n}: ${range(n)} (${word})`}><span className="sr-only">Part {n}, {range(n)}, {word}</span></li>;})}</ol>
-      <div className="vp-times">
-        <span className="vp-count">Whole video: {part-1} of {parts} parts done · {percent}%</span>
-        <span>Running for {time(total)}</span>
-        {wholeLeft?<span className="vp-eta">About {time(wholeLeft)} left{times.length?` · about ${time(perPart)} per part`:''}</span>:null}
-      </div>
-      {saved?<p className="vp-saved" title={job.parts_folder||''}>Saved so far: part{saved>1?`s 1 to ${saved}`:' 1'} as MP4 files in <span className="vp-path">{job.parts_folder}</span></p>:null}
-      <section className="vp-part" aria-label={`Part ${part} now`}>
-        <div className="vp-part-head"><span>Now in part {part}:</span><strong>{current.label}</strong><span className="vp-muted">stage {index+1} of {plan.length}</span>{job.total_shots>1&&job.shot?<span className="vp-muted">shot {job.shot} of {job.total_shots}</span>:null}</div>
-        <p className="vp-message" title={message}>{message}</p>
-        {job.stage==='generating'&&steps>0?<>
-          <progress aria-label={`Step ${step} of ${steps} in part ${part}`} max={steps} value={step}/>
-          <div className="vp-times">
-            <span className="vp-count">Step {step} of {steps}</span>
-            {perStep?<span>about {time(perStep)} per step</span>:null}
-            {partLeft?<span className="vp-eta">about {time(partLeft)} left in this part</span>:null}
-          </div>
-          <small className="vp-note">In each step the model refines all the frames of this part once.</small>
-        </>:counter?<div className="vp-times"><span className="vp-count">{counter.done} / {counter.total} {counter.unit}</span><span>{time(stageTime)} this stage</span></div>
-        :<div className="vp-times"><span>{time(stageTime)} this stage</span></div>}
-        {job.stage==='generating'&&offloaded>=0.1?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of model weights are in RAM.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU.`:''} Transfers can increase generation time.</span></p>:null}
-        <small className="vp-label">Stages of part {part}</small>
-        <ol className="vp-steps" aria-label={`Stages of part ${part}`}>{plan.map((item,i)=><li key={item.label} className={i<index?'done':i===index?'current':''} title={`${i+1}. ${item.label}${i<index?' (done)':i===index?' (now)':''}`}><span className="sr-only">{i+1}. {item.label}{i<index?' (done)':i===index?' (now)':''}</span></li>)}</ol>
-        {next?<small className="vp-next">Next in this part: {next.label}</small>:part<parts?<small className="vp-next">Next: part {part+1}</small>:null}
-      </section>
+      <div className="vp-row vp-now" title={message}><span className="vp-muted">Now:</span><strong>{current.label}</strong>
+        {generating?<><span className="vp-count">step {step} of {steps}</span><progress className="vp-inline" aria-label={`Step ${step} of ${steps} in part ${part}`} max={steps} value={step}/>{partLeft?<span className="vp-muted">about {time(partLeft)} left in this part</span>:null}</>
+          :<span className="vp-muted">stage {index+1} of {plan.length} · {time(stageTime)}</span>}
+        {saved?<span className="vp-muted vp-right" title={job.parts_folder||''}>{saved} part{saved>1?'s':''} saved</span>:null}</div>
+      {generating&&offloaded>=0.1?<p className="vp-warning"><AlertTriangle size={14}/><span>{offloaded.toFixed(1)} GB of model weights are in RAM.{onGpu?` ${onGpu.toFixed(1)} GB is on the GPU.`:''} Transfers can increase generation time.</span></p>:null}
     </div>;
   }
   return <div className="vp-card" role="status" aria-live="polite">

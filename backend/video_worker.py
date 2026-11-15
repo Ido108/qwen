@@ -163,7 +163,10 @@ def run(request, job, directory, update):
         from .long_faceswap import swap_long
         references={name:value for name,value in images.items() if name.startswith('ref_image_')}
         destination = Path(request['output_dir']) / (time.strftime('%Y-%m-%d_%H-%M-%S') + '_' + job['id'][:8] + '.mp4')
-        count,first_frame,has_audio,size,rate=swap_long(request,prompt,references,source,update,generate,destination,preview_directory=directory)
+        from .video_engine import ReferenceEncoder
+        # Every part is encoded first with one load of each encoder, then generated (see ReferenceEncoder).
+        count,first_frame,has_audio,size,rate=swap_long(request,prompt,references,source,update,generate,destination,
+                                                        preview_directory=directory,encoder=ReferenceEncoder(update))
         Image.fromarray((first_frame.numpy().clip(0, 1) * 255).round().astype('uint8')).save(directory / 'poster.png')
         sent_prompts.flush(update)
         update(status='succeeded', stage='complete', message='Video saved.', output_path=str(destination),

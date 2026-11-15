@@ -1847,7 +1847,7 @@ def generate_reference_video(body: ReferenceVideoRequest):
         metadata=read_json(metadata_path) if metadata_path.is_file() else {}
         duration=metadata.get('duration_seconds') or probe_video_duration(source)
         maximum=models.entry(body.model_id).get('generation_defaults',{}).get('max_frames',362)
-        resolve_reference_clip(body,duration,maximum,unlimited=body.workflow=='faceswap')
+        resolve_reference_clip(body,duration,maximum,unlimited=body.workflow in ('faceswap','reference'))
         if body.person_assignments and body.workflow=='crossview' and not body.replace_subjects_first:
             raise ValueError('Enable Replace subjects first to use person assignments in Camera view.')
         for person in body.source_people:
@@ -2525,6 +2525,47 @@ def reuse_video(job_id: str, part: Literal['final', 'subject'] = 'final'):
         return reuse_video_file(path, VIDEO_UPLOADS_DIR, JOBS_DIR / job_id, part)
     except (OSError, ValueError, StopIteration):
         raise HTTPException(422, 'Could not prepare this video. Check that the saved file is available and try again.')
+
+
+def job_part_file(job_id: str, index: int, suffix: str) -> Path:
+    job = read_job(job_id)
+    folder = Path(job.get('parts_folder') or '')
+    if index < 1 or index > int(job.get('parts_saved') or 0) or not folder.is_dir():
+        raise HTTPException(404, 'This part is not saved.')
+    path = folder / f'part-{index:03d}.{suffix}'
+    if not path.is_file():
+        raise HTTPException(404, 'This part is not saved.')
+    return path
+
+
+@app.get('/api/jobs/{job_id}/parts/{index}')
+def job_part_video(job_id: str, index: int, download: bool = False):
+    path = job_part_file(job_id, index, 'mp4')
+    return FileResponse(path, media_type='video/mp4', filename=path.name if download else None)
+
+
+@app.get('/api/jobs/{job_id}/parts/{index}/poster')
+def job_part_poster(job_id: str, index: int):
+    return FileResponse(job_part_file(job_id, index, 'jpg'), media_type='image/jpeg')
+
+
+@app.post('/api/jobs/{job_id}/show-in-folder')
+def show_job_in_folder(job_id: str):
+    """Open the folder of a job's saved file with the file selected (the saved parts of a long video while it runs)."""
+    job = read_job(job_id)
+    path = Path(job.get('output_path') or '')
+    if not path.is_file():
+        parts = Path(job.get('parts_folder') or '')
+        if not parts.is_dir():
+            raise HTTPException(404, 'The saved file was not found. It may have been moved or deleted.')
+        path = parts
+    if os.name == 'nt':
+        subprocess.Popen(['explorer.exe', '/select,', str(path)] if path.is_file() else ['explorer.exe', str(path)])
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', '-R', str(path)] if path.is_file() else ['open', str(path)])
+    else:
+        subprocess.Popen(['xdg-open', str(path if path.is_dir() else path.parent)])
+    return {'ok': True}
 
 
 @app.post('/api/open-output')
