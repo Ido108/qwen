@@ -16,9 +16,10 @@ from pathlib import Path
 FPS = 24
 PART_FRAMES = 124
 # Each part after the first starts this many frames early, anchored there to the last frames of the part before it
-# (H3 anchors clips of 5, 22, 39... frames), so the background, clothing and light carry over. Of the two versions
-# of those frames, the seam keeps the previous part's and cuts to the new part's at the frame where the two are most
-# alike: blended, two versions that differ showed two faces at once (2026-11-15, parts made without the anchor).
+# (H3 anchors clips of 5, 22, 39... frames), so the background, clothing and light carry over. The two versions
+# of those frames become the seam (seam_morph): each is moved toward the other along the motion between them and
+# then mixed. A plain mix of two versions that differ showed two faces at once, and a cut showed a jump
+# (2026-11-15, parts made without the anchor).
 # Parts made without that anchor did not match: with a prompt that asks for
 # a new background ("make the background nvidia office"), part 1 came out in an open office, part 2 in the source
 # room and part 14 with a large logo (2026-11-15). The model makes its output sharper than its input (the face
@@ -38,6 +39,34 @@ OVERLAP_FRAMES = 5
 # because the model copies a face it made and adds detail to it again.
 FOLLOW_PROMPT = ('\n\nEverything looks exactly as in the input image: the same person, face, hair, clothing, '
                  'background and lighting.')
+
+
+def seam_morph(held, ahead):
+    """The seam frames between two parts: held is the previous part's version of the overlap frames, ahead the new
+    part's version of the same frames ([N, H, W, 3] in 0..1). Each output frame moves both versions toward each other
+    along the motion measured between them (dense optical flow) and then mixes them, from held to ahead. A plain mix
+    of two versions that differ showed two faces at once, and a cut showed a jump (2026-11-15)."""
+    import cv2
+    import numpy as np
+    import torch
+    count, height, width = held.shape[0], held.shape[1], held.shape[2]
+    first = (held.clamp(0, 1).numpy() * 255).round().astype(np.uint8)
+    second = (ahead.clamp(0, 1).numpy() * 255).round().astype(np.uint8)
+    flow_finder = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM)
+    xs, ys = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
+    out = np.empty_like(first)
+    for index in range(count):
+        weight = (index + 1) / (count + 1)
+        gray_first, gray_second = cv2.cvtColor(first[index], cv2.COLOR_RGB2GRAY), cv2.cvtColor(second[index], cv2.COLOR_RGB2GRAY)
+        # Where each point of the first version is in the second one: the mean of both directions, smoothed.
+        flow = 0.5 * (flow_finder.calc(gray_first, gray_second, None) - flow_finder.calc(gray_second, gray_first, None))
+        flow = cv2.GaussianBlur(flow, (0, 0), 3)
+        moved_first = cv2.remap(first[index], xs - weight * flow[..., 0], ys - weight * flow[..., 1], cv2.INTER_LINEAR,
+                                borderMode=cv2.BORDER_REFLECT)
+        moved_second = cv2.remap(second[index], xs + (1 - weight) * flow[..., 0], ys + (1 - weight) * flow[..., 1],
+                                 cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        out[index] = cv2.addWeighted(moved_first, 1 - weight, moved_second, weight, 0)
+    return torch.from_numpy(out.astype(np.float32) / 255).to(held.dtype)
 
 
 def best_reference_frame(frames, reference):
@@ -613,11 +642,8 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         if first_frame is None:
             first_frame = pixels[0].clone()
         if held is not None and lead:
-            # The seam: the previous part's last frames, then this part's version of the same frames from the frame
-            # where the two are most alike. Never a mix of the two, which shows two faces at once when they differ.
-            ahead = made[:lead].to(held.dtype)
-            cut = int((held - ahead).abs().mean(dim=(1, 2, 3)).argmin())
-            writer.add(torch.cat([held[:cut], ahead[cut:]]))
+            # The seam: the previous part's version of the overlap frames morphs into this part's version.
+            writer.add(seam_morph(held, made[:lead].to(held.dtype)))
         last = index == len(plan) - 1
         hold = 0 if last or keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
         writer.add(pixels[:keep - hold])

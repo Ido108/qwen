@@ -303,7 +303,7 @@ class CameraViewPartsTests(unittest.TestCase):
 
 
 class SeamTests(unittest.TestCase):
-    def test_the_seam_cuts_from_the_previous_part_to_the_next_and_never_mixes_them(self):
+    def test_the_seam_goes_from_the_previous_part_to_the_next_over_the_overlap_frames(self):
         import av
         import numpy as np
         import torch
@@ -326,53 +326,34 @@ class SeamTests(unittest.TestCase):
             with av.open(str(destination)) as container:
                 levels = [float(frame.to_ndarray(format='rgb24').mean()) / 255 for frame in container.decode(container.streams.video[0])]
         self.assertEqual((count, len(levels), made), (243, 243, [124, 124]))
-        # Frames 0-118 are part 1, 119-123 the seam (part 1, then part 2 from one frame on), 124-242 part 2.
+        # Frames 0-118 are part 1, 119-123 the seam (part 1 going into part 2), 124-242 part 2.
         self.assertAlmostEqual(levels[100], 0.2, delta=0.02)
         self.assertAlmostEqual(levels[200], 0.6, delta=0.02)
         seam = levels[119:124]
-        # Every seam frame is one version or the other, never a mix, and once part 2 starts it stays.
-        self.assertTrue(all(abs(v - 0.2) < 0.03 or abs(v - 0.6) < 0.03 for v in seam), seam)
-        self.assertEqual(seam, sorted(seam))
+        self.assertTrue(all(a < b for a, b in zip(seam, seam[1:])), seam)
+        self.assertTrue(0.2 < seam[0] < 0.35 and 0.45 < seam[-1] < 0.6, seam)
 
-    def test_the_cut_is_at_the_overlap_frame_where_the_two_versions_are_most_alike(self):
+    def test_the_seam_moves_a_shape_between_its_two_places_and_never_shows_it_twice(self):
+        import numpy as np
         import torch
-        from backend import long_faceswap
-        written = []
+        from backend.long_faceswap import seam_morph
 
-        class Writer:
-            def __init__(self, destination):
-                self.frames, self.size = 0, (8, 8)
+        def frames(left):
+            # A soft bright blob on a textured dark ground, at column `left`.
+            ys, xs = np.mgrid[0:96, 0:160].astype(np.float32)
+            image = 0.15 + 0.03 * np.sin(xs / 5.0) * np.cos(ys / 7.0) + 0.7 * np.exp(-(((xs - left) / 12.0) ** 2 + ((ys - 48) / 12.0) ** 2))
+            return torch.from_numpy(np.repeat(image[None, ..., None], 3, axis=3).astype(np.float32)).repeat(5, 1, 1, 1)
 
-            def add(self, frames):
-                written.append(frames.clone())
-                self.frames += frames.shape[0]
-
-            def finish(self, audio):
-                pass
-
-        def read_frames(path, count, start_seconds, end_seconds, progress=None):
-            return torch.full((count, 8, 8, 3), 0.5)
-
-        def generate(request, prompt, images, progress, preview_directory=None):
-            frames = images['source_video'].clone()
-            if generate.calls:
-                # Part 2's version of the 5 overlap frames: alike to part 1's only at the fourth (index 3).
-                frames[:5] = torch.tensor([0.9, 0.8, 0.7, 0.5, 0.3]).view(5, 1, 1, 1)
-            generate.calls += 1
-            return frames, None
-        generate.calls = 0
-
-        request = {'kind': 'reference-video', 'workflow': 'reference', 'frames': 243, 'steps': 8, 'source_start_seconds': 0,
-                   'source_audio': False, 'output_audio': 'mute', 'width': 8, 'height': 8}
-        with tempfile.TemporaryDirectory() as folder, \
-                mock.patch('backend.reference_media.read_frames', read_frames), \
-                mock.patch.object(long_faceswap, 'Mp4PartWriter', Writer), \
-                mock.patch.object(long_faceswap.LookMatcher, 'apply', lambda self, frames, source: frames), \
-                mock.patch.object(long_faceswap, '_save_part', lambda *a: None):
-            long_faceswap.swap_long(request, 'Prompt', {}, Path('source.mp4'), lambda **values: None, generate,
-                                    Path(folder) / 'out.mp4')
-        seam = [round(float(v), 2) for v in written[1][:, 0, 0, 0]]
-        self.assertEqual(seam, [0.5, 0.5, 0.5, 0.5, 0.3])
+        held, ahead = frames(70.0), frames(82.0)
+        seam = seam_morph(held, ahead)
+        self.assertEqual(tuple(seam.shape), tuple(held.shape))
+        row = seam[2, 48, :, 0].numpy()
+        # Halfway through the seam the blob is one shape between its two places (about column 76) at close to its
+        # full brightness; a plain mix would show two dimmer blobs at 70 and 82.
+        self.assertTrue(73 <= int(row.argmax()) <= 79, int(row.argmax()))
+        self.assertGreater(float(row.max()), 0.75)
+        centers = [float((seam[i, 48, :, 0].numpy() * np.arange(160)).sum() / seam[i, 48, :, 0].numpy().sum()) for i in range(5)]
+        self.assertEqual(centers, sorted(centers))
 
 
 class RepairTests(unittest.TestCase):
