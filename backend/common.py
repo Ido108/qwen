@@ -234,6 +234,9 @@ class ReferenceVideoRequest(BaseModel):
     enhance: bool = False
     output_dir: str = str(VIDEOS_DIR)
     loras: list[LoraChoice] = Field(default_factory=list)
+    # A repair of a finished long video: parts before repair_from_part are kept from it, the others made again.
+    repair_of: str | None = Field(default=None, pattern=r'^[0-9a-f]{32}$')
+    repair_from_part: int | None = Field(default=None, ge=2)
 
     @model_validator(mode='after')
     def grouped_references(self):

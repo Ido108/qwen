@@ -51,6 +51,22 @@ def runs_in_parts(request) -> bool:
     return request['workflow'] != 'crossview' or not (request.get('warp_video') or request.get('replace_subjects_first'))
 
 
+def plan_with_parts(total_frames: int, parts: int) -> list[tuple[int, int]]:
+    """The plan a finished job used: the current rule, or the earlier one (a last part under 17 frames joined)."""
+    plan = part_plan(total_frames)
+    if len(plan) == parts:
+        return plan
+    edges = [0, min(total_frames, PART_FRAMES)]
+    while edges[-1] < total_frames:
+        edges.append(min(total_frames, edges[-1] + PART_FRAMES - OVERLAP_FRAMES))
+    if len(edges) > 2 and edges[-1] - edges[-2] < 17:
+        edges.pop(-2)
+    plan = list(zip(edges, edges[1:]))
+    if len(plan) != parts:
+        raise ValueError('The parts of the original video could not be matched. Run the whole video again.')
+    return plan
+
+
 def is_long_faceswap(request) -> bool:
     return runs_in_parts(request) and int(request['frames']) > PART_FRAMES
 
@@ -146,6 +162,11 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     clip_start = float(request.get('source_start_seconds') or 0)
     total = int(request['frames'])
     plan = part_plan(total)
+    first_new, kept_frames, kept_audio = 0, None, None
+    if request.get('repair_from_part'):
+        # A repair: the parts before repair_from_part are taken from the original video as they are, the others are
+        # made again with the original settings, on the original part boundaries.
+        plan, first_new, kept_frames, kept_audio = _original_parts(request, total)
     writer = Mp4PartWriter(destination)
     # Every finished part is also saved as a playable MP4 with its sound and a poster, next to the whole video:
     # a stopped run keeps its work, and each part can be watched on its own.
@@ -156,7 +177,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
 
     def bounds(index):
         start, end = plan[index]
-        # Every part after the first starts OVERLAP_FRAMES early, where the previous part's last frames are anchored.
+        # Every part after the first starts OVERLAP_FRAMES early: those frames become the seam with the previous part.
         lead = OVERLAP_FRAMES if index else 0
         length = grid_length(end - start + lead)
         part_start = clip_start + (start - lead) / FPS
@@ -169,11 +190,16 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         return frames, audio
 
     def source_parts():
-        """Each part's source frames and sound, in order; the next part is read on the CPU while the GPU works."""
+        """Each part's source frames and sound, in order; the next part is read on the CPU while the GPU works.
+        A part kept from the original video (a repair) needs no source and gives (None, None)."""
         reader = ThreadPoolExecutor(max_workers=1)
-        pending = reader.submit(read_part, 0)
+        indices = list(range(first_new, len(plan)))
+        pending = reader.submit(read_part, indices[0]) if indices else None
         try:
             for index in range(len(plan)):
+                if index < first_new:
+                    yield index, (None, None)
+                    continue
                 result = pending.result()
                 if index + 1 < len(plan):
                     pending = reader.submit(read_part, index + 1)
@@ -207,6 +233,8 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         # encoder (video_engine.ReferenceEncoder). swap_by_shot runs as in pass 3, so each shot gets its own entry.
         units = []
         for index, (frames, source_audio) in source_parts():
+            if index < first_new:
+                continue
             update(parts_phase='prepare', preparing_part=index + 1, total_parts=len(plan), stage='preparing_parts',
                    message=f'Preparing part {index + 1} of {len(plan)}: reading and encoding the source video…')
 
@@ -240,6 +268,33 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         update(part=index + 1, total_parts=len(plan), stage='decoding_source', parts_phase='generate',
                part_start_seconds=round(clip_start + start / FPS, 3), part_end_seconds=round(clip_start + end / FPS, 3),
                message=f'Decoding source video, part {index + 1} of {len(plan)}…')
+        if index < first_new:
+            # Kept from the original video, frames and sound as they are.
+            pixels = kept_frames[start:end].float() / 255
+            if first_frame is None:
+                first_frame = pixels[0].clone()
+            if held is not None:
+                writer.add(held)
+            hold = 0 if keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
+            writer.add(pixels[:keep - hold])
+            held = pixels[keep - hold:].clone() if hold else None
+            audio = None
+            if request['output_audio'] == 'source':
+                audio = read_audio(source_path, keep / FPS, start_seconds=clip_start + start / FPS, end_seconds=clip_start + end / FPS)
+            elif request['output_audio'] != 'mute' and kept_audio is not None:
+                kept_rate = int(kept_audio['sample_rate'])
+                audio = {'waveform': kept_audio['waveform'][..., round(start / FPS * kept_rate):round(end / FPS * kept_rate)],
+                         'sample_rate': kept_rate}
+            if audio is not None:
+                rate = rate or int(audio['sample_rate'])
+                sounds.append((keep, _fit_audio(audio, rate, round(keep / FPS * rate))))
+            else:
+                sounds.append((keep, None))
+            _save_part(parts_folder, index, pixels, sounds[-1][1], rate)
+            durations.append(round(time.monotonic() - began, 1))
+            saved_parts.append({'index': index + 1, 'start_seconds': round(start / FPS, 3), 'end_seconds': round(end / FPS, 3)})
+            update(parts_saved=index + 1, parts_folder=str(parts_folder), part_seconds=durations, parts=saved_parts)
+            continue
         images = part_images(frames, source_audio)
 
         def relay(**values):
@@ -276,12 +331,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             sounds.append((keep, _fit_audio(audio, rate, round(keep / FPS * rate))))
         else:
             sounds.append((keep, None))
-        from .video_worker import save_mp4
-        part_sound = {'waveform': sounds[-1][1], 'sample_rate': rate} if sounds[-1][1] is not None else None
-        save_mp4(parts_folder / f'part-{index + 1:03d}.mp4', pixels, part_sound)
-        from PIL import Image
-        Image.fromarray((pixels[0].numpy().clip(0, 1) * 255).round().astype('uint8')).save(
-            parts_folder / f'part-{index + 1:03d}.jpg', quality=88)
+        _save_part(parts_folder, index, pixels, sounds[-1][1], rate)
         durations.append(round(time.monotonic() - began, 1))
         saved_parts.append({'index': index + 1, 'start_seconds': round(start / FPS, 3), 'end_seconds': round(end / FPS, 3)})
         update(parts_saved=index + 1, parts_folder=str(parts_folder), part_seconds=durations, parts=saved_parts)
@@ -294,3 +344,45 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     update(stage='saving', message='Saving MP4…')
     writer.finish(combined)
     return writer.frames, first_frame, combined is not None, writer.size, rate
+
+
+def _save_part(folder, index, pixels, sound, rate):
+    """A finished part as its own MP4 with its sound, and a poster."""
+    from PIL import Image
+    from .video_worker import save_mp4
+    save_mp4(folder / f'part-{index + 1:03d}.mp4', pixels, {'waveform': sound, 'sample_rate': rate} if sound is not None else None)
+    Image.fromarray((pixels[0].numpy().clip(0, 1) * 255).round().astype('uint8')).save(folder / f'part-{index + 1:03d}.jpg', quality=88)
+
+
+def _original_parts(request, total):
+    """For a repair: the original job's plan, the index of the first part made again, and the kept frames and sound
+    (frames 0 up to that part, read from the original video)."""
+    import av
+    import numpy as np
+    import torch
+    from .common import JOBS_DIR, read_json
+    from .reference_media import read_audio
+    original = read_json(JOBS_DIR / request['repair_of'] / 'status.json')
+    if int(original['request']['frames']) != total or original.get('status') != 'succeeded':
+        raise ValueError('The original video does not match this repair. Run the whole video again.')
+    parts = original.get('parts') or []
+    if len(parts) == original.get('total_parts') and parts:
+        plan = [(round(part['start_seconds'] * FPS), round(part['end_seconds'] * FPS)) for part in parts]
+    else:
+        plan = plan_with_parts(total, int(original.get('total_parts') or len(part_plan(total))))
+    first_new = int(request['repair_from_part']) - 1
+    if not 1 <= first_new < len(plan):
+        raise ValueError(f'Choose a part from 2 to {len(plan)} to make again.')
+    count = plan[first_new][0]
+    video = Path(original['output_path'])
+    frames = []
+    with av.open(str(video)) as container:
+        for frame in container.decode(container.streams.video[0]):
+            frames.append(frame.to_ndarray(format='rgb24'))
+            if len(frames) == count:
+                break
+    if len(frames) != count:
+        raise ValueError('The original video is shorter than its parts. Run the whole video again.')
+    kept = torch.from_numpy(np.stack(frames))  # 8-bit; each kept part is converted when it is written
+    audio = read_audio(video, count / FPS, start_seconds=0, end_seconds=count / FPS) if original.get('has_audio') else None
+    return plan, first_new, kept, audio

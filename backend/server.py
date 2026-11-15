@@ -2125,6 +2125,27 @@ def move_job(job_id: str, body: QueuePosition):
     return get_queue()
 
 
+class RepairRequest(BaseModel):
+    from_part: int = Field(ge=2)
+
+
+@app.post('/api/jobs/{job_id}/repair', status_code=202)
+def repair_job(job_id: str, body: RepairRequest):
+    """Make a finished long video again from one part on, with its own prompt, model, settings and seed; the parts
+    before it are kept from that video. The result is a new video; the original stays."""
+    previous = read_job(job_id)
+    parts = int(previous.get('total_parts') or 0)
+    if previous.get('kind') != 'reference-video' or previous.get('status') != 'succeeded' or parts < 2:
+        raise HTTPException(409, 'Only a finished video made in parts can be repaired.')
+    if not Path(previous.get('output_path') or '').is_file():
+        raise HTTPException(404, 'The saved video was not found. It may have been moved or deleted.')
+    if body.from_part > parts:
+        raise HTTPException(400, f'This video has {parts} parts.')
+    data = dict(previous['request'])
+    data.update(seed=previous['seed'], randomize_seed=False, repair_of=job_id, repair_from_part=body.from_part)
+    return generate_reference_video(ReferenceVideoRequest(**data))
+
+
 @app.post('/api/jobs/{job_id}/retry', status_code=202)
 def retry_job(job_id: str):
     previous = read_job(job_id)

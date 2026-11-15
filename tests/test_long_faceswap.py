@@ -229,5 +229,48 @@ class SeamTests(unittest.TestCase):
         self.assertTrue(0.2 < seam[0] < 0.35 and 0.45 < seam[-1] < 0.6, seam)
 
 
+class RepairTests(unittest.TestCase):
+    def test_a_repair_keeps_the_parts_before_it_and_makes_the_others_again(self):
+        import json
+        import av
+        import torch
+        from backend import long_faceswap
+        from backend.video_worker import save_mp4
+        made = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.zeros(count, 64, 64, 3)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            made.append(request['frames'])
+            return torch.full((request['frames'], 64, 64, 3), 0.6), None
+
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            jobs = folder / 'jobs'; (jobs / ('a' * 32)).mkdir(parents=True)
+            original_video = folder / 'original.mp4'
+            sound = {'waveform': torch.full((1, 2, round(400 / 24 * 32000)), 0.1), 'sample_rate': 32000}
+            save_mp4(original_video, torch.full((400, 64, 64, 3), 0.2), sound)
+            parts = [{'index': 1, 'start_seconds': 0.0, 'end_seconds': 124 / 24}, {'index': 2, 'start_seconds': 124 / 24, 'end_seconds': 243 / 24},
+                     {'index': 3, 'start_seconds': 243 / 24, 'end_seconds': 400 / 24}]
+            (jobs / ('a' * 32) / 'status.json').write_text(json.dumps({'status': 'succeeded', 'output_path': str(original_video), 'has_audio': True,
+                'total_parts': 3, 'parts': parts, 'request': {'frames': 400}}), encoding='utf-8')
+            request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                       'source_audio': False, 'output_audio': 'generated', 'width': 64, 'height': 64,
+                       'repair_of': 'a' * 32, 'repair_from_part': 2}
+            with mock.patch('backend.common.JOBS_DIR', jobs),                     mock.patch('backend.reference_media.read_frames', read_frames),                     mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]):
+                destination = folder / 'out.mp4'
+                count, *_ = long_faceswap.swap_long(request, 'Faceswap', {}, Path('source.mp4'), lambda **values: None, generate, destination)
+            with av.open(str(destination)) as container:
+                levels = [float(frame.to_ndarray(format='rgb24').mean()) / 255 for frame in container.decode(container.streams.video[0])]
+                has_sound = len(container.streams.audio) == 1
+        # Only parts 2 and 3 are made again (part 2 with its 5 seam frames, part 3 with the last frames joined to it).
+        self.assertEqual((count, len(levels), made, has_sound), (400, 400, [124, 175], True))
+        self.assertAlmostEqual(levels[60], 0.2, delta=0.02)
+        self.assertAlmostEqual(levels[300], 0.6, delta=0.02)
+        seam = levels[119:124]
+        self.assertTrue(all(x < y for x, y in zip(seam, seam[1:])) and 0.2 < seam[0] < 0.35 and 0.45 < seam[-1] < 0.6, seam)
+
+
 if __name__ == '__main__':
     unittest.main()
