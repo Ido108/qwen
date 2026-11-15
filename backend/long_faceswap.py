@@ -15,12 +15,11 @@ from pathlib import Path
 
 FPS = 24
 PART_FRAMES = 124
-# Each part after the first starts this many frames early, anchored there to the last frames of the part before it
-# (H3 anchors clips of 5, 22, 39... frames), so clothing, light and look carry over; the two versions of those frames
-# are blended into one seam. Each finished part is first matched back to the look of part 1 (LookMatcher): anchored
-# without it, a 15-part run drifted part after part (2026-11-15: brightness 64 to 70, sharpness 675 to 1319, the
-# last parts orange and over-sharpened), and without any anchor the parts did not match (one part in a blue shirt,
-# the next in a white T-shirt, brightness 77 against 62).
+# Each part after the first starts this many frames early, so it also makes the last frames of the part before it;
+# the two versions of those frames are blended into one seam. No part starts from frames another part made: the model
+# encodes such frames again and adds detail again, so a chain of parts drifted (2026-11-15: brightness 64 to 70 over
+# 15 parts; with the color matched, the fine texture on the face still rose 4.20, 4.99, 5.49 in parts 1 to 3). Each
+# part is made from the source and the references only, and matched to the look of part 1 (LookMatcher).
 OVERLAP_FRAMES = 5
 
 
@@ -29,8 +28,9 @@ class LookMatcher:
 
     Part 1 sets the reference: its color statistics (Lab mean and spread) and sharpness, and those of its source.
     Each later part is mapped to part 1's statistics shifted by the change in its own source, so a real change of
-    light in the source carries through while the drift a chain of anchored parts adds does not. A part sharper than
-    the reference (relative to its source) is softened to it; detail is never added.
+    light in the source carries through while the differences between separately made parts (one part came out at
+    brightness 77, the next at 62, from the same light) do not. A part sharper than the reference (relative to its
+    source) is softened to it; detail is never added.
     """
     SIGMAS = (0.4, 0.6, 0.8, 1.0, 1.3, 1.6)
 
@@ -239,7 +239,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     # a stopped run keeps its work, and each part can be watched on its own.
     parts_folder = Path(destination).with_name(Path(destination).stem + ' parts')
     parts_folder.mkdir(parents=True, exist_ok=True)
-    sounds, first_frame, rate, held, tail, durations, saved_parts = [], None, None, None, None, [], []
+    sounds, first_frame, rate, held, durations, saved_parts = [], None, None, None, [], []
     looks = LookMatcher()
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
 
@@ -349,7 +349,6 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             hold = 0 if keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
             writer.add(pixels[:keep - hold])
             held = pixels[keep - hold:].clone() if hold else None
-            tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
             audio = None
             if request['output_audio'] == 'source':
                 audio = read_audio(source_path, keep / FPS, start_seconds=clip_start + start / FPS, end_seconds=clip_start + end / FPS)
@@ -368,9 +367,6 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             update(parts_saved=index + 1, parts_folder=str(parts_folder), part_seconds=durations, parts=saved_parts)
             continue
         images = part_images(frames, source_audio)
-        # Camera view anchors its camera guide on every frame; the other workflows start from the previous part's end.
-        if tail is not None and request['workflow'] != 'crossview':
-            images['continuity_guide'] = tail
 
         def relay(**values):
             values.setdefault('part', index + 1)
@@ -394,7 +390,6 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         hold = 0 if last or keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
         writer.add(pixels[:keep - hold])
         held = pixels[keep - hold:].clone() if hold else None
-        tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
         if request['output_audio'] == 'source':
             audio = source_audio
         elif request['output_audio'] == 'mute':

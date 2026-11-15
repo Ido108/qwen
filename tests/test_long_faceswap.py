@@ -95,11 +95,11 @@ class SwapLongTests(unittest.TestCase):
             self.assertEqual((count, has_audio, size, rate), (400, True, (64, 64), 32000))
             self.assertEqual(len(reads), 3, '400 frames: parts of 124, 119 and 157 (the last 38 frames join the third part), each read on its own')
             self.assertEqual([r[0] for r in reads], [124, 124, 175], 'each part is read on the 17n+5 grid')
-            # Parts after the first start 5 frames early, where the previous part's last 5 frames are anchored (the seam).
+            # Parts after the first start 5 frames early: they also make the previous part's last 5 frames (the seam).
             self.assertEqual([r[1] for r in reads], [2.0, round(2.0 + 119 / 24, 4), round(2.0 + 238 / 24, 4)])
             self.assertEqual([c[0] for c in calls], [124, 124, 175])
-            # The anchor is the previous part's last 5 written frames: frames 119-123 and 238-242 of the selection.
-            self.assertEqual([c[1] for c in calls], [None, 48 + 119, 48 + 238])
+            # No part starts from frames another part made (such a chain drifted part after part).
+            self.assertEqual([c[1] for c in calls], [None, None, None])
             self.assertTrue(any(u.get('part') == 3 and u.get('total_parts') == 3 for u in updates))
             self.assertFalse((Path(folder) / 'out.video.mp4').exists(), 'the video-only file is removed')
             # Each finished part is saved as its own MP4 with a poster, and stays next to the whole video.
@@ -150,8 +150,8 @@ class TwoPassTests(unittest.TestCase):
                                                 generate, Path(folder) / 'out.mp4', encoder=Encoder())
         self.assertEqual(count, 400)
         self.assertEqual(events, [('prepare', 124, False), ('prepare', 124, False), ('prepare', 175, False), ('encode_all', 3),
-                                  ('generate', 124, 'positive-1', False), ('generate', 124, 'positive-2', True),
-                                  ('generate', 175, 'positive-3', True)])
+                                  ('generate', 124, 'positive-1', False), ('generate', 124, 'positive-2', False),
+                                  ('generate', 175, 'positive-3', False)])
 
 
 class WorkingMemoryTests(unittest.TestCase):

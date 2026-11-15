@@ -140,8 +140,7 @@ def generate(request, prompt, images, progress, preview_directory=None):
 
 
 def _from_precomputed(request, positive, images, read_weights, progress):
-    """Conditioning of one part encoded ahead (ReferenceEncoder), with the guides: the camera guide of Camera view
-    and the last frames of the part before (long_faceswap)."""
+    """Conditioning of one part encoded ahead (ReferenceEncoder), with the camera guide of Camera view."""
     import torch
     import comfy.model_management as memory
     from .video_timing import gpu_load_stage
@@ -155,8 +154,6 @@ def _from_precomputed(request, positive, images, read_weights, progress):
     with torch.no_grad():
         if request['workflow'] == 'crossview':
             positive = MiniMaxH3AddGuide.execute(positive, latent, 0, vae=vae, image=images['warp_video'])[0]
-        if images.get('continuity_guide') is not None:
-            positive = MiniMaxH3AddGuide.execute(positive, latent, 0, vae=vae, image=images['continuity_guide'])[0]
     memory.unload_model_and_clones(shared.patcher)
     return positive, latent, [], shared
 
@@ -330,9 +327,6 @@ def _encode(request, prompt, images, reference, keyframes, read_weights, release
                 ref_video_audios=video_audios,ref_audios=voices or None)
             if request['workflow']=='crossview':
                 positive=MiniMaxH3AddGuide.execute(positive,latent,0,vae=vae,image=images['warp_video'])[0]
-            # A part of a long video starts from the last frames of the part before it (long_faceswap.py).
-            if images.get('continuity_guide') is not None:
-                positive=MiniMaxH3AddGuide.execute(positive,latent,0,vae=vae,image=images['continuity_guide'])[0]
         else:
             positive, latent = MiniMaxH3ImageToVideo.execute(encoder, vae, prompt,
                 request['width'], request['height'], request['frames'], **tensors)
