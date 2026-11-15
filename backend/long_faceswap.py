@@ -30,15 +30,19 @@ PART_FRAMES = 124
 OVERLAP_FRAMES = 5
 
 
-# Parts 2 and later of a video with one input image get the frame of part 1 picked by best_reference_frame as
-# their input image, with this added to the prompt: the person, clothing and background part 1 made stay the same
-# in every part, also when the prompt asks for a new background (2026-11-15: with "make the background nvidia
-# office" the parts, made on their own, showed an open office, the source room and a large logo). Those parts do
-# not also start from the last frames of the part before. Used with long_parts 'follow' only: from part 2 on the face
-# came out crunchier than in part 1 (face sharpness against the source 1.47, 1.59, 1.82, 1.97 in parts 1 to 4),
-# because the model copies a face it made and adds detail to it again.
-FOLLOW_PROMPT = ('\n\nEverything looks exactly as in the input image: the same person, face, hair, clothing, '
-                 'background and lighting.')
+# Parts 2 and later of a video with one input image get, next to that image, the frame of part 1 picked by
+# best_reference_frame as a second picture, with this added to the prompt: the clothing and background part 1 made
+# stay the same in every part, also when the prompt asks for a new background (2026-11-15: with "make the background
+# nvidia office" the parts, made on their own, showed an open office, the source room and a large logo). The input
+# image stays the first picture: with the frame of part 1 as the only picture and a sentence about the person and
+# face, the swap went back to the source face in the middle of a part (the FaceSwap LoRA needs its face picture, and
+# longer identity text in the prompt makes the swap fade, see reference_prompt). Those parts do not also start from
+# the last frames of the part before.
+FOLLOW_PROMPT = '\n\nThe clothing, background and lighting are exactly as in <Picture 2>.'
+# A part is made again (another seed, up to FACE_RETRIES times) when the face in any of its checked frames is less
+# like the input image than FACE_KEPT of part 1's likeness: the swap can fade back to the source face mid-part.
+FACE_KEPT = 0.6
+FACE_RETRIES = 2
 
 
 def seam_morph(held, ahead):
@@ -69,13 +73,10 @@ def seam_morph(held, ahead):
     return torch.from_numpy(out.astype(np.float32) / 255).to(held.dtype)
 
 
-def best_reference_frame(frames, reference):
-    """The frame of frames ([N, H, W, 3] in 0..1) that moves least and whose face is most like the face in reference
-    (a PIL image): among the stillest third of the frames, the one with the highest face likeness (SFace).
-    Returns (PIL image, frame index, likeness), or None when reference or no frame has a face."""
+def _face_embedder():
+    """embed(bgr uint8 image) -> unit face embedding (SFace) of the largest face, or None without a face."""
     import cv2
     import numpy as np
-    from PIL import Image
     from .reference_people import ensure_recognizer, face_detector
     recognizer = cv2.FaceRecognizerSF.create(str(ensure_recognizer()), '')
     detector = face_detector()
@@ -90,6 +91,34 @@ def best_reference_frame(frames, reference):
         norm = np.linalg.norm(embedding)
         return embedding / norm if norm else None
 
+    return embed
+
+
+def face_likeness(frames, reference, count=12):
+    """Likeness of the face in count evenly spaced frames ([N, H, W, 3] in 0..1) to the face in reference (a PIL
+    image), one value per frame with a face. None when reference has no face."""
+    import numpy as np
+    embed = _face_embedder()
+    target = embed(np.ascontiguousarray(np.asarray(reference.convert('RGB'))[..., ::-1]))
+    if target is None:
+        return None
+    values = []
+    for index in sorted({round(i * (frames.shape[0] - 1) / max(1, count - 1)) for i in range(count)}):
+        pixels = (frames[index].clamp(0, 1).numpy() * 255).round().astype(np.uint8)
+        embedding = embed(np.ascontiguousarray(pixels[..., ::-1]))
+        if embedding is not None:
+            values.append(float(np.dot(embedding, target)))
+    return values
+
+
+def best_reference_frame(frames, reference):
+    """The frame of frames ([N, H, W, 3] in 0..1) that moves least and whose face is most like the face in reference
+    (a PIL image): among the stillest third of the frames, the one with the highest face likeness (SFace).
+    Returns (PIL image, frame index, likeness), or None when reference or no frame has a face."""
+    import cv2
+    import numpy as np
+    from PIL import Image
+    embed = _face_embedder()
     target = embed(np.ascontiguousarray(np.asarray(reference.convert('RGB'))[..., ::-1]))
     if target is None:
         return None
@@ -469,9 +498,13 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
               and len(request.get('reference_images') or []) == 1 and len(plan) > 1)
     independent = mode != 'chain'
     current = {'references': references, 'prompt': prompt}
+    # The face of every part is checked against the input image when the video has one input image with a face.
+    guard = (request['workflow'] != 'crossview' and len(request.get('reference_images') or []) == 1
+             and references.get('ref_image_1') is not None)
+    face_level = {}
 
     def follow_part_1(frames):
-        """Parts 2 and later: part 1's stillest frame most like the input image becomes their input image."""
+        """Parts 2 and later: part 1's stillest frame most like the input image becomes their second picture."""
         if not follow or references.get('ref_image_1') is None:
             return
         chosen = best_reference_frame(frames, references['ref_image_1'])
@@ -480,7 +513,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         image, frame, likeness = chosen
         if preview_directory is not None:
             image.save(Path(preview_directory) / 'reference-from-part-1.png')
-        current.update(references={**references, 'ref_image_1': image}, prompt=prompt + FOLLOW_PROMPT, frame=frame)
+        current.update(references={**references, 'ref_image_2': image}, prompt=prompt + FOLLOW_PROMPT, frame=frame)
         update(reference_frame=frame, reference_likeness=round(likeness, 3))
 
     def bounds(index):
@@ -529,6 +562,9 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     def part_request(index):
         _, length, part_start, part_end = bounds(index)
         part = {**request, 'frames': length, 'source_start_seconds': part_start, 'source_end_seconds': part_end}
+        if index and 'frame' in current:
+            # The frame of part 1 is the second picture of the later parts.
+            part['reference_images'] = [*request['reference_images'], 'frame-of-part-1']
         if measured:
             # The working memory the part before used, scaled to this part's length, with 2 GB of margin.
             part['working_memory_gb'] = round(measured['gb'] * max(1.0, length / measured['frames']) + 2.0, 2)
@@ -575,9 +611,13 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     if encoder is not None and new_parts:
         ready = prepare_parts(new_parts)
 
+    # The prepared conditioning a part used, kept so the part can be made again from it with another seed.
+    used, replay = [], []
+
     def run(shot_request, shot_prompt, shot_images, progress, preview_directory=None):
         if ready is not None:
-            unit, positive = next(ready)
+            unit, positive = replay.pop(0) if replay else next(ready)
+            used.append((unit, positive))
             if unit['frames'] != shot_request['frames']:
                 raise RuntimeError('The prepared parts do not match the video. Retry the video.')
             shot_images = {**shot_images, 'precomputed_positive': positive}
@@ -637,8 +677,28 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                 measured.update(gb=max(values['sampling_working_gb'], measured.get('gb', 0)), frames=length)
             update(**values)
 
-        made, audio = by_shot(part_request(index), current['prompt'] if index else prompt, images, relay, run,
-                              preview_directory=preview_directory)
+        attempt, tries, best = part_request(index), 0, None
+        while True:
+            used.clear()
+            made, audio = by_shot(attempt, current['prompt'] if index else prompt, images, relay, run,
+                                  preview_directory=preview_directory)
+            values = face_likeness(made, references['ref_image_1']) if guard else None
+            if index == 0 and values and 'value' not in face_level:
+                # Part 1 sets how alike the swapped face is to the input image (its middle value).
+                face_level['value'] = sorted(values)[len(values) // 2]
+            lowest = min(values) if values else None
+            if best is None or (lowest is not None and (best[0] is None or lowest > best[0])):
+                best = (lowest, made, audio)
+            if (not face_level or lowest is None or lowest >= FACE_KEPT * face_level['value'] or tries == FACE_RETRIES):
+                made, audio = best[1], best[2]
+                break
+            # The face is lost somewhere in this part: the same part again, with another seed.
+            tries += 1
+            replay[:] = list(used)
+            attempt = {**attempt, 'seed': int(request['seed']) + tries}
+            update(face_retries=face_level.setdefault('retries', 0) + 1)
+            face_level['retries'] += 1
+        best = None
         made = looks.apply(made, frames[:made.shape[0]])
         pixels = made[lead:lead + keep]
         if index == 0 and split:

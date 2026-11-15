@@ -164,7 +164,8 @@ class FollowPartOneTests(unittest.TestCase):
 
         class Encoder:
             def prepare(self, request, prompt, images):
-                events.append(('prepare', images['ref_image_1'].getpixel((0, 0)), prompt))
+                second = images['ref_image_2'].getpixel((0, 0)) if 'ref_image_2' in images else None
+                events.append(('prepare', images['ref_image_1'].getpixel((0, 0)), second, len(request['reference_images']), prompt))
                 return {'frames': request['frames'], 'id': len([e for e in events if e[0] == 'prepare'])}
 
             def encode_all(self, units):
@@ -175,7 +176,7 @@ class FollowPartOneTests(unittest.TestCase):
             return torch.full((count, 32, 32, 3), 0.5)
 
         def generate(request, prompt, images, progress, preview_directory=None):
-            events.append(('generate', images['precomputed_positive'], images['ref_image_1'].getpixel((0, 0)), prompt))
+            events.append(('generate', images['precomputed_positive'], 'ref_image_2' in images, prompt))
             # Following the frame of part 1, no part starts from the frames of the part before.
             self.assertNotIn('continuity_guide', images)
             return images['source_video'].clone(), None
@@ -202,11 +203,15 @@ class FollowPartOneTests(unittest.TestCase):
         self.assertEqual(chosen, [(124, (0, 0, 255))])
         later = 'Faceswap' + long_faceswap.FOLLOW_PROMPT
         # Part 1 is prepared together with all the parts (as a video that does not follow part 1); parts 2 and 3
-        # are prepared again with the frame of part 1 and the added prompt.
-        self.assertEqual(events, [('prepare', (0, 0, 255), 'Faceswap')] * 3 + [('encode_all', [1, 2, 3]),
-                                  ('generate', 'positive-1', (0, 0, 255), 'Faceswap'),
-                                  ('prepare', (255, 0, 0), later), ('prepare', (255, 0, 0), later), ('encode_all', [2, 3]),
-                                  ('generate', 'positive-4', (255, 0, 0), later), ('generate', 'positive-5', (255, 0, 0), later)])
+        # are prepared again with the input photo first, the frame of part 1 as the second picture, and the added
+        # prompt.
+        again = ('prepare', (0, 0, 255), (255, 0, 0), 2, later)
+        self.assertEqual(events, [('prepare', (0, 0, 255), None, 1, 'Faceswap')] * 3 + [('encode_all', [1, 2, 3]),
+                                  ('generate', 'positive-1', False, 'Faceswap'),
+                                  again, again, ('encode_all', [2, 3]),
+                                  ('generate', 'positive-4', True, later), ('generate', 'positive-5', True, later)])
+        self.assertNotIn('face', long_faceswap.FOLLOW_PROMPT.lower())
+        self.assertNotIn('person', long_faceswap.FOLLOW_PROMPT.lower())
         self.assertTrue(any(u.get('reference_frame') == 40 for u in updates))
 
     def test_more_than_one_input_image_keeps_the_input_images(self):
@@ -231,6 +236,50 @@ class FollowPartOneTests(unittest.TestCase):
             long_faceswap.swap_long(request, 'Faceswap', {}, Path('source.mp4'), lambda **values: None, generate,
                                     Path(folder) / 'out.mp4')
         self.assertEqual(events, ['Faceswap'] * 3)
+
+
+class FaceGuardTests(unittest.TestCase):
+    def test_a_part_that_loses_the_face_is_made_again_with_another_seed(self):
+        import torch
+        from PIL import Image
+        from backend import long_faceswap
+        made, checks = [], []
+
+        class Encoder:
+            def prepare(self, request, prompt, images):
+                return {'frames': request['frames']}
+
+            def encode_all(self, units):
+                return [f'positive-{unit["part"]}' for unit in units]
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            made.append((request['frames'], request['seed'], images['precomputed_positive']))
+            return images['source_video'].clone(), None
+
+        def likeness(frames, reference, count=12):
+            checks.append(len(made))
+            # Part 1 is 0.8 alike. The first try of part 2 loses the face in one checked frame; its second try keeps it.
+            return [0.8, 0.1, 0.8] if len(made) == 2 else [0.8, 0.78, 0.82]
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png'],
+                   'seed': 100, 'long_parts': 'independent'}
+        updates = []
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch('backend.reference_media.read_frames', read_frames), \
+                mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \
+                mock.patch.object(long_faceswap, 'face_likeness', likeness):
+            count, *_ = long_faceswap.swap_long(request, 'Faceswap', {'ref_image_1': Image.new('RGB', (8, 8), 'blue')},
+                                                Path('source.mp4'), lambda **values: updates.append(values), generate,
+                                                Path(folder) / 'out.mp4', encoder=Encoder())
+        self.assertEqual(count, 400)
+        # Part 2 runs twice: the same prepared conditioning, the next seed. Parts 1 and 3 run once.
+        self.assertEqual(made, [(124, 100, 'positive-1'), (124, 100, 'positive-2'), (124, 101, 'positive-2'),
+                                (175, 100, 'positive-3')])
+        self.assertTrue(any(u.get('face_retries') == 1 for u in updates))
 
 
 class IndependentPartsTests(unittest.TestCase):
