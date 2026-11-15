@@ -187,8 +187,7 @@ class FollowPartOneTests(unittest.TestCase):
             return picked, 40, 0.71
 
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
-                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32, 'reference_images': ['a.png'],
-                   'long_parts': 'follow'}
+                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32, 'reference_images': ['a.png']}
         updates = []
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch('backend.reference_media.read_frames', read_frames), \
@@ -202,10 +201,12 @@ class FollowPartOneTests(unittest.TestCase):
         # The frame is picked from part 1's 124 frames, compared with the input photo.
         self.assertEqual(chosen, [(124, (0, 0, 255))])
         later = 'Faceswap' + long_faceswap.FOLLOW_PROMPT
-        self.assertEqual(events, [('prepare', (0, 0, 255), 'Faceswap'), ('encode_all', [1]),
+        # Part 1 is prepared together with all the parts (as a video that does not follow part 1); parts 2 and 3
+        # are prepared again with the frame of part 1 and the added prompt.
+        self.assertEqual(events, [('prepare', (0, 0, 255), 'Faceswap')] * 3 + [('encode_all', [1, 2, 3]),
                                   ('generate', 'positive-1', (0, 0, 255), 'Faceswap'),
                                   ('prepare', (255, 0, 0), later), ('prepare', (255, 0, 0), later), ('encode_all', [2, 3]),
-                                  ('generate', 'positive-2', (255, 0, 0), later), ('generate', 'positive-3', (255, 0, 0), later)])
+                                  ('generate', 'positive-4', (255, 0, 0), later), ('generate', 'positive-5', (255, 0, 0), later)])
         self.assertTrue(any(u.get('reference_frame') == 40 for u in updates))
 
     def test_more_than_one_input_image_keeps_the_input_images(self):
@@ -233,7 +234,7 @@ class FollowPartOneTests(unittest.TestCase):
 
 
 class IndependentPartsTests(unittest.TestCase):
-    def test_by_default_every_part_uses_the_input_image_and_no_anchor(self):
+    def test_independent_parts_use_the_input_image_and_no_anchor(self):
         import torch
         from PIL import Image
         from backend import long_faceswap
@@ -247,7 +248,8 @@ class IndependentPartsTests(unittest.TestCase):
             return images['source_video'].clone(), None
 
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
-                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png']}
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png'],
+                   'long_parts': 'independent'}
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch('backend.reference_media.read_frames', read_frames), \
                 mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \
@@ -353,6 +355,52 @@ class SeamTests(unittest.TestCase):
         self.assertGreater(float(row.max()), 0.75)
         centers = [float((seam[i, 48, :, 0].numpy() * np.arange(160)).sum() / seam[i, 48, :, 0].numpy().sum()) for i in range(5)]
         self.assertEqual(centers, sorted(centers))
+
+
+class SoundSeamTests(unittest.TestCase):
+    def test_the_sound_of_one_part_fades_into_the_next_over_the_overlap(self):
+        import torch
+        from backend import long_faceswap
+        finished = {}
+
+        class Writer:
+            def __init__(self, destination):
+                self.frames, self.size = 0, (16, 16)
+
+            def add(self, frames):
+                self.frames += frames.shape[0]
+
+            def finish(self, audio):
+                finished['audio'] = audio
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        calls = []
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            calls.append(request['frames'])
+            level = 0.2 if len(calls) == 1 else 0.6
+            return images['source_video'].clone(), {'waveform': torch.full((1, 2, round(request['frames'] / 24 * 24000)), level),
+                                                    'sample_rate': 24000}
+
+        request = {'kind': 'reference-video', 'workflow': 'reference', 'frames': 243, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'generated', 'width': 16, 'height': 16}
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch('backend.reference_media.read_frames', read_frames), \
+                mock.patch.object(long_faceswap, 'Mp4PartWriter', Writer), \
+                mock.patch.object(long_faceswap, '_save_part', lambda *a: None):
+            long_faceswap.swap_long(request, 'Prompt', {}, Path('source.mp4'), lambda **values: None, generate,
+                                    Path(folder) / 'out.mp4')
+        sound = finished['audio']['waveform'][0, 0]
+        # 243 frames of sound at 24000 Hz; the 5 overlap frames (119 to 123) are 5000 samples.
+        self.assertEqual(sound.shape[-1], 243000)
+        self.assertAlmostEqual(float(sound[118000]), 0.2, places=4)
+        self.assertAlmostEqual(float(sound[124500]), 0.6, places=4)
+        seam = sound[119000:124000]
+        self.assertTrue(bool((seam[1:] >= seam[:-1]).all()), 'the level only rises through the seam')
+        self.assertTrue(0.2 < float(seam[0]) < 0.21 and 0.59 < float(seam[-1]) < 0.6)
+        self.assertAlmostEqual(float(seam[2500]), 0.4, places=2)
 
 
 class RepairTests(unittest.TestCase):

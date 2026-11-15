@@ -458,14 +458,16 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     sounds, first_frame, rate, held, tail, durations, saved_parts = [], None, None, None, None, [], []
     looks = LookMatcher()
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
-    # long_parts: by default every part is made from the input images and the source only, and the parts meet in a
-    # morphed seam (seam_morph): that held the quality over 16 parts, where every chain lost it (a copy of a copy:
-    # crunchy and orange, or with the detail turned down after every part, smooth and less like the input photo).
-    # 'chain': each part starts from the last frames of the part before; 'follow': with one input image, the later
-    # parts take their input image from part 1 (best_reference_frame) and do not start from the part before.
-    independent = request.get('long_parts') not in ('chain', 'follow')
-    follow = (request.get('long_parts') == 'follow' and request['workflow'] != 'crossview'
+    # long_parts. By default, with one input image, parts 2 and later take their input image from part 1
+    # (best_reference_frame, 'follow'): the background and clothing part 1 made stay in every part. Parts made only
+    # from the input images and the source ('independent', also the default with more input images) kept the quality
+    # but not always the background: one video came out the same in all 16 parts, another with a different
+    # background in each of its first 3 parts, from the same prompt and settings. 'chain': each part starts from the
+    # last frames of the part before; every chain lost quality (a copy of a copy).
+    mode = request.get('long_parts')
+    follow = (mode in (None, 'follow') and request['workflow'] != 'crossview'
               and len(request.get('reference_images') or []) == 1 and len(plan) > 1)
+    independent = mode != 'chain'
     current = {'references': references, 'prompt': prompt}
 
     def follow_part_1(frames):
@@ -565,11 +567,13 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     if first_new:
         # A repair keeps part 1, so the new parts follow the kept part 1.
         follow_part_1(kept_frames[plan[0][0]:plan[0][1]].float() / 255)
-    # Without a kept part 1, the later parts are prepared once part 1 is made (their input image comes from it).
+    # Without a kept part 1, the later parts are prepared again once part 1 is made (their input image comes from
+    # it). Part 1 is still prepared together with all the parts: prepared alone, the same seed gave a different
+    # part 1 (one video: a plant in the background that the run with all parts prepared did not have).
     split = follow and not first_new
     ready = None
     if encoder is not None and new_parts:
-        ready = prepare_parts(new_parts[:1] if split else new_parts)
+        ready = prepare_parts(new_parts)
 
     def run(shot_request, shot_prompt, shot_images, progress, preview_directory=None):
         if ready is not None:
@@ -656,13 +660,18 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             audio = source_audio
         elif request['output_audio'] == 'mute':
             audio = None
-        if audio is not None and lead:
-            # The overlap frames were written by the previous part; drop their sound too.
-            skip = round(lead / FPS * int(audio['sample_rate']))
-            audio = {'waveform': audio['waveform'][..., skip:], 'sample_rate': audio['sample_rate']}
         if audio is not None:
             rate = rate or int(audio['sample_rate'])
-            sounds.append((keep, _fit_audio(audio, rate, round(keep / FPS * rate))))
+            overlap = round(lead / FPS * rate)
+            piece = _fit_audio(audio, rate, overlap + round(keep / FPS * rate))
+            before = sounds[-1][1] if sounds and overlap else None
+            if before is not None and before.shape[-1] >= overlap:
+                # The seam in the sound: the previous part's sound of the overlap frames fades into this part's sound
+                # of the same frames. Joined with a hard cut, the sound jumped at every seam.
+                fade = torch.linspace(0, 1, overlap + 2)[1:-1].to(before.dtype)
+                mixed = before[..., -overlap:] * (1 - fade) + piece[..., :overlap] * fade
+                sounds[-1] = (sounds[-1][0], torch.cat([before[..., :-overlap], mixed], dim=-1))
+            sounds.append((keep, piece[..., overlap:]))
         else:
             sounds.append((keep, None))
         _save_part(parts_folder, index, pixels, sounds[-1][1], rate)
