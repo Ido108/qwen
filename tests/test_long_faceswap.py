@@ -230,6 +230,32 @@ class FollowPartOneTests(unittest.TestCase):
         self.assertEqual(events, ['Faceswap'] * 3)
 
 
+class IndependentPartsTests(unittest.TestCase):
+    def test_independent_parts_use_the_input_image_and_no_anchor(self):
+        import torch
+        from PIL import Image
+        from backend import long_faceswap
+        seen = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            seen.append((prompt, 'continuity_guide' in images, images['ref_image_1'].getpixel((0, 0))))
+            return images['source_video'].clone(), None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png'],
+                   'long_parts': 'independent'}
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch('backend.reference_media.read_frames', read_frames), \
+                mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \
+                mock.patch.object(long_faceswap, 'best_reference_frame', lambda *a: self.fail('no frame pick')):
+            long_faceswap.swap_long(request, 'Faceswap', {'ref_image_1': Image.new('RGB', (8, 8), 'blue')},
+                                    Path('source.mp4'), lambda **values: None, generate, Path(folder) / 'out.mp4')
+        self.assertEqual(seen, [('Faceswap', False, (0, 0, 255))] * 3)
+
+
 class WorkingMemoryTests(unittest.TestCase):
     def test_later_parts_reserve_the_working_memory_measured_on_the_part_before(self):
         import torch

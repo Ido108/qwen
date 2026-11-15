@@ -321,7 +321,10 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     looks = LookMatcher()
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
     # With one input image, the later parts take their input image from part 1 (best_reference_frame).
-    follow = request['workflow'] != 'crossview' and len(request.get('reference_images') or []) == 1 and len(plan) > 1
+    # long_parts 'independent': every part from the input images and the source only, with no anchor between parts.
+    independent = request.get('long_parts') == 'independent'
+    follow = (request['workflow'] != 'crossview' and len(request.get('reference_images') or []) == 1 and len(plan) > 1
+              and not independent)
     current = {'references': references, 'prompt': prompt}
 
     def follow_part_1(frames):
@@ -477,7 +480,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         images = part_images(frames, source_audio)
         # Camera view anchors its camera guide on every frame; the other workflows start from the previous part's end,
         # unless they follow a frame of part 1.
-        if tail is not None and request['workflow'] != 'crossview' and 'frame' not in current:
+        if tail is not None and request['workflow'] != 'crossview' and 'frame' not in current and not independent:
             images['continuity_guide'] = tail
 
         def relay(**values):
