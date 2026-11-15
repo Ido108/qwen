@@ -154,6 +154,80 @@ class TwoPassTests(unittest.TestCase):
                                   ('generate', 175, 'positive-3', True)])
 
 
+class FollowPartOneTests(unittest.TestCase):
+    def test_later_parts_take_their_input_image_and_prompt_from_part_1(self):
+        import torch
+        from PIL import Image
+        from backend import long_faceswap
+        events, picked = [], Image.new('RGB', (8, 8), 'red')
+        photo = Image.new('RGB', (8, 8), 'blue')
+
+        class Encoder:
+            def prepare(self, request, prompt, images):
+                events.append(('prepare', images['ref_image_1'].getpixel((0, 0)), prompt))
+                return {'frames': request['frames'], 'id': len([e for e in events if e[0] == 'prepare'])}
+
+            def encode_all(self, units):
+                events.append(('encode_all', [unit['part'] for unit in units]))
+                return [f'positive-{unit["id"]}' for unit in units]
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 32, 32, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            events.append(('generate', images['precomputed_positive'], images['ref_image_1'].getpixel((0, 0)), prompt))
+            return images['source_video'].clone(), None
+
+        chosen = []
+
+        def best(frames, reference):
+            chosen.append((frames.shape[0], reference.getpixel((0, 0))))
+            return picked, 40, 0.71
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32, 'reference_images': ['a.png']}
+        updates = []
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch('backend.reference_media.read_frames', read_frames), \
+                mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \
+                mock.patch.object(long_faceswap, 'best_reference_frame', best):
+            count, *_ = long_faceswap.swap_long(request, 'Faceswap', {'ref_image_1': photo}, Path('source.mp4'),
+                                                lambda **values: updates.append(values), generate, Path(folder) / 'out.mp4',
+                                                preview_directory=folder, encoder=Encoder())
+            self.assertTrue((Path(folder) / 'reference-from-part-1.png').is_file())
+        self.assertEqual(count, 400)
+        # The frame is picked from part 1's 124 frames, compared with the input photo.
+        self.assertEqual(chosen, [(124, (0, 0, 255))])
+        later = 'Faceswap' + long_faceswap.FOLLOW_PROMPT
+        self.assertEqual(events, [('prepare', (0, 0, 255), 'Faceswap'), ('encode_all', [1]),
+                                  ('generate', 'positive-1', (0, 0, 255), 'Faceswap'),
+                                  ('prepare', (255, 0, 0), later), ('prepare', (255, 0, 0), later), ('encode_all', [2, 3]),
+                                  ('generate', 'positive-2', (255, 0, 0), later), ('generate', 'positive-3', (255, 0, 0), later)])
+        self.assertTrue(any(u.get('reference_frame') == 40 for u in updates))
+
+    def test_more_than_one_input_image_keeps_the_input_images(self):
+        import torch
+        from backend import long_faceswap
+        events = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            events.append(prompt)
+            return images['source_video'].clone(), None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png', 'b.png']}
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch('backend.reference_media.read_frames', read_frames), \
+                mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \
+                mock.patch.object(long_faceswap, 'best_reference_frame', lambda *a: self.fail('no pick with two people')):
+            long_faceswap.swap_long(request, 'Faceswap', {}, Path('source.mp4'), lambda **values: None, generate,
+                                    Path(folder) / 'out.mp4')
+        self.assertEqual(events, ['Faceswap'] * 3)
+
+
 class WorkingMemoryTests(unittest.TestCase):
     def test_later_parts_reserve_the_working_memory_measured_on_the_part_before(self):
         import torch

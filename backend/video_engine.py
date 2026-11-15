@@ -253,8 +253,9 @@ class ReferenceEncoder:
         try:
             with torch.no_grad():
                 for index, unit in enumerate(units):
-                    progress(stage='encoding_prompt', preparing_part=index + 1,
-                             message=f'Encoding the prompt and references of part {index + 1} of {len(units)}…')
+                    number, total = unit.get('part', index + 1), unit.get('parts', len(units))
+                    progress(stage='encoding_prompt', preparing_part=number,
+                             message=f'Encoding the prompt and references of part {number} of {total}…')
                     tokens = clip.tokenize(unit['prompt'], minimax_ref_items=unit['items'])
                     if index == 0:
                         with gpu_load_stage(memory, progress, torch.cuda.synchronize, 'loading_encoder_gpu', 'Moving text encoder to GPU…',

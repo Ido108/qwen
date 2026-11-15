@@ -26,6 +26,59 @@ PART_FRAMES = 124
 OVERLAP_FRAMES = 5
 
 
+# Parts 2 and later of a video with one input image get the frame of part 1 picked by best_reference_frame as
+# their input image, with this added to the prompt: the person, clothing and background part 1 made stay the same
+# in every part, also when the prompt asks for a new background (2026-11-15: with "make the background nvidia
+# office" the parts, made on their own, showed an open office, the source room and a large logo).
+FOLLOW_PROMPT = ('\n\nEverything looks exactly as in the input image: the same person, face, hair, clothing, '
+                 'background and lighting.')
+
+
+def best_reference_frame(frames, reference):
+    """The frame of frames ([N, H, W, 3] in 0..1) that moves least and whose face is most like the face in reference
+    (a PIL image): among the stillest third of the frames, the one with the highest face likeness (SFace).
+    Returns (PIL image, frame index, likeness), or None when reference or no frame has a face."""
+    import cv2
+    import numpy as np
+    from PIL import Image
+    from .reference_people import ensure_recognizer, face_detector
+    recognizer = cv2.FaceRecognizerSF.create(str(ensure_recognizer()), '')
+    detector = face_detector()
+
+    def embed(bgr):
+        detector.setInputSize((bgr.shape[1], bgr.shape[0]))
+        _, faces = detector.detect(bgr)
+        if faces is None:
+            return None
+        face = max(faces, key=lambda item: item[2] * item[3])
+        embedding = recognizer.feature(recognizer.alignCrop(bgr, face)).flatten().astype(np.float32)
+        norm = np.linalg.norm(embedding)
+        return embedding / norm if norm else None
+
+    target = embed(np.ascontiguousarray(np.asarray(reference.convert('RGB'))[..., ::-1]))
+    if target is None:
+        return None
+    pixels = (frames.clamp(0, 1).numpy() * 255).round().astype(np.uint8)
+    gray = np.stack([cv2.cvtColor(cv2.resize(f, (256, 144), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY)
+                     for f in pixels]).astype(np.float32)
+    motion = np.zeros(len(pixels), np.float32)
+    if len(pixels) > 1:
+        steps = np.abs(np.diff(gray, axis=0)).mean(axis=(1, 2))
+        motion[:-1] += steps
+        motion[1:] += steps
+        motion[1:-1] /= 2
+    best = None
+    for index in sorted(np.argsort(motion, kind='stable')[:max(1, len(pixels) // 3)]):
+        embedding = embed(np.ascontiguousarray(pixels[index][..., ::-1]))
+        if embedding is not None:
+            likeness = float(np.dot(embedding, target))
+            if best is None or likeness > best[1]:
+                best = (int(index), likeness)
+    if best is None:
+        return None
+    return Image.fromarray(pixels[best[0]]), best[0], best[1]
+
+
 class LookMatcher:
     """Keeps every part of a long video in the look of its first part.
 
@@ -264,6 +317,22 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     sounds, first_frame, rate, held, tail, durations, saved_parts = [], None, None, None, None, [], []
     looks = LookMatcher()
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
+    # With one input image, the later parts take their input image from part 1 (best_reference_frame).
+    follow = request['workflow'] != 'crossview' and len(request.get('reference_images') or []) == 1 and len(plan) > 1
+    current = {'references': references, 'prompt': prompt}
+
+    def follow_part_1(frames):
+        """Parts 2 and later: part 1's stillest frame most like the input image becomes their input image."""
+        if not follow or references.get('ref_image_1') is None:
+            return
+        chosen = best_reference_frame(frames, references['ref_image_1'])
+        if chosen is None:
+            return
+        image, frame, likeness = chosen
+        if preview_directory is not None:
+            image.save(Path(preview_directory) / 'reference-from-part-1.png')
+        current.update(references={**references, 'ref_image_1': image}, prompt=prompt + FOLLOW_PROMPT)
+        update(reference_frame=frame, reference_likeness=round(likeness, 3))
 
     def bounds(index):
         start, end = plan[index]
@@ -279,26 +348,29 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         audio = read_audio(source_path, length / FPS, start_seconds=part_start, end_seconds=part_end) if want_audio else None
         return frames, audio
 
-    def source_parts():
-        """Each part's source frames and sound, in order; the next part is read on the CPU while the GPU works.
-        A part kept from the original video (a repair) needs no source and gives (None, None)."""
+    def source_parts(wanted=None):
+        """Each part's source frames and sound, in order (all parts, or the wanted ones); the next part is read on
+        the CPU while the GPU works. A part kept from the original video (a repair) needs no source and gives
+        (None, None)."""
         reader = ThreadPoolExecutor(max_workers=1)
-        indices = list(range(first_new, len(plan)))
+        wanted = list(range(len(plan))) if wanted is None else list(wanted)
+        indices = [index for index in wanted if index >= first_new]
         pending = reader.submit(read_part, indices[0]) if indices else None
         try:
-            for index in range(len(plan)):
+            for index in wanted:
                 if index < first_new:
                     yield index, (None, None)
                     continue
                 result = pending.result()
-                if index + 1 < len(plan):
-                    pending = reader.submit(read_part, index + 1)
+                position = indices.index(index) + 1
+                if position < len(indices):
+                    pending = reader.submit(read_part, indices[position])
                 yield index, result
         finally:
             reader.shutdown(cancel_futures=True)
 
     def part_images(frames, source_audio):
-        images = {**references, 'source_video': frames}
+        images = {**current['references'], 'source_video': frames}
         if request['source_audio'] and source_audio is not None:
             images['source_audio'] = source_audio
         return images
@@ -317,19 +389,18 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     by_shot = swap_by_shot if request['workflow'] == 'faceswap' else (
         lambda shot_request, shot_prompt, shot_images, progress, make, preview_directory=None:
         make(shot_request, shot_prompt, shot_images, progress, preview_directory=preview_directory))
-    ready = None
-    if encoder is not None:
-        # Passes 1 and 2: every part's references through the VAE, then every part's prompt through the text
-        # encoder (video_engine.ReferenceEncoder). swap_by_shot runs as in pass 3, so each shot gets its own entry.
+    def prepare_parts(wanted):
+        """Passes 1 and 2 for the wanted parts: their references through the VAE, then their prompts through the
+        text encoder (video_engine.ReferenceEncoder). swap_by_shot runs as in pass 3, so each shot gets its own entry."""
         units = []
-        for index, (frames, source_audio) in source_parts():
+        for index, (frames, source_audio) in source_parts(wanted):
             if index < first_new:
                 continue
             update(parts_phase='prepare', preparing_part=index + 1, total_parts=len(plan), stage='preparing_parts',
                    message=f'Preparing part {index + 1} of {len(plan)}: reading and encoding the source video…')
 
             def prepare(shot_request, shot_prompt, shot_images, progress, preview_directory=None):
-                units.append(encoder.prepare(shot_request, shot_prompt, shot_images))
+                units.append({**encoder.prepare(shot_request, shot_prompt, shot_images), 'part': index + 1, 'parts': len(plan)})
                 return torch.zeros(shot_request['frames'], shot_request['height'], shot_request['width'], 3), None
 
             def relay_prepare(**values):
@@ -337,10 +408,21 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                 values.pop('step', None)
                 update(**values)
 
-            by_shot(part_request(index), prompt, part_images(frames, source_audio), relay_prepare, prepare)
+            by_shot(part_request(index), current['prompt'] if index else prompt, part_images(frames, source_audio),
+                    relay_prepare, prepare)
             del frames, source_audio
-        update(parts_phase='prepare', preparing_part=len(plan), total_parts=len(plan))
-        ready = iter(zip(units, encoder.encode_all(units)))
+        update(parts_phase='prepare', preparing_part=wanted[-1] + 1, total_parts=len(plan))
+        return iter(zip(units, encoder.encode_all(units)))
+
+    new_parts = list(range(first_new, len(plan)))
+    if first_new:
+        # A repair keeps part 1, so the new parts follow the kept part 1.
+        follow_part_1(kept_frames[plan[0][0]:plan[0][1]].float() / 255)
+    # Without a kept part 1, the later parts are prepared once part 1 is made (their input image comes from it).
+    split = follow and not first_new
+    ready = None
+    if encoder is not None and new_parts:
+        ready = prepare_parts(new_parts[:1] if split else new_parts)
 
     def run(shot_request, shot_prompt, shot_images, progress, preview_directory=None):
         if ready is not None:
@@ -403,9 +485,14 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                 measured.update(gb=max(values['sampling_working_gb'], measured.get('gb', 0)), frames=length)
             update(**values)
 
-        made, audio = by_shot(part_request(index), prompt, images, relay, run, preview_directory=preview_directory)
+        made, audio = by_shot(part_request(index), current['prompt'] if index else prompt, images, relay, run,
+                              preview_directory=preview_directory)
         made = looks.apply(made, frames[:made.shape[0]])
         pixels = made[lead:lead + keep]
+        if index == 0 and split:
+            follow_part_1(pixels)
+            if encoder is not None:
+                ready = prepare_parts(new_parts[1:])
         if first_frame is None:
             first_frame = pixels[0].clone()
         if held is not None and lead:
