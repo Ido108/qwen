@@ -109,6 +109,9 @@ def swap_by_shot(request, prompt, images, progress, generate, preview_directory=
         if length > frames.shape[0]:
             frames = torch.cat([frames, frames[-1:].repeat(length - frames.shape[0], 1, 1, 1)])
         shot_images = {**images, 'source_video': frames}
+        if start > 0:
+            # The last frames of the previous part belong to the first frames of the part only.
+            shot_images.pop('continuity_guide', None)
         if images.get('source_audio') is not None:
             shot_images['source_audio'] = _audio_slice(images['source_audio'], start, end, length)
         shot_request = {**request, 'frames': length, 'source_start_seconds': clip_start + start / FPS,

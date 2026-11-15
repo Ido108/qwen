@@ -15,11 +15,14 @@ from pathlib import Path
 
 FPS = 24
 PART_FRAMES = 124
-# Each part after the first starts this many frames early, so it also makes the last frames of the part before it;
-# the two versions of those frames are blended into one seam. No part starts from frames another part made: the model
-# encodes such frames again and adds detail again, so a chain of parts drifted (2026-11-15: brightness 64 to 70 over
-# 15 parts; with the color matched, the fine texture on the face still rose 4.20, 4.99, 5.49 in parts 1 to 3). Each
-# part is made from the source and the references only, and matched to the look of part 1 (LookMatcher).
+# Each part after the first starts this many frames early, anchored there to the last frames of the part before it
+# (H3 anchors clips of 5, 22, 39... frames), so the background, clothing and light carry over; the two versions of
+# those frames are blended into one seam. Parts made without that anchor did not match: with a prompt that asks for
+# a new background ("make the background nvidia office"), part 1 came out in an open office, part 2 in the source
+# room and part 14 with a large logo (2026-11-15). The anchor frames are first matched to the look of part 1 and
+# softened (LookMatcher.guide), because the model adds fine detail to the frames it starts from: anchored on the
+# plain frames, a chain drifted part after part (brightness 64 to 70 over 15 parts; with the color matched, the
+# fine texture on the face still rose 4.20, 4.99, 5.49 in parts 1 to 3).
 OVERLAP_FRAMES = 5
 
 
@@ -28,11 +31,13 @@ class LookMatcher:
 
     Part 1 sets the reference: its color statistics (Lab mean and spread) and sharpness, and those of its source.
     Each later part is mapped to part 1's statistics shifted by the change in its own source, so a real change of
-    light in the source carries through while the differences between separately made parts (one part came out at
-    brightness 77, the next at 62, from the same light) do not. A part sharper than the reference (relative to its
-    source) is softened to it; detail is never added.
+    light in the source carries through while the drift a chain of anchored parts adds does not. A part sharper than
+    the reference (relative to its source) is softened to it; detail is never added.
     """
     SIGMAS = (0.4, 0.6, 0.8, 1.0, 1.3, 1.6)
+    # The model added about 10 to 19% fine detail to the frames a part starts from (face texture 4.20, 4.99, 5.49
+    # in an anchored chain); the anchor frames are softened by that much, so each part makes its own detail.
+    GUIDE_SHARPNESS = 0.85
 
     def __init__(self):
         self.reference = None
@@ -60,6 +65,23 @@ class LookMatcher:
 
     def set_reference(self, frames, source):
         self.reference = (self.look(frames), self.look(source))
+
+    def guide(self, frames, source=None):
+        """The last frames of a part (already matched) softened for the next part to start from."""
+        import cv2
+        import numpy as np
+        import torch
+        if self.reference is None:
+            return frames
+        (_, _, ref_sharp), (_, _, ref_src_sharp) = self.reference
+        pixels = self._uint8(frames)
+        src_sharp = self._sharpness(self._uint8(source), step=1) if source is not None else ref_src_sharp
+        ratio = src_sharp / ref_src_sharp if ref_src_sharp > 1.0 and src_sharp > 1.0 else 1.0
+        target = self.GUIDE_SHARPNESS * ref_sharp * ratio
+        if target <= 0 or self._sharpness(pixels, step=1) <= target:
+            return frames
+        sigma = min(self.SIGMAS, key=lambda s: abs(self._sharpness(np.stack([cv2.GaussianBlur(f, (0, 0), s) for f in pixels]), step=1) - target))
+        return torch.from_numpy(np.stack([cv2.GaussianBlur(f, (0, 0), sigma) for f in pixels]).astype(np.float32) / 255)
 
     def apply(self, frames, source):
         """frames matched to the reference look; the first call sets the reference and returns frames unchanged."""
@@ -239,7 +261,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     # a stopped run keeps its work, and each part can be watched on its own.
     parts_folder = Path(destination).with_name(Path(destination).stem + ' parts')
     parts_folder.mkdir(parents=True, exist_ok=True)
-    sounds, first_frame, rate, held, durations, saved_parts = [], None, None, None, [], []
+    sounds, first_frame, rate, held, tail, durations, saved_parts = [], None, None, None, None, [], []
     looks = LookMatcher()
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
 
@@ -349,6 +371,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             hold = 0 if keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
             writer.add(pixels[:keep - hold])
             held = pixels[keep - hold:].clone() if hold else None
+            tail = looks.guide(pixels[-OVERLAP_FRAMES:]) if keep >= OVERLAP_FRAMES else None
             audio = None
             if request['output_audio'] == 'source':
                 audio = read_audio(source_path, keep / FPS, start_seconds=clip_start + start / FPS, end_seconds=clip_start + end / FPS)
@@ -367,6 +390,9 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             update(parts_saved=index + 1, parts_folder=str(parts_folder), part_seconds=durations, parts=saved_parts)
             continue
         images = part_images(frames, source_audio)
+        # Camera view anchors its camera guide on every frame; the other workflows start from the previous part's end.
+        if tail is not None and request['workflow'] != 'crossview':
+            images['continuity_guide'] = tail
 
         def relay(**values):
             values.setdefault('part', index + 1)
@@ -390,6 +416,8 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         hold = 0 if last or keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
         writer.add(pixels[:keep - hold])
         held = pixels[keep - hold:].clone() if hold else None
+        tail = (looks.guide(pixels[-OVERLAP_FRAMES:], frames[lead + keep - OVERLAP_FRAMES:lead + keep])
+                if keep >= OVERLAP_FRAMES else None)
         if request['output_audio'] == 'source':
             audio = source_audio
         elif request['output_audio'] == 'mute':
