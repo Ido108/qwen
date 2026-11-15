@@ -176,6 +176,8 @@ class FollowPartOneTests(unittest.TestCase):
 
         def generate(request, prompt, images, progress, preview_directory=None):
             events.append(('generate', images['precomputed_positive'], images['ref_image_1'].getpixel((0, 0)), prompt))
+            # Following the frame of part 1, no part starts from the frames of the part before.
+            self.assertNotIn('continuity_guide', images)
             return images['source_video'].clone(), None
 
         chosen = []

@@ -29,7 +29,10 @@ OVERLAP_FRAMES = 5
 # Parts 2 and later of a video with one input image get the frame of part 1 picked by best_reference_frame as
 # their input image, with this added to the prompt: the person, clothing and background part 1 made stay the same
 # in every part, also when the prompt asks for a new background (2026-11-15: with "make the background nvidia
-# office" the parts, made on their own, showed an open office, the source room and a large logo).
+# office" the parts, made on their own, showed an open office, the source room and a large logo). Those parts do
+# not also start from the last frames of the part before: with both, the face still got crunchier part after part
+# (face sharpness against the source 1.47, 1.56, 2.00, 2.36 in parts 1 to 4), and with the fixed frame of part 1
+# nothing passes from one part to the next.
 FOLLOW_PROMPT = ('\n\nEverything looks exactly as in the input image: the same person, face, hair, clothing, '
                  'background and lighting.')
 
@@ -331,7 +334,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         image, frame, likeness = chosen
         if preview_directory is not None:
             image.save(Path(preview_directory) / 'reference-from-part-1.png')
-        current.update(references={**references, 'ref_image_1': image}, prompt=prompt + FOLLOW_PROMPT)
+        current.update(references={**references, 'ref_image_1': image}, prompt=prompt + FOLLOW_PROMPT, frame=frame)
         update(reference_frame=frame, reference_likeness=round(likeness, 3))
 
     def bounds(index):
@@ -472,8 +475,9 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             update(parts_saved=index + 1, parts_folder=str(parts_folder), part_seconds=durations, parts=saved_parts)
             continue
         images = part_images(frames, source_audio)
-        # Camera view anchors its camera guide on every frame; the other workflows start from the previous part's end.
-        if tail is not None and request['workflow'] != 'crossview':
+        # Camera view anchors its camera guide on every frame; the other workflows start from the previous part's end,
+        # unless they follow a frame of part 1.
+        if tail is not None and request['workflow'] != 'crossview' and 'frame' not in current:
             images['continuity_guide'] = tail
 
         def relay(**values):
