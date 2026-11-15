@@ -95,11 +95,11 @@ class SwapLongTests(unittest.TestCase):
             self.assertEqual((count, has_audio, size, rate), (400, True, (64, 64), 32000))
             self.assertEqual(len(reads), 3, '400 frames: parts of 124, 119 and 157 (the last 38 frames join the third part), each read on its own')
             self.assertEqual([r[0] for r in reads], [124, 124, 175], 'each part is read on the 17n+5 grid')
-            # Parts after the first start 5 frames early: they also make the previous part's last 5 frames (the seam).
+            # Parts after the first start 5 frames early, where the previous part's last 5 frames are anchored (the seam).
             self.assertEqual([r[1] for r in reads], [2.0, round(2.0 + 119 / 24, 4), round(2.0 + 238 / 24, 4)])
             self.assertEqual([c[0] for c in calls], [124, 124, 175])
-            # No part is anchored to frames an earlier part made (that chain drifted part after part).
-            self.assertEqual([c[1] for c in calls], [None, None, None])
+            # The anchor is the previous part's last 5 written frames: frames 119-123 and 238-242 of the selection.
+            self.assertEqual([c[1] for c in calls], [None, 48 + 119, 48 + 238])
             self.assertTrue(any(u.get('part') == 3 and u.get('total_parts') == 3 for u in updates))
             self.assertFalse((Path(folder) / 'out.video.mp4').exists(), 'the video-only file is removed')
             # Each finished part is saved as its own MP4 with a poster, and stays next to the whole video.
@@ -150,8 +150,8 @@ class TwoPassTests(unittest.TestCase):
                                                 generate, Path(folder) / 'out.mp4', encoder=Encoder())
         self.assertEqual(count, 400)
         self.assertEqual(events, [('prepare', 124, False), ('prepare', 124, False), ('prepare', 175, False), ('encode_all', 3),
-                                  ('generate', 124, 'positive-1', False), ('generate', 124, 'positive-2', False),
-                                  ('generate', 175, 'positive-3', False)])
+                                  ('generate', 124, 'positive-1', False), ('generate', 124, 'positive-2', True),
+                                  ('generate', 175, 'positive-3', True)])
 
 
 class WorkingMemoryTests(unittest.TestCase):
@@ -204,14 +204,15 @@ class SeamTests(unittest.TestCase):
         import numpy as np
         import torch
         from backend import long_faceswap
-        made = []
+        made, reads = [], []
 
         def read_frames(path, count, start_seconds, end_seconds, progress=None):
-            return torch.zeros(count, 64, 64, 3)
+            reads.append(count)
+            return torch.full((count, 64, 64, 3), 0.2 if len(reads) == 1 else 0.6)
 
         def generate(request, prompt, images, progress, preview_directory=None):
             made.append(request['frames'])
-            return torch.full((request['frames'], 64, 64, 3), 0.2 if len(made) == 1 else 0.6), None
+            return images['source_video'].clone(), None
 
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 243, 'steps': 8, 'source_start_seconds': 0,
                    'source_audio': False, 'output_audio': 'mute', 'width': 64, 'height': 64}
@@ -266,10 +267,34 @@ class RepairTests(unittest.TestCase):
                 has_sound = len(container.streams.audio) == 1
         # Only parts 2 and 3 are made again (part 2 with its 5 seam frames, part 3 with the last frames joined to it).
         self.assertEqual((count, len(levels), made, has_sound), (400, 400, [124, 175], True))
+        # The new parts came out brighter (0.6) from the same source; they are matched to the kept part 1 (0.2).
         self.assertAlmostEqual(levels[60], 0.2, delta=0.02)
-        self.assertAlmostEqual(levels[300], 0.6, delta=0.02)
-        seam = levels[119:124]
-        self.assertTrue(all(x < y for x, y in zip(seam, seam[1:])) and 0.2 < seam[0] < 0.35 and 0.45 < seam[-1] < 0.6, seam)
+        self.assertAlmostEqual(levels[300], 0.2, delta=0.02)
+        self.assertLess(max(levels) - min(levels), 0.04)
+
+
+class LookTests(unittest.TestCase):
+    def test_a_part_darker_than_part_1_from_the_same_source_is_brought_back_to_part_1(self):
+        import torch
+        from backend.long_faceswap import LookMatcher
+        torch.manual_seed(0)
+        source = torch.rand(40, 72, 128, 3) * 0.6 + 0.2
+        part_1 = (source * 1.05).clamp(0, 1)
+        darker = (source * 0.8).clamp(0, 1)
+        looks = LookMatcher()
+        self.assertIs(looks.apply(part_1, source), part_1, 'part 1 sets the look and stays as it is')
+        matched = looks.apply(darker, source)
+        brightness = lambda frames: LookMatcher.look(frames)[0][0]
+        self.assertLess(abs(brightness(matched) - brightness(part_1)), 1.0)
+        self.assertGreater(abs(brightness(darker) - brightness(part_1)), 10.0)
+
+    def test_a_real_change_of_light_in_the_source_carries_through(self):
+        import torch
+        from backend.long_faceswap import LookMatcher
+        looks = LookMatcher()
+        looks.apply(torch.full((12, 72, 128, 3), 0.4), torch.full((12, 72, 128, 3), 0.4))
+        brighter = looks.apply(torch.full((12, 72, 128, 3), 0.6), torch.full((12, 72, 128, 3), 0.6))
+        self.assertAlmostEqual(float(brighter.mean()), 0.6, delta=0.03)
 
 
 if __name__ == '__main__':

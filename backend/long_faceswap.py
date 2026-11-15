@@ -15,11 +15,78 @@ from pathlib import Path
 
 FPS = 24
 PART_FRAMES = 124
-# Each part after the first starts this many frames early, so it also makes the last frames of the part before it;
-# the two versions of those frames are blended into one seam. Parts are never anchored to frames an earlier part
-# made: on 2026-11-15 a 15-part run anchored that way drifted part after part (brightness 64 to 70, sharpness
-# 675 to 1319), and the last parts came out orange and over-sharpened.
+# Each part after the first starts this many frames early, anchored there to the last frames of the part before it
+# (H3 anchors clips of 5, 22, 39... frames), so clothing, light and look carry over; the two versions of those frames
+# are blended into one seam. Each finished part is first matched back to the look of part 1 (LookMatcher): anchored
+# without it, a 15-part run drifted part after part (2026-11-15: brightness 64 to 70, sharpness 675 to 1319, the
+# last parts orange and over-sharpened), and without any anchor the parts did not match (one part in a blue shirt,
+# the next in a white T-shirt, brightness 77 against 62).
 OVERLAP_FRAMES = 5
+
+
+class LookMatcher:
+    """Keeps every part of a long video in the look of its first part.
+
+    Part 1 sets the reference: its color statistics (Lab mean and spread) and sharpness, and those of its source.
+    Each later part is mapped to part 1's statistics shifted by the change in its own source, so a real change of
+    light in the source carries through while the drift a chain of anchored parts adds does not. A part sharper than
+    the reference (relative to its source) is softened to it; detail is never added.
+    """
+    SIGMAS = (0.4, 0.6, 0.8, 1.0, 1.3, 1.6)
+
+    def __init__(self):
+        self.reference = None
+
+    @staticmethod
+    def _uint8(frames):
+        return (frames.clamp(0, 1).numpy() * 255).round().astype('uint8')
+
+    @classmethod
+    def _sharpness(cls, frames, step=6):
+        import cv2
+        import numpy as np
+        return float(np.mean([cv2.Laplacian(cv2.cvtColor(cv2.resize(f, (512, 288), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY),
+                                            cv2.CV_32F).var() for f in frames[::step]]))
+
+    @classmethod
+    def look(cls, frames):
+        """(Lab mean, Lab spread, sharpness) of [N, H, W, 3] frames in 0..1."""
+        import cv2
+        import numpy as np
+        pixels = cls._uint8(frames)
+        lab = np.stack([cv2.cvtColor(cv2.resize(f, (256, 144), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2LAB)
+                        for f in pixels[::4]]).astype(np.float32).reshape(-1, 3)
+        return lab.mean(0), lab.std(0), cls._sharpness(pixels)
+
+    def set_reference(self, frames, source):
+        self.reference = (self.look(frames), self.look(source))
+
+    def apply(self, frames, source):
+        """frames matched to the reference look; the first call sets the reference and returns frames unchanged."""
+        import cv2
+        import numpy as np
+        import torch
+        if self.reference is None:
+            self.set_reference(frames, source)
+            return frames
+        (ref_mean, ref_spread, ref_sharp), (ref_src_mean, ref_src_spread, ref_src_sharp) = self.reference
+        mean, spread, _ = self.look(frames)
+        src_mean, src_spread, src_sharp = self.look(source)
+        ratio = np.where(ref_src_spread > 1.0, src_spread / np.maximum(ref_src_spread, 1e-3), 1.0)
+        target_mean, target_spread = ref_mean + (src_mean - ref_src_mean), ref_spread * ratio
+        scale = target_spread / np.maximum(spread, 1e-3)
+        pixels = self._uint8(frames)
+        matched = np.empty_like(pixels)
+        for i, frame in enumerate(pixels):
+            lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB).astype(np.float32)
+            matched[i] = cv2.cvtColor(np.clip((lab - mean) * scale + target_mean, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
+        target_sharp = ref_sharp * (src_sharp / ref_src_sharp if ref_src_sharp > 1.0 and src_sharp > 1.0 else 1.0)
+        sharp = self._sharpness(matched)
+        if target_sharp > 0 and sharp > 1.08 * target_sharp:
+            sample = matched[::6]
+            sigma = min(self.SIGMAS, key=lambda s: abs(self._sharpness(np.stack([cv2.GaussianBlur(f, (0, 0), s) for f in sample]), step=1) - target_sharp))
+            matched = np.stack([cv2.GaussianBlur(f, (0, 0), sigma) for f in matched])
+        return torch.from_numpy(matched.astype(np.float32) / 255)
 # A shorter last part joins the part before it: one longer pass (at most 192 frames, still mostly on the GPU)
 # costs less than a part of its own, which pays the whole fixed cost of a part (about 65 s on the RTX 5090).
 MIN_LAST_PART = 60
@@ -172,7 +239,8 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     # a stopped run keeps its work, and each part can be watched on its own.
     parts_folder = Path(destination).with_name(Path(destination).stem + ' parts')
     parts_folder.mkdir(parents=True, exist_ok=True)
-    sounds, first_frame, rate, held, durations, saved_parts = [], None, None, None, [], []
+    sounds, first_frame, rate, held, tail, durations, saved_parts = [], None, None, None, None, [], []
+    looks = LookMatcher()
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
 
     def bounds(index):
@@ -271,6 +339,9 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         if index < first_new:
             # Kept from the original video, frames and sound as they are.
             pixels = kept_frames[start:end].float() / 255
+            if index == 0:
+                # The kept part 1 sets the look the new parts are matched to.
+                looks.set_reference(pixels, read_part(0)[0])
             if first_frame is None:
                 first_frame = pixels[0].clone()
             if held is not None:
@@ -278,6 +349,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             hold = 0 if keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
             writer.add(pixels[:keep - hold])
             held = pixels[keep - hold:].clone() if hold else None
+            tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
             audio = None
             if request['output_audio'] == 'source':
                 audio = read_audio(source_path, keep / FPS, start_seconds=clip_start + start / FPS, end_seconds=clip_start + end / FPS)
@@ -296,6 +368,9 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             update(parts_saved=index + 1, parts_folder=str(parts_folder), part_seconds=durations, parts=saved_parts)
             continue
         images = part_images(frames, source_audio)
+        # Camera view anchors its camera guide on every frame; the other workflows start from the previous part's end.
+        if tail is not None and request['workflow'] != 'crossview':
+            images['continuity_guide'] = tail
 
         def relay(**values):
             values.setdefault('part', index + 1)
@@ -307,6 +382,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             update(**values)
 
         made, audio = by_shot(part_request(index), prompt, images, relay, run, preview_directory=preview_directory)
+        made = looks.apply(made, frames[:made.shape[0]])
         pixels = made[lead:lead + keep]
         if first_frame is None:
             first_frame = pixels[0].clone()
@@ -318,6 +394,7 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         hold = 0 if last or keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
         writer.add(pixels[:keep - hold])
         held = pixels[keep - hold:].clone() if hold else None
+        tail = pixels[-OVERLAP_FRAMES:].clone() if keep >= OVERLAP_FRAMES else None
         if request['output_audio'] == 'source':
             audio = source_audio
         elif request['output_audio'] == 'mute':
