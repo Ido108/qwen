@@ -11,9 +11,8 @@ export function PersonMatcher({people,references,assignments,status,error,stale,
 }){
   return <section className="person-matcher" aria-label="People in source video">
     <div className="section-heading"><h2>People in video</h2><button className="text-button person-rescan" disabled={status==='loading'} onClick={onRescan}><RefreshCw size={13}/>Scan selected clip</button></div>
-    {status==='loading'?<div className="person-scanning" role="status"><Loader2 size={15} className="spin"/>Finding people…</div>:null}
+    {status==='loading'||(stale&&status!=='error')?<div className="person-scanning" role="status"><Loader2 size={15} className="spin"/>Finding people…</div>:null}
     {status==='error'?<p className="person-analysis-error" role="alert">Could not detect people: {error} You can still use the first uploaded person for the main person.</p>:null}
-    {stale&&status!=='loading'?<p className="person-analysis-error">The clip changed. Scan it again to update the people.</p>:null}
     {status==='ready'&&!people.length?<p className="reference-help">No faces found. The first uploaded person will guide the main person.</p>:null}
     {people.length?<div className="person-cards">{people.map((person,index)=><div key={person.id} className={`person-card ${active===person.id?'active':''}`}>
       <button className="person-photo" onClick={()=>{onActive(person.id);onSeek(person.time);}} aria-label={`Show Source ${index+1} in source video`}><img src={person.preview} alt={`Source person ${index+1}`}/></button>

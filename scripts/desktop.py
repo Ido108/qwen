@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import shutil
@@ -14,7 +15,7 @@ import uuid
 from urllib.request import urlopen
 from urllib.error import HTTPError
 
-from windows_processes import Instance, Job, set_event, reset_event, windows, post_message
+from windows_processes import Instance, Job, set_event, reset_event, windows, post_message, show_window, foreground
 from watch_logs import viewer_name
 from terminal_lifetime import TerminalLifetime
 
@@ -56,8 +57,8 @@ def require_idle(url):
 
 def process_inventory():
     result = subprocess.run(['powershell.exe', '-NoProfile', '-Command',
-        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'],
-        capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, check=True)
+        '[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress'],
+        capture_output=True, text=True, encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW, check=True)
     return json.loads(result.stdout)
 
 
@@ -159,6 +160,31 @@ def stop_server(data, runtime):
         instance.close()
 
 
+def electron_processes(url):
+    """Process ids of the Qwen app windows (Electron) that show this server."""
+    script = str(APP/'scripts/electron.cjs').lower()
+    marker = re.compile(r'--url=' + re.escape(url) + r'/?(?=[\s"]|$)', re.IGNORECASE)
+    return [item['ProcessId'] for item in process_inventory()
+            if script in (item.get('CommandLine') or '').lower() and marker.search(item.get('CommandLine') or '')]
+
+
+def close_electron_windows(url):
+    for pid in electron_processes(url):
+        subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'], capture_output=True,
+                       creationflags=subprocess.CREATE_NO_WINDOW)
+
+
+def show_electron_window(url):
+    """Bring an open Qwen app window of this server to the front. False when none is open."""
+    pids = set(electron_processes(url))
+    for hwnd, pid, title in windows():
+        if pid in pids and title:
+            show_window(hwnd, 9)
+            foreground(hwnd)
+            return True
+    return False
+
+
 def serve(args):
     """The owner stops GPU children when a connected terminal closes."""
     data, runtime = args.data_dir.resolve(), args.runtime_file.resolve()
@@ -217,10 +243,17 @@ def ensure_server(args):
     data, runtime = args.data_dir.resolve(), args.runtime_file.resolve()
     saved = read_state(runtime)
     if saved.get('url') and matching_server(saved['url'], data):
-        if saved.get('terminal_controls_shutdown') or args.no_console:
+        if args.no_console:
             return saved
-        # Upgrade an old independent owner only when its jobs/downloads are idle.
+        try:
+            require_idle(saved['url'])
+        except (OSError, ValueError, RuntimeError) as error:
+            # A running or waiting job is never stopped: keep this copy and show its window and tabs again.
+            print(f'Qwen keeps the running copy: {error}', flush=True)
+            return saved
+        # Idle: close the old copy (server, tabs, app window) and start the current code.
         stop_server(data, runtime)
+        close_electron_windows(saved['url'])
     log_dir = data / 'logs'
     log_dir.mkdir(parents=True, exist_ok=True)
     command = [sys.executable, '-u', str(APP/'scripts/desktop.py'), '--serve', '--data-dir', str(data),
@@ -318,9 +351,14 @@ def run(args):
     if args.stop:
         print('Qwen server stopped.', flush=True)
         return
+    before = read_state(args.runtime_file.resolve())
     state = ensure_server(args)
+    kept = bool(before.get('owner_pid')) and before.get('owner_pid') == state.get('owner_pid')
     if not args.no_browser:
-        open_browser(args, state['url'])
+        if args.desktop_window and not kept:
+            close_electron_windows(state['url'])
+        if not (args.desktop_window and kept and show_electron_window(state['url'])):
+            open_browser(args, state['url'])
     print(f'Qwen is ready: {state["url"]}\n'
           'Closing a Qwen terminal tab stops Qwen and its active jobs.\n'
           'Closing the browser leaves Qwen running. Models release after 10 minutes without jobs.', flush=True)
