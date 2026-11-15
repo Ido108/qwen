@@ -84,7 +84,7 @@ class SwapLongTests(unittest.TestCase):
 
         updates = []
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 2.0,
-                   'source_audio': True, 'output_audio': 'generated', 'width': 64, 'height': 64}
+                   'source_audio': True, 'output_audio': 'generated', 'width': 64, 'height': 64, 'long_parts': 'chain'}
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch('backend.reference_media.read_frames', read_frames), \
                 mock.patch('backend.reference_media.read_audio', read_audio), \
@@ -144,7 +144,7 @@ class TwoPassTests(unittest.TestCase):
             return images['source_video'].clone(), None
 
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
-                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32}
+                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32, 'long_parts': 'chain'}
         with tempfile.TemporaryDirectory() as folder,                 mock.patch('backend.reference_media.read_frames', read_frames),                 mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]):
             count, *_ = long_faceswap.swap_long(request, 'Faceswap', {}, Path('source.mp4'), lambda **values: None,
                                                 generate, Path(folder) / 'out.mp4', encoder=Encoder())
@@ -233,7 +233,7 @@ class FollowPartOneTests(unittest.TestCase):
 
 
 class IndependentPartsTests(unittest.TestCase):
-    def test_independent_parts_use_the_input_image_and_no_anchor(self):
+    def test_by_default_every_part_uses_the_input_image_and_no_anchor(self):
         import torch
         from PIL import Image
         from backend import long_faceswap
@@ -247,8 +247,7 @@ class IndependentPartsTests(unittest.TestCase):
             return images['source_video'].clone(), None
 
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
-                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png'],
-                   'long_parts': 'independent'}
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png']}
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch('backend.reference_media.read_frames', read_frames), \
                 mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \

@@ -458,10 +458,12 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     sounds, first_frame, rate, held, tail, durations, saved_parts = [], None, None, None, None, [], []
     looks = LookMatcher()
     want_audio = request['source_audio'] or request['output_audio'] == 'source'
-    # long_parts: by default each part starts from the last frames of the part before (the chain); 'independent':
-    # every part from the input images and the source only; 'follow': with one input image, the later parts take
-    # their input image from part 1 (best_reference_frame) and do not start from the part before.
-    independent = request.get('long_parts') == 'independent'
+    # long_parts: by default every part is made from the input images and the source only, and the parts meet in a
+    # morphed seam (seam_morph): that held the quality over 16 parts, where every chain lost it (a copy of a copy:
+    # crunchy and orange, or with the detail turned down after every part, smooth and less like the input photo).
+    # 'chain': each part starts from the last frames of the part before; 'follow': with one input image, the later
+    # parts take their input image from part 1 (best_reference_frame) and do not start from the part before.
+    independent = request.get('long_parts') not in ('chain', 'follow')
     follow = (request.get('long_parts') == 'follow' and request['workflow'] != 'crossview'
               and len(request.get('reference_images') or []) == 1 and len(plan) > 1)
     current = {'references': references, 'prompt': prompt}
