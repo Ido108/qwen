@@ -56,9 +56,9 @@ FACE_LOST = 0.7
 SCENE_LIMIT = 3.0
 QUALITY_PROMPT = '\n\nHigh quality, sharp details.'
 # The input image shown as a shot of its own counts as a lost face too: a made frame this like the input image is
-# the image itself (2026-11-16: the last 0.7 s of one video showed the input photo, likeness 0.96; made faces
-# measured 0.86 at most).
-PHOTO_SHOWN = 0.92
+# the image itself (2026-11-16: three videos ended with the input photo, frame by frame 0.91 to 0.96 like it; made
+# faces measured 0.86 at most).
+PHOTO_SHOWN = 0.89
 # How many parts in a row start from the last frames of the part before; the part after them is made on its own
 # again. Measured on 8 parts in a row (2026-11-16, one video, the same seed as its run with every part on its own):
 # the step into each part was 0.7 to 1.4 times the normal step between two frames (1.7 to 2.9 on their own), the
