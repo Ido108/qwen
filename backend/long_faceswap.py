@@ -786,9 +786,9 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
             scene_kept = change <= SCENE_LIMIT
             rank = (face_kept and scene_kept, face_kept, -change)
             if best is None or rank > best[0]:
-                best = (rank, made, audio)
+                best = (rank, made, audio, 'continuity_guide' in images)
             if (face_kept and scene_kept) or retried:
-                made, audio = best[1], best[2]
+                made, audio, from_before = best[1], best[2], best[3]
                 break
             # The face or the scene of part 1 is lost in this part: the part one more time (see FACE_LOST).
             retried = True
@@ -820,8 +820,11 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         if first_frame is None:
             first_frame = pixels[0].clone()
         if held is not None and lead:
-            # The seam: the previous part's version of the overlap frames morphs into this part's version.
-            writer.add(seam_morph(held, made[:lead].to(held.dtype)))
+            # The seam. A part that started from the frames of the part before continues them: the seam frames
+            # are the previous part's own and this part goes on after them (the 5 frames of a morph there were
+            # softer than the frames around them, 2026-11-16). Else the previous part's version of the overlap
+            # frames morphs into this part's version.
+            writer.add(held if from_before else seam_morph(held, made[:lead].to(held.dtype)))
         last = index == len(plan) - 1
         hold = 0 if last or keep <= OVERLAP_FRAMES else OVERLAP_FRAMES
         writer.add(pixels[:keep - hold])

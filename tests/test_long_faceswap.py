@@ -530,6 +530,40 @@ class SeamTests(unittest.TestCase):
         self.assertTrue(all(a < b for a, b in zip(seam, seam[1:])), seam)
         self.assertTrue(0.2 < seam[0] < 0.35 and 0.45 < seam[-1] < 0.6, seam)
 
+    def test_a_part_that_started_from_the_part_before_joins_with_no_morph(self):
+        import av
+        import torch
+        from PIL import Image
+        from backend import long_faceswap
+        reads = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            reads.append(count)
+            return torch.full((count, 64, 64, 3), 0.2 if start_seconds == 0 else 0.6)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            return images['source_video'].clone(), None
+
+        def levels(**extra):
+            request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 243, 'steps': 8, 'source_start_seconds': 0,
+                       'source_audio': False, 'output_audio': 'mute', 'width': 64, 'height': 64, 'reference_images': ['a.png'], 'seed': 1, **extra}
+            with tempfile.TemporaryDirectory() as folder,                     mock.patch('backend.reference_media.read_frames', read_frames),                     mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]),                     mock.patch.object(long_faceswap, 'best_reference_frame', lambda frames, reference: (Image.new('RGB', (8, 8), 'red'), 40, 0.7)),                     mock.patch.object(long_faceswap, 'face_lost', lambda *a, **k: False):
+                destination = Path(folder) / 'out.mp4'
+                long_faceswap.swap_long(request, 'Faceswap', {'ref_image_1': Image.new('RGB', (8, 8), 'blue')}, Path('source.mp4'),
+                                        lambda **values: None, generate, destination)
+                with av.open(str(destination)) as container:
+                    return [float(frame.to_ndarray(format='rgb24').mean()) / 255 for frame in container.decode(container.streams.video[0])]
+
+        # Part 2 started from the last frames of part 1: frames 119-123 are part 1's own, then part 2 goes on.
+        continued = levels()
+        self.assertEqual(len(continued), 243)
+        for frame in continued[119:124]:
+            self.assertAlmostEqual(frame, 0.2, delta=0.02)
+        self.assertAlmostEqual(continued[124], 0.6, delta=0.03)
+        # Parts made on their own: the 5 seam frames go from part 1's version to part 2's version.
+        apart = levels(long_parts='follow')[119:124]
+        self.assertTrue(0.2 < apart[0] < 0.35 and 0.45 < apart[-1] < 0.6, apart)
+
     def test_the_seam_moves_a_shape_between_its_two_places_and_never_shows_it_twice(self):
         import numpy as np
         import torch
