@@ -42,16 +42,17 @@ FOLLOW_PROMPT = '\n\nThe clothing, background and lighting are exactly as in <Pi
 # A part is made one more time when it does not hold what part 1 set:
 # - the face: in a checked frame the made face is the source face again (face_lost). The made face is compared with
 #   the face in the same frame of the source, so a covered or turned face is not a lost face. A swap that went back
-#   to the source face measured 0.88 to 0.96 to the source face and 0.02 to 0.10 to the input image; 17 parts that
-#   kept the swap measured at most 0.27 and at least 0.57. (2026-11-16: a check that compared the frames of a part
-#   with each other made part 1 of a video four times, where objects covered half the face.)
+#   to the source face measured 0.88 to 0.96 to the source face and 0.02 to 0.10 to the input image; parts that
+#   kept the swap measured at most 0.27 to the source face, and at most 0.51 in a video where objects cover half
+#   the face. (2026-11-16: a check that compared the frames of a part with each other made part 1 of that video
+#   four times.)
 # - the scene: its still picture (scene_plate) differs from part 1's by more than SCENE_LIMIT beyond what the source
 #   itself changed between the two parts (2026-11-15: the short last part of a video came out in a dark jacket where
 #   parts 1 to 15 had a white T-shirt; made on their own, parts came out with other backgrounds).
 # The second try starts from the last frames of the part before, which already has the face and the scene, next to
 # the input image, with QUALITY_PROMPT added (one such start is a small step; only a chain of them lost quality).
 # Part 1 has no part before it: its second try is the next seed. The better of the two tries is kept.
-FACE_LOST = 0.5
+FACE_LOST = 0.7
 SCENE_LIMIT = 3.0
 QUALITY_PROMPT = '\n\nHigh quality, sharp details.'
 
