@@ -133,22 +133,51 @@ function App(){
   });
   // Phones: Download opens the share sheet (Save Image, Save Video) instead of the browser's download page.
   // Without sharing (plain http) the file opens by itself, to keep with a long press.
+  // The file is fetched first, with its progress on the button, one fetch per button. The share sheet needs a
+  // fresh tap: after a long fetch (a video on mobile data) the browser refuses it, so the button becomes Save and
+  // the next tap shares the file that is already here. (2026-11-16: a 49 MB video on the online page was fetched
+  // 16 times by repeated taps, each ended with a refused share and the file opened as a bare tab.)
   useEffect(()=>{
     const touch=window.matchMedia('(pointer:coarse)');
+    const fetched=new Map<string,File>(),fetching=new Set<string>();
+    const label=(link:HTMLAnchorElement,text?:string)=>{
+      const node=[...link.childNodes].reverse().find(child=>child.nodeType===Node.TEXT_NODE) as Text|undefined;
+      if(!node)return;
+      link.dataset.label??=node.data;
+      node.data=text??link.dataset.label;
+    };
+    async function share(link:HTMLAnchorElement,file:File){
+      try{await navigator.share({files:[file]});fetched.delete(link.href);label(link);}
+      catch{label(link,'Save');}
+    }
     async function save(event:MouseEvent){
       const link=(event.target as Element|null)?.closest?.('a[href*="download=true"]') as HTMLAnchorElement|null;
       if(!link||!touch.matches)return;
       event.preventDefault();
       const plain=link.href.replace(/[?&]download=true/,'');
-      if(navigator.canShare){
-        try{
-          const response=await fetch(plain);const blob=await response.blob();
-          const name=link.href.split('/').slice(-2,-1)[0]+(blob.type.includes('video')?'.mp4':'.png');
-          const file=new File([blob],name,{type:blob.type});
-          if(navigator.canShare({files:[file]})){await navigator.share({files:[file]});return;}
-        }catch(e){if((e as Error).name==='AbortError')return;}
-      }
-      window.open(plain,'_blank');
+      if(!navigator.canShare){window.open(plain,'_blank');return;}
+      if(fetching.has(link.href))return;
+      const ready=fetched.get(link.href);
+      if(ready){await share(link,ready);return;}
+      fetching.add(link.href);label(link,'Downloading…');
+      try{
+        const response=await fetch(plain);
+        if(!response.ok||!response.body)throw new Error(`HTTP ${response.status}`);
+        const total=Number(response.headers.get('content-length'))||0,type=response.headers.get('content-type')||'';
+        const chunks:BlobPart[]=[];let received=0;
+        for(const reader=response.body.getReader();;){
+          const {done,value}=await reader.read();
+          if(done)break;
+          chunks.push(value);received+=value.length;
+          if(total)label(link,`Downloading ${Math.min(99,Math.floor(received/total*100))}%`);
+        }
+        const file=new File(chunks,link.href.split('/').slice(-2,-1)[0]+(type.includes('video')?'.mp4':'.png'),{type});
+        // No share sheet for this file: the browser's own download of the link.
+        if(!navigator.canShare({files:[file]})){label(link);location.assign(link.href);return;}
+        fetched.set(link.href,file);
+        await share(link,file);
+      }catch{label(link,'Could not download. Try again');}
+      finally{fetching.delete(link.href);}
     }
     document.addEventListener('click',save);
     return()=>document.removeEventListener('click',save);
