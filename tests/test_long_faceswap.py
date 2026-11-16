@@ -665,3 +665,41 @@ class LookTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PartsSoFarTests(unittest.TestCase):
+    def test_the_finished_parts_are_one_playable_file_that_grows_with_each_part(self):
+        import av
+        import torch
+        from backend import long_faceswap, parts_video
+
+        def frames(path):
+            with av.open(str(path)) as container:
+                return sum(1 for _ in container.decode(container.streams.video[0])), bool(container.streams.audio)
+
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            self.assertIsNone(parts_video.joined_parts(folder, 3))
+            for index, count in enumerate((12, 10, 7)):
+                sound = torch.zeros(1, 2, round(count / 24 * 48000))
+                long_faceswap._save_part(folder, index, torch.full((count, 32, 32, 3), 0.2 * (index + 1)), sound, 48000)
+            first = parts_video.joined_parts(folder, 2)
+            self.assertEqual(first.name, 'parts-001-to-002.mp4')
+            self.assertEqual(frames(first), (22, True))
+            self.assertEqual(parts_video.joined_parts(folder, 2), first)
+            third = parts_video.joined_parts(folder, 3)
+            self.assertEqual(frames(third), (29, True))
+            # One file of the run so far: the shorter one is removed, and no working file stays.
+            self.assertEqual(sorted(path.name for path in folder.glob('*') if not path.name.startswith('part-')), ['parts-001-to-003.mp4'])
+            # A part that is not on disk ends the join there.
+            (folder / 'part-002.mp4').unlink()
+            self.assertEqual(frames(parts_video.joined_parts(folder, 3)), (12, True))
+
+    def test_only_a_job_that_did_not_finish_and_has_parts_counts(self):
+        from backend.parts_video import unfinished_with_parts
+        self.assertTrue(unfinished_with_parts({'status': 'running', 'parts_saved': 5, 'parts_folder': 'x'}))
+        self.assertTrue(unfinished_with_parts({'status': 'cancelled', 'parts_saved': 15, 'parts_folder': 'x'}))
+        self.assertTrue(unfinished_with_parts({'status': 'failed', 'parts_saved': 1, 'parts_folder': 'x'}))
+        self.assertFalse(unfinished_with_parts({'status': 'succeeded', 'parts_saved': 17, 'parts_folder': 'x'}))
+        self.assertFalse(unfinished_with_parts({'status': 'running', 'parts_saved': 0, 'parts_folder': 'x'}))
+        self.assertFalse(unfinished_with_parts({'status': 'queued'}))

@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from .common import APP_DIR, DATA_DIR, EXAMPLES_DIR, JOBS_DIR, MODELS_DIR, OUTPUTS_DIR, VIDEOS_DIR, UPLOADS_DIR, VIDEO_UPLOADS_DIR, GenerationRequest, VideoRequest, ReferenceVideoRequest, UpscaleRequest, model_status, resolve_image, resolve_video, read_json, write_json
 from .reference_timing import probe_video_duration, resolve_reference_clip
-from . import models, cloud, civitai, people, training, moise_remote
+from . import models, cloud, civitai, people, training, moise_remote, parts_video
 from .resident_worker import ImageWorker
 
 from .common import AUDIO_UPLOADS_DIR, resolve_audio
@@ -181,6 +181,48 @@ def public_job(job):
     if job.get('status') == 'succeeded' and job.get('kind') not in ('training', 'captioning'):
         public['thumbnail_url'] = f'/api/jobs/{job["id"]}/thumbnail'
     return public
+
+
+def has_parts_so_far(job) -> bool:
+    """A long video that did not finish (running, stopped, failed) and has finished parts on disk."""
+    return job.get('kind') in VIDEO_KINDS and parts_video.unfinished_with_parts(job) and Path(job['parts_folder']).is_dir()
+
+
+def parts_so_far(job) -> Path | None:
+    """The finished parts of such a video joined into one file (parts_video); None when it cannot be made."""
+    if not has_parts_so_far(job):
+        return None
+    try:
+        return parts_video.joined_parts(Path(job['parts_folder']), int(job['parts_saved']))
+    except (OSError, subprocess.CalledProcessError):
+        logging.exception('Could not join the finished parts of %s', job.get('id'))
+        return None
+
+
+def gallery_job(job):
+    """public_job for the gallery: a long video that is not finished is there with its parts so far."""
+    public = public_job(job)
+    if has_parts_so_far(job):
+        public.update(unfinished=True, video_url=f'/api/jobs/{job["id"]}/video', thumbnail_url=f'/api/jobs/{job["id"]}/thumbnail',
+                      poster_url=f'/api/jobs/{job["id"]}/parts/1/poster')
+    return public
+
+
+def watch_parts_so_far(stopped):
+    """Every finished part of the running long video is joined with the parts before it, in the background, so the
+    parts folder always has one playable file of the run so far. Once at the start: the runs that stopped earlier."""
+    try:
+        for job in all_jobs():
+            parts_so_far(job)
+    except Exception:
+        logging.exception('Could not join the parts of earlier unfinished videos')
+    while not stopped.wait(10):
+        job_id = active_job
+        try:
+            if job_id:
+                parts_so_far(read_json(JOBS_DIR / job_id / 'status.json'))
+        except Exception:
+            logging.exception('Could not join the finished parts of the running video; trying again')
 
 
 def run_cloud_job(job_id: str, request: dict, kind: str) -> None:
@@ -426,6 +468,10 @@ def run_job(job_id):
             active_remote = None
             image_idle_since = time.monotonic()
             cancelled_jobs.discard(job_id)
+        try:
+            parts_so_far(read_json(directory / 'status.json'))
+        except Exception:
+            logging.exception('Could not join the finished parts of %s', job_id)
             recent_jobs.appendleft(job_id)
             save_queue_locked()
             start_next_locked()
@@ -557,6 +603,7 @@ async def lifespan(app):
     idle_thread = threading.Thread(target=watch_idle_image_worker, args=(idle_stop,),
                                    name='image-idle-release', daemon=True)
     idle_thread.start()
+    threading.Thread(target=watch_parts_so_far, args=(idle_stop,), name='parts-so-far', daemon=True).start()
     # BF16, FP16 and FP32 Qwen-Image-2.1 models get an INT8 ConvRot copy, made one at a time while the queue is idle.
     from . import int8_copies
     int8_copies.start(lambda: bool(shutting_down or active_job or pending_jobs or active_process is not None or models.transfer.get('status') == 'running'), idle_stop)
@@ -2172,7 +2219,7 @@ def retry_job(job_id: str):
 def library_jobs(kind: str, search: str) -> list[dict]:
     query = search.casefold().strip()
     titles = {item['id']: item['title'] for item in models.catalog()}
-    jobs = [j for j in all_jobs() if j.get('status') == 'succeeded' and j.get('kind') not in ('training', 'captioning')
+    jobs = [j for j in all_jobs() if (j.get('status') == 'succeeded' or has_parts_so_far(j)) and j.get('kind') not in ('training', 'captioning')
             and (kind == 'all' or (kind=='video' and j.get('kind') in VIDEO_KINDS)
                  or j.get('kind', 'image') == kind or (kind == 'image' and j.get('kind') == 'image-upscale'))
             and (not query or query in (j.get('request', {}).get('prompt', '') + ' ' + j.get('request', {}).get('model_id', '')
@@ -2185,7 +2232,7 @@ def library_jobs(kind: str, search: str) -> list[dict]:
 def library(kind: Literal['all', 'image', 'video'] = 'all', search: str = '',
             offset: int = Query(0, ge=0), limit: int = Query(48, ge=1, le=100)):
     jobs = library_jobs(kind, search)
-    return {'items': [public_job(j) for j in jobs[offset:offset + limit]], 'total': len(jobs)}
+    return {'items': [gallery_job(j) for j in jobs[offset:offset + limit]], 'total': len(jobs)}
 
 
 class LibraryDelete(BaseModel):
@@ -2209,15 +2256,21 @@ def library_delete(body: LibraryDelete):
     deleted, failed = 0, []
     for job in targets:
         with active_lock:
-            if job['id'] == active_job or job['id'] in pending_jobs or job.get('status') != 'succeeded':
+            stopped_with_parts = job.get('status') in ('cancelled', 'failed') and has_parts_so_far(job)
+            if job['id'] == active_job or job['id'] in pending_jobs or not (job.get('status') == 'succeeded' or stopped_with_parts):
                 continue  # never touch running or waiting jobs
             if job['id'] in recent_jobs:
                 recent_jobs.remove(job['id'])
         output = Path(job.get('output_path') or '')
         try:
+            if stopped_with_parts:
+                # A long video that stopped has no file of its own: its result is the folder of its parts.
+                parts = Path(job['parts_folder'])
+                if parts.name.endswith(' parts') and parts.is_dir():
+                    shutil.rmtree(parts)
             if output.suffix.lower() in MEDIA_SUFFIXES and output.is_file():
                 output.unlink()
-            sidecar = output.with_suffix('.json')
+            sidecar = output.with_suffix('.json') if output.name else output
             if output.suffix.lower() in MEDIA_SUFFIXES and sidecar.is_file():
                 sidecar.unlink()
             directory = JOBS_DIR / job['id']
@@ -2460,7 +2513,14 @@ def display_image(job_id: str):
 def video_result(job_id: str, download: bool = False):
     job=read_job(job_id)
     path=Path(job.get('output_path',''))
-    if job.get('kind') not in VIDEO_KINDS or job['status']!='succeeded' or not path.is_file():
+    if job['status']!='succeeded':
+        # A long video that is not finished: its finished parts, joined. It grows, so it is not kept by the browser.
+        joined=parts_so_far(job)
+        if joined is None:
+            raise HTTPException(404,'Saved video not found.')
+        name=f'{Path(job["parts_folder"]).name} 1 to {int(job["parts_saved"])}.mp4'
+        return FileResponse(joined,media_type='video/mp4',filename=name if download else None,headers={'Cache-Control':'no-store'})
+    if job.get('kind') not in VIDEO_KINDS or not path.is_file():
         raise HTTPException(404,'Saved video not found.')
     return FileResponse(path,media_type='video/mp4',filename=path.name if download else None)
 
@@ -2495,14 +2555,16 @@ def subject_replacement_video(job_id: str, download: bool = False):
 @app.get('/api/jobs/{job_id}/thumbnail')
 def thumbnail(job_id: str):
     job = read_job(job_id)
-    if job['status'] != 'succeeded':
+    unfinished = has_parts_so_far(job)
+    if job['status'] != 'succeeded' and not unfinished:
         raise HTTPException(404, 'Preview not found.')
     directory = JOBS_DIR / job_id
     cached = directory / 'thumbnail.webp'
     # The gallery can request the same new thumbnail twice at once; Windows refuses to replace a file that is being sent.
     with display_locks[int(job_id[:2], 16) % len(display_locks)]:
         if not cached.exists():
-            source = directory / 'poster.png' if job.get('kind') in VIDEO_KINDS else Path(job.get('output_path', ''))
+            source = (Path(job['parts_folder']) / 'part-001.jpg' if unfinished
+                      else directory / 'poster.png' if job.get('kind') in VIDEO_KINDS else Path(job.get('output_path', '')))
             if not source.is_file():
                 raise HTTPException(404, 'Saved result not found.')
             temporary = directory / f'thumbnail-{uuid.uuid4().hex}.tmp'

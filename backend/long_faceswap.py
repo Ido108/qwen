@@ -854,6 +854,9 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         combined = {'waveform': torch.cat(pieces, dim=-1), 'sample_rate': rate}
     update(stage='saving', message='Saving MP4…')
     writer.finish(combined)
+    # The whole video is written: the joined file of the parts so far (parts_video) is not needed any more.
+    for joined in parts_folder.glob('parts-001-to-*.mp4'):
+        joined.unlink(missing_ok=True)
     return writer.frames, first_frame, combined is not None, writer.size, rate
 
 
