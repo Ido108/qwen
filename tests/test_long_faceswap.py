@@ -255,7 +255,7 @@ class FollowPartOneTests(unittest.TestCase):
         self.assertEqual(made, [('positive-1', None, False), ('positive-2', 5, True), ('positive-3', 5, True),
                                 ('positive-3', None, True)])
 
-    def test_by_default_three_parts_in_a_row_start_from_the_part_before_and_the_next_part_is_made_on_its_own(self):
+    def test_by_default_the_parts_start_from_the_part_before_and_a_row_ends_after_its_limit(self):
         import torch
         from PIL import Image
         from backend import long_faceswap
@@ -278,10 +278,13 @@ class FollowPartOneTests(unittest.TestCase):
                                         Path('source.mp4'), lambda **values: None, generate, Path(folder) / 'out.mp4')
             return [part[0] for part in made]
 
-        # 7 parts. Part 1 is made on its own; parts 2 and 3 start from the part before (3 in a row with part 1);
-        # part 4 is made on its own again, and parts 5 and 6 start from the part before; part 7 on its own.
-        self.assertEqual(run(), [False, True, True, False, True, True, False])
+        # 7 parts. Part 1 is made on its own and every later part starts from the part before (the row limit is 8).
+        self.assertEqual(run(), [False, True, True, True, True, True, True])
         self.assertTrue(all(second and quality for _, second, quality in made[1:]))
+        self.assertEqual(long_faceswap.CONTINUE_RUN, 8)
+        # With a row of 3: parts 2 and 3 start from the part before (3 in a row with part 1), part 4 is made on its
+        # own again, parts 5 and 6 start from the part before, part 7 on its own.
+        self.assertEqual(run(continue_run=3), [False, True, True, False, True, True, False])
         self.assertEqual(run(continue_run=0), [False, True, True, True, True, True, True])
         self.assertEqual(run(long_parts='follow'), [False] * 7)
 

@@ -60,9 +60,13 @@ QUALITY_PROMPT = '\n\nHigh quality, sharp details.'
 # measured 0.86 at most).
 PHOTO_SHOWN = 0.92
 # How many parts in a row start from the last frames of the part before; the part after them is made on its own
-# again. One such start kept the face detail of part 1 (two measured parts); a whole video of them lost quality
-# by its fifth part (2026-11-15). The request field continue_run sets another number; 0 is no limit.
-CONTINUE_RUN = 3
+# again. Measured on 8 parts in a row (2026-11-16, one video, the same seed as its run with every part on its own):
+# the step into each part was 0.7 to 1.4 times the normal step between two frames (1.7 to 2.9 on their own), the
+# face detail of parts 2 to 8 was 5.35 to 7.28 (4.73 to 6.99 on their own, part 1: 6.41) with no fall along the
+# row, and the likeness to the input image was the same. Longer rows are not measured. A whole video of such
+# starts lost quality by its fifth part on 2026-11-15, before the input image and the frame of part 1 were the
+# pictures of every part. The request field continue_run sets another number; 0 is no limit.
+CONTINUE_RUN = 8
 
 
 def seam_morph(held, ahead):
