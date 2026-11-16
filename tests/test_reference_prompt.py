@@ -118,6 +118,14 @@ class ReferencePromptTests(unittest.TestCase):
         request.update(source_people=[],person_assignments={},reference_people=[],reference_images=['only.png'],prompt='')
         self.assertEqual(build_reference_prompt(request),'Faceswap')
 
+    def test_one_person_found_twice_by_the_scan_is_one_identity(self):
+        request=self.grouped();request.update(person_assignments={'person-1':'ref-person-a','person-2':'ref-person-a'},
+            reference_people=request['reference_people'][:1],reference_images=['front.png','side.png'])
+        self.assertEqual(build_reference_prompt(request),'Faceswap')
+        # A person to keep next to the replaced one is still named.
+        request['person_assignments']={'person-1':'ref-person-a','person-2':None}
+        self.assertIn('Replace only the source person first seen at 1.0s',build_reference_prompt(request))
+
     def test_unused_reference_pictures_keep_the_assignment_text(self):
         request=self.grouped();request.update(source_people=self.request['source_people'][:1],
             person_assignments={'person-1':'ref-person-a'})

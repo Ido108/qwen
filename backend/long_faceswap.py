@@ -39,16 +39,21 @@ OVERLAP_FRAMES = 5
 # longer identity text in the prompt makes the swap fade, see reference_prompt). Those parts do not also start from
 # the last frames of the part before.
 FOLLOW_PROMPT = '\n\nThe clothing, background and lighting are exactly as in <Picture 2>.'
-# A part is made again (another seed; the last of PART_RETRIES tries starts from the last frames of the part before)
-# when it does not hold what part 1 set:
-# - the face: in any of its checked frames less like the input image than FACE_KEPT of part 1's likeness (the swap
-#   can fade back to the source face in the middle of a part);
+# A part is made one more time when it does not hold what part 1 set:
+# - the face: in a checked frame the made face is the source face again (face_lost). The made face is compared with
+#   the face in the same frame of the source, so a covered or turned face is not a lost face. A swap that went back
+#   to the source face measured 0.88 to 0.96 to the source face and 0.02 to 0.10 to the input image; 17 parts that
+#   kept the swap measured at most 0.27 and at least 0.57. (2026-11-16: a check that compared the frames of a part
+#   with each other made part 1 of a video four times, where objects covered half the face.)
 # - the scene: its still picture (scene_plate) differs from part 1's by more than SCENE_LIMIT beyond what the source
 #   itself changed between the two parts (2026-11-15: the short last part of a video came out in a dark jacket where
 #   parts 1 to 15 had a white T-shirt; made on their own, parts came out with other backgrounds).
-FACE_KEPT = 0.6
+# The second try starts from the last frames of the part before, which already has the face and the scene, next to
+# the input image, with QUALITY_PROMPT added (one such start is a small step; only a chain of them lost quality).
+# Part 1 has no part before it: its second try is the next seed. The better of the two tries is kept.
+FACE_LOST = 0.5
 SCENE_LIMIT = 3.0
-PART_RETRIES = 3
+QUALITY_PROMPT = '\n\nHigh quality, sharp details.'
 
 
 def seam_morph(held, ahead):
@@ -111,21 +116,34 @@ def scene_plate(frames, count=12):
     return np.median(np.stack(small), axis=0)
 
 
-def face_likeness(frames, reference, count=12):
-    """Likeness of the face in count evenly spaced frames ([N, H, W, 3] in 0..1) to the face in reference (a PIL
-    image), one value per frame with a face. None when reference has no face."""
-    import numpy as np
-    embed = _face_embedder()
-    target = embed(np.ascontiguousarray(np.asarray(reference.convert('RGB'))[..., ::-1]))
-    if target is None:
-        return None
-    values = []
-    for index in sorted({round(i * (frames.shape[0] - 1) / max(1, count - 1)) for i in range(count)}):
-        pixels = (frames[index].clamp(0, 1).numpy() * 255).round().astype(np.uint8)
-        embedding = embed(np.ascontiguousarray(pixels[..., ::-1]))
-        if embedding is not None:
-            values.append(float(np.dot(embedding, target)))
-    return values
+def face_lost(frames, source, reference, count=12):
+    """True when, in one of count evenly spaced frames, the made face is the source face again: at least FACE_LOST
+    like the face in the same frame of source, and more like it than like the face in reference (a PIL image).
+    frames and source: [N, H, W, 3] in 0..1. False when a frame has no face to compare, and when the check itself
+    fails: the check is an addition to the model's work and never stops a video."""
+    try:
+        import numpy as np
+        embed = _face_embedder()
+
+        def face(frame):
+            pixels = (frame.clamp(0, 1).numpy() * 255).round().astype(np.uint8)
+            return embed(np.ascontiguousarray(pixels[..., ::-1]))
+
+        target = embed(np.ascontiguousarray(np.asarray(reference.convert('RGB'))[..., ::-1]))
+        if target is None:
+            return False
+        total = min(frames.shape[0], source.shape[0])
+        for index in sorted({round(i * (total - 1) / max(1, count - 1)) for i in range(count)}):
+            made = face(frames[index])
+            original = face(source[index]) if made is not None else None
+            if original is None:
+                continue
+            alike = float(np.dot(made, original))
+            if alike >= FACE_LOST and alike > float(np.dot(made, target)):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def best_reference_frame(frames, reference):
@@ -189,6 +207,14 @@ class LookMatcher:
     @staticmethod
     def _uint8(frames):
         return (frames.clamp(0, 1).numpy() * 255).round().astype('uint8')
+
+    @staticmethod
+    def _each(function, items):
+        """function over items on 8 CPU threads, results in order: the GPU waits while a part is matched (one
+        thread: 13 s of each 124-frame part)."""
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            return list(pool.map(function, items))
 
     @classmethod
     def _split(cls, lum):
@@ -288,7 +314,11 @@ class LookMatcher:
     def set_reference(self, frames, source):
         self.reference = (self.look(frames), self.look(source))
         pixels, source_pixels = self._uint8(frames), self._uint8(source)
-        face, source_face = self.face_look(pixels, self._face_boxes(pixels)), self.face_look(source_pixels, self._face_boxes(source_pixels))
+        try:
+            face, source_face = self.face_look(pixels, self._face_boxes(pixels)), self.face_look(source_pixels, self._face_boxes(source_pixels))
+        except Exception:
+            # The face match is an addition: without it the parts are matched as whole frames only.
+            face = source_face = None
         self.face = (face, source_face) if face is not None and source_face is not None else None
 
     def _match_face(self, pixels, source):
@@ -308,17 +338,18 @@ class LookMatcher:
         scale = np.clip(target_spread / np.maximum(spread, 1e-3), *self.FACE_SCALE)
         shift = np.clip(target_mean - mean, -self.FACE_SHIFT, self.FACE_SHIFT)
         gains = self._gains(bands, ref_bands, src_bands, src0_bands)
-        out = pixels.copy()
-        for index, (frame, box) in enumerate(zip(pixels, boxes)):
+        def matched(pair):
+            frame, box = pair
             if box is None:
-                continue
+                return frame
             lab = (cv2.cvtColor(frame, cv2.COLOR_RGB2LAB).astype(np.float32) - mean) * scale + mean + shift
             if (gains < 1.0).any():
                 lab = self._apply_gains(lab, gains)
             fixed = cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
             mask = self._mask(frame.shape, box)
-            out[index] = np.clip(frame * (1 - mask) + fixed * mask, 0, 255).round().astype(np.uint8)
-        return out
+            return np.clip(frame * (1 - mask) + fixed * mask, 0, 255).round().astype(np.uint8)
+
+        return np.stack(self._each(matched, zip(pixels, boxes)))
 
     def apply(self, frames, source):
         """frames matched to the reference look; the first call sets the reference and returns frames unchanged."""
@@ -335,17 +366,20 @@ class LookMatcher:
         target_mean, target_spread = ref_mean + (src_mean - ref_src_mean), ref_spread * ratio
         scale = target_spread / np.maximum(spread, 1e-3)
         pixels = self._uint8(frames)
-        labs = [(cv2.cvtColor(frame, cv2.COLOR_RGB2LAB).astype(np.float32) - mean) * scale + target_mean for frame in pixels]
+        labs = self._each(lambda frame: (cv2.cvtColor(frame, cv2.COLOR_RGB2LAB).astype(np.float32) - mean) * scale + target_mean, pixels)
         # Detail bands measured after the color match, on the frames as they will be.
-        colored = np.stack([cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB) for lab in labs])
+        colored = np.stack(self._each(lambda lab: cv2.cvtColor(np.clip(lab, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB), labs))
         gains = self._gains(self._bands(colored[::6]), ref_bands, src_bands, ref_src_bands)
         if (gains < 1.0).any():
-            matched = np.stack([cv2.cvtColor(np.clip(self._apply_gains(lab, gains), 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
-                                for lab in labs])
+            matched = np.stack(self._each(lambda lab: cv2.cvtColor(np.clip(self._apply_gains(lab, gains), 0, 255).astype(np.uint8),
+                                                                   cv2.COLOR_LAB2RGB), labs))
         else:
             matched = colored
         if self.face is not None:
-            matched = self._match_face(matched, self._uint8(source))
+            try:
+                matched = self._match_face(matched, self._uint8(source))
+            except Exception:
+                pass
         return torch.from_numpy(matched.astype(np.float32) / 255)
 
 
@@ -515,10 +549,10 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
               and len(request.get('reference_images') or []) == 1 and len(plan) > 1)
     independent = mode != 'chain'
     current = {'references': references, 'prompt': prompt}
-    # The face of every part is checked against the input image when the video has one input image with a face.
+    # The face and the scene of every part are checked when the video has one input image.
     guard = (request['workflow'] != 'crossview' and len(request.get('reference_images') or []) == 1
              and references.get('ref_image_1') is not None)
-    face_level = {}
+    retries = 0
     # The still pictures of part 1 and of its source (scene_plate).
     scene = {}
 
@@ -531,7 +565,11 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         """Parts 2 and later: part 1's stillest frame most like the input image becomes their second picture."""
         if not follow or references.get('ref_image_1') is None:
             return
-        chosen = best_reference_frame(frames, references['ref_image_1'])
+        try:
+            chosen = best_reference_frame(frames, references['ref_image_1'])
+        except Exception:
+            # Without the frame the later parts keep the input image alone; the video is still made.
+            chosen = None
         if chosen is None:
             return
         image, frame, likeness = chosen
@@ -598,9 +636,10 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     by_shot = swap_by_shot if request['workflow'] == 'faceswap' else (
         lambda shot_request, shot_prompt, shot_images, progress, make, preview_directory=None:
         make(shot_request, shot_prompt, shot_images, progress, preview_directory=preview_directory))
-    def prepare_parts(wanted):
-        """Passes 1 and 2 for the wanted parts: their references through the VAE, then their prompts through the
-        text encoder (video_engine.ReferenceEncoder). swap_by_shot runs as in pass 3, so each shot gets its own entry."""
+    def prepare_parts(wanted, extra=''):
+        """Passes 1 and 2 for the wanted parts: their references through the VAE, then their prompts (with extra
+        added) through the text encoder (video_engine.ReferenceEncoder). swap_by_shot runs as in pass 3, so each shot
+        gets its own entry."""
         units = []
         for index, (frames, source_audio) in source_parts(wanted):
             if index < first_new:
@@ -617,8 +656,8 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                 values.pop('step', None)
                 update(**values)
 
-            by_shot(part_request(index), current['prompt'] if index else prompt, part_images(frames, source_audio),
-                    relay_prepare, prepare)
+            by_shot(part_request(index), (current['prompt'] if index else prompt) + extra,
+                    part_images(frames, source_audio), relay_prepare, prepare)
             del frames, source_audio
         update(parts_phase='prepare', preparing_part=wanted[-1] + 1, total_parts=len(plan))
         return iter(zip(units, encoder.encode_all(units)))
@@ -627,13 +666,14 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     if first_new:
         # A repair keeps part 1, so the new parts follow the kept part 1.
         follow_part_1(kept_frames[plan[0][0]:plan[0][1]].float() / 255)
-    # Without a kept part 1, the later parts are prepared again once part 1 is made (their input image comes from
-    # it). Part 1 is still prepared together with all the parts: prepared alone, the same seed gave a different
-    # part 1 (one video: a plant in the background that the run with all parts prepared did not have).
+    # Without a kept part 1, the later parts are prepared once part 1 is made (their input image comes from it), so
+    # part 1 is prepared alone and starts first. (Until 2026-11-16 all parts were also prepared before part 1 and
+    # that work was thrown away: 186 s of a 17-part video, before its first step. Prepared alone, the same seed can
+    # give another part 1 than a run that prepared all parts first.)
     split = follow and not first_new
     ready = None
     if encoder is not None and new_parts:
-        ready = prepare_parts(new_parts)
+        ready = prepare_parts(new_parts[:1] if split else new_parts)
 
     # The prepared conditioning a part used, kept so the part can be made again from it with another seed.
     used, replay = [], []
@@ -664,9 +704,6 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                 looks.set_reference(pixels, first_source)
                 if guard:
                     scene.update(made=scene_plate(pixels), source=scene_plate(first_source[:pixels.shape[0]]))
-                    values = face_likeness(pixels, references['ref_image_1'])
-                    if values:
-                        face_level['value'] = sorted(values)[len(values) // 2]
                 del first_source
             if first_frame is None:
                 first_frame = pixels[0].clone()
@@ -708,37 +745,32 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                 measured.update(gb=max(values['sampling_working_gb'], measured.get('gb', 0)), frames=length)
             update(**values)
 
-        attempt, tries, best = part_request(index), 0, None
+        attempt, part_prompt, retried, best = part_request(index), current['prompt'] if index else prompt, False, None
         while True:
             used.clear()
-            made, audio = by_shot(attempt, current['prompt'] if index else prompt, images, relay, run,
-                                  preview_directory=preview_directory)
-            values = face_likeness(made, references['ref_image_1']) if guard else None
-            if index == 0 and values and 'value' not in face_level:
-                # Part 1 sets how alike the swapped face is to the input image (its middle value).
-                face_level['value'] = sorted(values)[len(values) // 2]
-            lowest = min(values) if values else None
-            face_kept = not face_level.get('value') or lowest is None or lowest >= FACE_KEPT * face_level['value']
+            made, audio = by_shot(attempt, part_prompt, images, relay, run, preview_directory=preview_directory)
+            face_kept = not (guard and face_lost(made, frames, references['ref_image_1']))
             change = scene_change(made, frames) if guard and scene else 0.0
             scene_kept = change <= SCENE_LIMIT
             rank = (face_kept and scene_kept, face_kept, -change)
             if best is None or rank > best[0]:
                 best = (rank, made, audio)
-            if (face_kept and scene_kept) or tries == PART_RETRIES:
+            if (face_kept and scene_kept) or retried:
                 made, audio = best[1], best[2]
                 break
-            # The face or the scene of part 1 is lost in this part: the same part again, with another seed. The last
-            # try starts from the last frames of the part before, which already has the face and the scene (one such
-            # start is a small step; only a chain of them lost quality).
-            tries += 1
-            replay[:] = list(used)
-            if tries == PART_RETRIES and tail is not None and request['workflow'] != 'crossview':
+            # The face or the scene of part 1 is lost in this part: the part one more time (see FACE_LOST).
+            retried = True
+            if tail is not None:
                 images = {**images, 'continuity_guide': tail}
-                attempt = {**attempt, 'seed': int(request['seed'])}
+                part_prompt += QUALITY_PROMPT
+                if ready is not None:
+                    replay[:] = list(prepare_parts([index], QUALITY_PROMPT))
+                    update(parts_phase='generate')
             else:
-                attempt = {**attempt, 'seed': int(request['seed']) + tries}
-            face_level['retries'] = face_level.get('retries', 0) + 1
-            update(part_retries=face_level['retries'])
+                attempt = {**attempt, 'seed': int(request['seed']) + 1}
+                replay[:] = list(used)
+            retries += 1
+            update(part_retries=retries)
         best = None
         if index == 0 and guard and not scene:
             scene.update(made=scene_plate(made), source=scene_plate(frames))

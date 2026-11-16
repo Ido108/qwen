@@ -67,13 +67,15 @@ def build_reference_prompt(request: dict, instructions: str | None = None, *, re
 
 
 def single_identity(request: dict) -> bool:
-    """One source person (or none detected) becomes one reference identity; nobody to keep."""
+    """One source person (or none detected) becomes one reference identity; nobody to keep. Source people that all
+    get the same reference person count as one: the scan can find one person twice (another angle, a covered
+    face), and two entries for one person sent the long identity text that makes the swap fade."""
     if not request.get('reference_images'):
         raise ValueError('Add a reference image for subject replacement.')
     assignments = request.get('person_assignments') or {}
     if assignments and not any(assignments.values()):
         raise ValueError('Choose a reference image for at least one detected person.')
-    if len(assignments) > 1:
+    if len(set(assignments.values())) > 1:
         return False
     groups = request.get('reference_people') or []
     if assignments:
