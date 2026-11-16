@@ -188,7 +188,7 @@ class FollowPartOneTests(unittest.TestCase):
             return picked, 40, 0.71
 
         request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
-                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32, 'reference_images': ['a.png']}
+                   'source_audio': False, 'output_audio': 'mute', 'width': 32, 'height': 32, 'reference_images': ['a.png'], 'long_parts': 'follow'}
         updates = []
         with tempfile.TemporaryDirectory() as folder, \
                 mock.patch('backend.reference_media.read_frames', read_frames), \
@@ -212,6 +212,78 @@ class FollowPartOneTests(unittest.TestCase):
         self.assertNotIn('face', long_faceswap.FOLLOW_PROMPT.lower())
         self.assertNotIn('person', long_faceswap.FOLLOW_PROMPT.lower())
         self.assertTrue(any(u.get('reference_frame') == 40 for u in updates))
+
+    def test_continue_starts_each_part_from_the_last_frames_of_the_part_before_and_keeps_both_pictures(self):
+        import torch
+        from PIL import Image
+        from backend import long_faceswap
+        made, prepared = [], []
+        photo, picked = Image.new('RGB', (8, 8), 'blue'), Image.new('RGB', (8, 8), 'red')
+
+        class Encoder:
+            def prepare(self, request, prompt, images):
+                prepared.append((prompt, 'ref_image_2' in images))
+                return {'frames': request['frames'], 'id': len(prepared)}
+
+            def encode_all(self, units):
+                return [f'positive-{unit["id"]}' for unit in units]
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            guide = images.get('continuity_guide')
+            made.append((images['precomputed_positive'], None if guide is None else guide.shape[0], 'ref_image_2' in images))
+            return images['source_video'].clone(), None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 400, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png'],
+                   'seed': 100, 'long_parts': 'continue'}
+        # The first try of part 3 loses the face; its second try is made on its own.
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch('backend.reference_media.read_frames', read_frames), \
+                mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]), \
+                mock.patch.object(long_faceswap, 'best_reference_frame', lambda frames, reference: (picked, 40, 0.7)), \
+                mock.patch.object(long_faceswap, 'face_lost', lambda *a, **k: len(made) == 3):
+            count, *_ = long_faceswap.swap_long(request, 'Faceswap', {'ref_image_1': photo}, Path('source.mp4'),
+                                                lambda **values: None, generate, Path(folder) / 'out.mp4', encoder=Encoder())
+        self.assertEqual(count, 400)
+        later = 'Faceswap' + long_faceswap.FOLLOW_PROMPT + long_faceswap.QUALITY_PROMPT
+        self.assertEqual(prepared, [('Faceswap', False), (later, True), (later, True)])
+        # Part 1 has nothing before it. Parts 2 and 3 start from the 5 last frames of the part before, with both
+        # pictures. The second try of part 3 uses the same prepared conditioning without those frames.
+        self.assertEqual(made, [('positive-1', None, False), ('positive-2', 5, True), ('positive-3', 5, True),
+                                ('positive-3', None, True)])
+
+    def test_by_default_three_parts_in_a_row_start_from_the_part_before_and_the_next_part_is_made_on_its_own(self):
+        import torch
+        from PIL import Image
+        from backend import long_faceswap
+        made = []
+
+        def read_frames(path, count, start_seconds, end_seconds, progress=None):
+            return torch.full((count, 16, 16, 3), 0.5)
+
+        def generate(request, prompt, images, progress, preview_directory=None):
+            made.append(('continuity_guide' in images, 'ref_image_2' in images, prompt.endswith(long_faceswap.QUALITY_PROMPT)))
+            return images['source_video'].clone(), None
+
+        request = {'kind': 'reference-video', 'workflow': 'faceswap', 'frames': 838, 'steps': 8, 'source_start_seconds': 0,
+                   'source_audio': False, 'output_audio': 'mute', 'width': 16, 'height': 16, 'reference_images': ['a.png'], 'seed': 100}
+
+        def run(**extra):
+            made.clear()
+            with tempfile.TemporaryDirectory() as folder,                     mock.patch('backend.reference_media.read_frames', read_frames),                     mock.patch('backend.reference_shots.shot_bounds', lambda frames: [(0, frames.shape[0])]),                     mock.patch.object(long_faceswap, 'best_reference_frame', lambda frames, reference: (Image.new('RGB', (8, 8), 'red'), 40, 0.7)),                     mock.patch.object(long_faceswap, 'face_lost', lambda *a, **k: False):
+                long_faceswap.swap_long({**request, **extra}, 'Faceswap', {'ref_image_1': Image.new('RGB', (8, 8), 'blue')},
+                                        Path('source.mp4'), lambda **values: None, generate, Path(folder) / 'out.mp4')
+            return [part[0] for part in made]
+
+        # 7 parts. Part 1 is made on its own; parts 2 and 3 start from the part before (3 in a row with part 1);
+        # part 4 is made on its own again, and parts 5 and 6 start from the part before; part 7 on its own.
+        self.assertEqual(run(), [False, True, True, False, True, True, False])
+        self.assertTrue(all(second and quality for _, second, quality in made[1:]))
+        self.assertEqual(run(continue_run=0), [False, True, True, True, True, True, True])
+        self.assertEqual(run(long_parts='follow'), [False] * 7)
 
     def test_more_than_one_input_image_keeps_the_input_images(self):
         import torch
@@ -320,11 +392,12 @@ class FaceGuardTests(unittest.TestCase):
         import torch
         from PIL import Image
         from backend import long_faceswap
-        swapped, original = np.array([1, 0, 0], np.float32), np.array([0, 1, 0], np.float32)
+        photo_face, swapped, original = (np.array(v, np.float32) for v in ([1, 0, 0], [0.8, 0, 0.6], [0, 1, 0]))
 
         def embedder():
-            # A dark image shows the person of the input image, a bright one the source person, a gray one no face.
-            return lambda bgr: swapped if bgr.mean() < 60 else original if bgr.mean() > 190 else None
+            # The input image itself is nearly black. A dark image shows its person as the model draws him, a bright
+            # one the source person, a gray one no face.
+            return lambda bgr: photo_face if bgr.mean() < 15 else swapped if bgr.mean() < 60 else original if bgr.mean() > 190 else None
 
         photo = Image.new('RGB', (8, 8), (10, 10, 10))
         source = torch.full((24, 8, 8, 3), 0.9)
@@ -337,6 +410,9 @@ class FaceGuardTests(unittest.TestCase):
             faded = kept.clone()
             faded[20:] = 0.9  # the source face is back at the end of the part
             self.assertTrue(long_faceswap.face_lost(faded, source, photo))
+            shown = kept.clone()
+            shown[20:] = 10 / 255  # the input image itself as the last shot of the part
+            self.assertTrue(long_faceswap.face_lost(shown, source, photo))
 
     def test_a_face_check_that_fails_does_not_stop_the_video(self):
         import torch

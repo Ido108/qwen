@@ -55,6 +55,14 @@ FOLLOW_PROMPT = '\n\nThe clothing, background and lighting are exactly as in <Pi
 FACE_LOST = 0.7
 SCENE_LIMIT = 3.0
 QUALITY_PROMPT = '\n\nHigh quality, sharp details.'
+# The input image shown as a shot of its own counts as a lost face too: a made frame this like the input image is
+# the image itself (2026-11-16: the last 0.7 s of one video showed the input photo, likeness 0.96; made faces
+# measured 0.86 at most).
+PHOTO_SHOWN = 0.92
+# How many parts in a row start from the last frames of the part before; the part after them is made on its own
+# again. One such start kept the face detail of part 1 (two measured parts); a whole video of them lost quality
+# by its fifth part (2026-11-15). The request field continue_run sets another number; 0 is no limit.
+CONTINUE_RUN = 3
 
 
 def seam_morph(held, ahead):
@@ -136,6 +144,8 @@ def face_lost(frames, source, reference, count=12):
         total = min(frames.shape[0], source.shape[0])
         for index in sorted({round(i * (total - 1) / max(1, count - 1)) for i in range(count)}):
             made = face(frames[index])
+            if made is not None and float(np.dot(made, target)) >= PHOTO_SHOWN:
+                return True
             original = face(source[index]) if made is not None else None
             if original is None:
                 continue
@@ -150,14 +160,13 @@ def face_lost(frames, source, reference, count=12):
 def best_reference_frame(frames, reference):
     """The frame of frames ([N, H, W, 3] in 0..1) that moves least and whose face is most like the face in reference
     (a PIL image): among the stillest third of the frames, the one with the highest face likeness (SFace).
-    Returns (PIL image, frame index, likeness), or None when reference or no frame has a face."""
+    Returns (PIL image, frame index, likeness), or None when no frame has the face. When reference has no face
+    (the input image is an object), the stillest frame with likeness 0."""
     import cv2
     import numpy as np
     from PIL import Image
     embed = _face_embedder()
     target = embed(np.ascontiguousarray(np.asarray(reference.convert('RGB'))[..., ::-1]))
-    if target is None:
-        return None
     pixels = (frames.clamp(0, 1).numpy() * 255).round().astype(np.uint8)
     gray = np.stack([cv2.cvtColor(cv2.resize(f, (256, 144), interpolation=cv2.INTER_AREA), cv2.COLOR_RGB2GRAY)
                      for f in pixels]).astype(np.float32)
@@ -167,6 +176,10 @@ def best_reference_frame(frames, reference):
         motion[:-1] += steps
         motion[1:] += steps
         motion[1:-1] /= 2
+    if target is None:
+        # The input image has no face (an object, a place): the frame that moves least.
+        still = int(np.argmin(motion))
+        return Image.fromarray(pixels[still]), still, 0.0
     best = None
     for index in sorted(np.argsort(motion, kind='stable')[:max(1, len(pixels) // 3)]):
         embedding = embed(np.ascontiguousarray(pixels[index][..., ::-1]))
@@ -545,9 +558,19 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
     # but not always the background: one video came out the same in all 16 parts, another with a different
     # background in each of its first 3 parts, from the same prompt and settings. 'chain': each part starts from the
     # last frames of the part before; every chain lost quality (a copy of a copy).
+    # 'continue' (the default with one input image): as 'follow', and a part also starts from the last frames of
+    # the part before, so the join is the same frames and not two versions of them (2026-11-16, two videos: the
+    # step into a part made on its own was 1.3 to 4.6 times the normal step between two frames, the face changed
+    # over the 5 seam frames; into a part that started from the frames before it the step was 1.2 times). The input
+    # image and the frame of part 1 stay its pictures and QUALITY_PROMPT is added. Only CONTINUE_RUN parts in a row
+    # start that way. A part that loses the face or the scene is made again on its own.
     mode = request.get('long_parts')
-    follow = (mode in (None, 'follow') and request['workflow'] != 'crossview'
+    follow = (mode in (None, 'follow', 'continue') and request['workflow'] != 'crossview'
               and len(request.get('reference_images') or []) == 1 and len(plan) > 1)
+    continued = mode in (None, 'continue') and follow
+    run_limit = int(request.get('continue_run', CONTINUE_RUN))
+    # Parts made since the last part that was made on its own, that part included.
+    in_a_row = 0
     independent = mode != 'chain'
     current = {'references': references, 'prompt': prompt}
     # The face and the scene of every part are checked when the video has one input image.
@@ -576,7 +599,8 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         image, frame, likeness = chosen
         if preview_directory is not None:
             image.save(Path(preview_directory) / 'reference-from-part-1.png')
-        current.update(references={**references, 'ref_image_2': image}, prompt=prompt + FOLLOW_PROMPT, frame=frame)
+        current.update(references={**references, 'ref_image_2': image}, frame=frame,
+                       prompt=prompt + FOLLOW_PROMPT + (QUALITY_PROMPT if continued else ''))
         update(reference_frame=frame, reference_likeness=round(likeness, 3))
 
     def bounds(index):
@@ -734,8 +758,11 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
         images = part_images(frames, source_audio)
         # Camera view anchors its camera guide on every frame; the other workflows start from the previous part's end,
         # unless they follow a frame of part 1.
-        if tail is not None and request['workflow'] != 'crossview' and 'frame' not in current and not independent:
+        starts_from_before = continued and 'frame' in current and (not run_limit or in_a_row < run_limit)
+        if tail is not None and request['workflow'] != 'crossview' and (
+                starts_from_before or ('frame' not in current and not independent)):
             images['continuity_guide'] = tail
+        in_a_row = in_a_row + 1 if 'continuity_guide' in images else 1
 
         def relay(**values):
             values.setdefault('part', index + 1)
@@ -761,7 +788,12 @@ def swap_long(request, prompt, references, source_path, update, generate, destin
                 break
             # The face or the scene of part 1 is lost in this part: the part one more time (see FACE_LOST).
             retried = True
-            if tail is not None:
+            if 'continuity_guide' in images:
+                # It started from the frames of the part before and did not hold: once more on its own.
+                images = {name: value for name, value in images.items() if name != 'continuity_guide'}
+                replay[:] = list(used)
+                in_a_row = 1
+            elif tail is not None:
                 images = {**images, 'continuity_guide': tail}
                 part_prompt += QUALITY_PROMPT
                 if ready is not None:
