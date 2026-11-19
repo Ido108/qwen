@@ -378,14 +378,10 @@ def install(model_id, *, include_dependencies=True):
     from huggingface_hub import hf_hub_download, hf_hub_url, get_hf_file_metadata
     from huggingface_hub.errors import GatedRepoError
     from tqdm.auto import tqdm
-    # The app keeps its model cache on the roomy data drive. Hugging Face's
-    # normal CLI token remains in the user's home cache and is read only for
-    # gated downloads; it is never copied into app data or logged.
-    token=os.environ.get('HF_TOKEN')
-    if not token:
-        default_token=Path.home()/'.cache'/'huggingface'/'token'
-        if default_token.is_file():
-            token=default_token.read_text(encoding='utf-8').strip() or None
+    # A gated repo needs a token: the one saved in the app (Civitai > Hugging Face), then HF_TOKEN, then the token
+    # of the Hugging Face CLI. It is never logged.
+    from .hf_hub import hf_token
+    token=hf_token()
     items=[entry(name) for name in ([model_id] if isinstance(model_id,str) else model_id)]
     if any(item.get('kind')=='enhancer' for item in items):
         raise ValueError('Enhance prompt uses Qwen-Image PE on this computer. These old prompt model files are no longer downloaded.')
@@ -475,6 +471,9 @@ def install(model_id, *, include_dependencies=True):
                 f'Access to {model["repo"]} is restricted. Open '
                 f'https://huggingface.co/{model["repo"]} and accept the model terms '
                 'with the Hugging Face account used on this computer, then retry.'
+            ) if token else (
+                f'{model["repo"]} needs a Hugging Face token, and this computer has none. '
+                'Open Civitai, choose Hugging Face, add a token, then retry.'
             ))
     except Exception as exc:
         with lock:

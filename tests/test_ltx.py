@@ -128,11 +128,18 @@ class LtxTests(unittest.TestCase):
         import httpx
         from huggingface_hub.errors import GatedRepoError
         from backend.models import install
-        with patch.object(models,'is_installed',return_value=False), \
-             patch.dict(models.transfer, {'status':'idle'}, clear=True), \
-             patch('huggingface_hub.get_hf_file_metadata',side_effect=GatedRepoError('Access required',response=httpx.Response(403,request=httpx.Request('HEAD','https://huggingface.co')))), \
-             patch('huggingface_hub.hf_hub_download',side_effect=AssertionError('Do not download before access check')):
-            models.cancel_event.clear()
-            install(required_ltx(MultiReferenceRequest(prompt='Scene',reference_images=['a.png'])),include_dependencies=False)
-            self.assertEqual(models.transfer['status'],'failed')
-            self.assertIn('accept the model terms',models.transfer['message'])
+        refused=GatedRepoError('Access required',response=httpx.Response(403,request=httpx.Request('HEAD','https://huggingface.co')))
+        needed=required_ltx(MultiReferenceRequest(prompt='Scene',reference_images=['a.png']))
+        # 2026-11-19: the account had access, but this computer had no token. The message said to accept the terms.
+        for token,expected in (('hf_'+'a'*30,'accept the model terms'),(None,'add a token')):
+            with patch.object(models,'is_installed',return_value=False), \
+                 patch.dict(models.transfer, {'status':'idle'}, clear=True), \
+                 patch('backend.hf_hub.hf_token',return_value=token), \
+                 patch('huggingface_hub.get_hf_file_metadata',side_effect=refused) as access, \
+                 patch('huggingface_hub.hf_hub_download',side_effect=AssertionError('Do not download before access check')):
+                models.cancel_event.clear()
+                install(needed,include_dependencies=False)
+                self.assertEqual(models.transfer['status'],'failed')
+                self.assertIn(expected,models.transfer['message'])
+                # The token saved in the app is the one the download sends
+                self.assertEqual(access.call_args.kwargs['token'],token)
