@@ -102,9 +102,8 @@ def run(request, job, directory, update):
         source=resolve_video(request['source_video'])
         clip_start=request.get('source_start_seconds',0)
         clip_end=request.get('source_end_seconds')
-        # A selection longer than one pass of the model runs in parts and reads its source one part at a time
-        # (long_faceswap.swap_long). A selection that fits in one pass is made in one pass.
-        long_swap=is_long_faceswap(request,int(entry(request['model_id']).get('generation_defaults',{}).get('max_frames',362)))
+        # A long face swap reads its source one part at a time (long_faceswap.swap_long).
+        long_swap=is_long_faceswap(request)
         if not long_swap:
             update(stage='decoding_source',message='Decoding selected source video…')
             images['source_video']=read_frames(source,request['frames'],start_seconds=clip_start,end_seconds=clip_end,

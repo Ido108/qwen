@@ -36,20 +36,15 @@ class PartPlanTests(unittest.TestCase):
         self.assertFalse(is_long_faceswap({'kind': 'reference-video', 'workflow': 'crossview', 'frames': 362, 'warp_video': 'w.mp4'}))
         self.assertFalse(is_long_faceswap({'kind': 'reference-video', 'workflow': 'crossview', 'frames': 362, 'replace_subjects_first': True}))
 
-    def test_a_selection_that_fits_in_one_pass_of_its_model_runs_in_one_pass(self):
+    def test_a_selection_the_model_can_make_in_one_pass_still_runs_in_parts(self):
+        # 2026-11-19: 362 frames in one pass (the model's limit) did not keep the source: 5 s of it were missing and
+        # the last 4.5 s were not in the source. The same job in 3 parts followed the source to 0.08 s.
         swap = {'kind': 'reference-video', 'workflow': 'faceswap'}
-        # 2026-11-19: 362 frames (15 s) ran in 3 parts with a model that makes 362 frames in one pass
-        for frames in (141, 243, 362):
-            self.assertFalse(is_long_faceswap({**swap, 'frames': frames}, 362), frames)
-        for frames in (379, 957, 1977):
-            self.assertTrue(is_long_faceswap({**swap, 'frames': frames}, 362), frames)
-        self.assertTrue(is_long_faceswap({**swap, 'frames': 362}, 361))
-        # A repair keeps the parts of a video that was made in parts, whatever its length
-        self.assertTrue(is_long_faceswap({**swap, 'frames': 362, 'repair_of': 'a' * 32, 'repair_from_part': 2}, 362))
-        self.assertFalse(is_long_faceswap({'kind': 'video', 'workflow': 'faceswap', 'frames': 957}, 362))
-        # The worker asks with the one-pass length of the job's own model
+        for frames in (141, 243, 362, 957):
+            self.assertTrue(is_long_faceswap({**swap, 'frames': frames}), frames)
+        self.assertEqual([end - start for start, end in part_plan(362)], [124, 119, 119])
         worker = (Path(__file__).parents[1] / 'backend' / 'video_worker.py').read_text(encoding='utf-8')
-        self.assertIn("long_swap=is_long_faceswap(request,int(entry(request['model_id']).get('generation_defaults',{}).get('max_frames',362)))", worker)
+        self.assertIn('long_swap=is_long_faceswap(request)', worker)
 
 
 class LengthLimitTests(unittest.TestCase):
