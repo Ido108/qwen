@@ -32,8 +32,9 @@ const h3Sizes=[[1344,768],[768,1344],[768,768],[1024,768],[768,1024],[768,448],[
 // LTX 2.5 sizes are multiples of 64: the official workflow generates at half size, then doubles it.
 const ltxSizes=[[1280,704],[704,1280],[1536,832],[832,1536],[1024,576],[576,1024],[1024,1024],[768,768],[768,448],[448,768]] as const;
 
-export function VideoTab({library,api,onSendVideo,models,modelId,onModel,onBusy,queueActive,onQueued,restoreRequest,openSettings,visible,addLora}:{library:VideoLibraryData;addLora?:{id:string;key:number}|null;api:Api;onSendVideo:SendVideo;models:ModelState|null;modelId:string;onModel:(id:string)=>void;onBusy:(busy:boolean)=>void;queueActive:boolean;onQueued:()=>void;restoreRequest:{job:SavedJob;key:number}|null;openSettings:()=>void;visible:boolean}){
-  const [params,setParams]=useState<VideoParams>(loadDraft);
+export function VideoTab({library,api,onSendVideo,models,modelId,onModel,onBusy,queueActive,onQueued,restoreRequest,openSettings,visible,addLora,modeChoice,onMode}:{library:VideoLibraryData;addLora?:{id:string;key:number}|null;modeChoice?:{mode:'text'|'image';key:number}|null;onMode?:(mode:'text'|'image')=>void;api:Api;onSendVideo:SendVideo;models:ModelState|null;modelId:string;onModel:(id:string)=>void;onBusy:(busy:boolean)=>void;queueActive:boolean;onQueued:()=>void;restoreRequest:{job:SavedJob;key:number}|null;openSettings:()=>void;visible:boolean}){
+  const [params,setParams]=useState<VideoParams>(()=>({...loadDraft(),...(modeChoice?{mode:modeChoice.mode}:{})}));
+  const modeApplied=useRef(modeChoice?.key??null),modeModel=useRef<number|null>(null);
   const addedLora=useRef<number|null>(null);
   useEffect(()=>{if(!addLora||!models||addedLora.current===addLora.key)return;const lora=models.models.find(m=>m.id===addLora.id);if(!lora)return;
     const options=videoModelsFor(models.models,'create').filter(m=>lora.families?.includes(m.family||''));
@@ -70,6 +71,13 @@ export function VideoTab({library,api,onSendVideo,models,modelId,onModel,onBusy,
   useEffect(()=>{if(models&&createModels.length&&!chosen)onModel((createModels.find(m=>m.ready)||createModels[0]).id);},[models,modelId]);
   // Selecting a model applies its own rules and defaults: frame grid, size multiple, input modes and steps.
   useEffect(()=>{if(!chosen)return;const switched=previousModel.current!==chosen.id;previousModel.current=chosen.id;setParams(p=>{const next={...p};const options=isLtx(chosen)?LTX_FRAMES:H3_FRAMES;if(!options.includes(p.frames))next.frames=nearestFrames(p.frames,options);if(!createModes(chosen).includes(p.mode))next.mode='text';const rule=createSizeRule(chosen,next.mode==='image'&&!!last);if(!sizeFits(p.width,p.height,rule))Object.assign(next,fitSize(p.width,p.height,rule));if(switched){next.steps=null;next.quality='standard';if(isLtx(chosen)||chosen.family==='fasth3')next.quality='standard';}return next;});},[chosen?.id,last?.id]);
+  // The page was opened as Image to video or as Text to video. Image to video needs a model that takes a first
+  // frame: a model that does not is replaced, the same as when a picture is sent here as a first frame.
+  useEffect(()=>{if(!modeChoice)return;
+    if(modeApplied.current!==modeChoice.key){modeApplied.current=modeChoice.key;setParams(p=>({...p,mode:modeChoice.mode}));setError('');}
+    if(modeChoice.mode==='image'&&chosen&&modeModel.current!==modeChoice.key){modeModel.current=modeChoice.key;if(!createModes(chosen).includes('image')&&imageModel){onModel(imageModel.id);setParams(p=>({...p,mode:'image'}));}}
+  },[modeChoice,chosen?.id]);
+  useEffect(()=>{onMode?.(params.mode);},[params.mode]);
   const change=<K extends keyof VideoParams>(key:K,value:VideoParams[K])=>setParams(p=>({...p,[key]:value}));
   function fitFirstImage(image:InputImage,width:number,height:number){
     if(sizedFirst.current===image.id||!width||!height)return;

@@ -94,7 +94,7 @@ export function MultiReferenceTab({modelChoice,addLora,library,api,onSendVideo,v
     <div className="vs-grid">
     <div className="vs-controls">
       <div className="vs-scroll">
-      <section className="panel vs-panel msr-inputs"><h2 title="Use people, objects or places from your images in a new video. Describe their action and the scene.">Image to video</h2>
+      <section className="panel vs-panel msr-inputs"><h2 title="Use people, objects or places from your images in a new video. Describe their action and the scene.">Reference images</h2>
       <label className="msr-model">Model<select aria-label="Reference images model" value={params.model_id} onChange={e=>change('model_id',e.target.value)}>{groupByFamily(options,'LTX 2.5').map(([family,items])=><optgroup key={family} label={family}>{items.map(m=><option key={m.id} value={m.id}>{m.title}{m.ready?'':' · download'}</option>)}</optgroup>)}</select>{selected?<small className="vs-model-supports">Supports: {supports(selected).join(', ')}</small>:null}</label>
       {!running&&!models?.remote?<VramFitHint resident={models?.resident} models={models?.models||[]} selected={selected} gpu={gpu} onUse={id=>change('model_id',id)}/>:null}
       <div className="section-heading"><h2>References</h2><span>Up to 4 subjects + background</span></div>

@@ -8,7 +8,7 @@ Date: 2026-10-19.
 - A friendly `@Image1` tag compiles to `the person from <image1>` for Qwen, or the selected label. LTX receives `the person from Image 1`; MiniMax Ref2VA receives `the person from <Picture 1>`. The native keyframe tags and video person-group tags retain their distinct meanings. Raw tokens in internal Swap templates still refer to whole images.
 - The queued request saves the original editor text and ordered labels. Saved settings restore these values. Photo cycling keeps the label; replacement starts with the new image's label. Shared images do not imply a person unless the owner is explicit or unique.
 - Result summaries and details show the engine's saved CFG. The mobile image viewer also shows CFG. The current form and mutable model defaults never supply this value. Screenshot result `e34a1ebc695842aebaa4091cd6f19de5`, seed 1653952953, records CFG 1 in both engine fields.
-- Video's default entry and `#video` open Image to video with subject references. Text or keyframes remains available at `#keyframes`. Saved video settings still restore their original workflow. Civitai selections route reference-capable models and LoRAs to the reference screen.
+- Video's default entry and `#video` open Image to video: the picture is the first frame (`#keyframes`). Text to video is at `#text-to-video`. Reference images, where a picture is a subject and not a frame, is its own page at `#multi-reference`. Saved video settings still restore their original workflow. Civitai selections route reference-capable models and LoRAs to the reference screen.
 
 ## Model contract audit
 
