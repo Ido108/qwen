@@ -6,6 +6,12 @@ RTX 5090 (Turbo INT8, 1024x576), seconds per frame and step: 124 frames 0.079, 1
 260 frames 0.127, 362 frames 0.173. With the fixed cost of a part, 124 frames is the cheapest per
 second of video. Each part is read from the source, swapped (by shot, as before) and written to the
 MP4 at once, so the length of a selection is limited by time and disk space, not by memory.
+
+Parts are for a selection that is longer than one pass of its model (max_frames of the model, 362 frames = 15 s
+for MiniMax H3). A selection that fits in one pass is made in one pass: it has no joins, and its generated sound
+is one piece (each part makes its own sound). The price is time. Measured: 362 frames at 25 steps took 32.5
+minutes in one pass (Eros Q8, 2026-11-14) and 24 minutes in 3 parts (Full Q8, 2026-11-19); with Turbo INT8, 11.5
+minutes in one pass.
 """
 from __future__ import annotations
 
@@ -448,8 +454,12 @@ def plan_with_parts(total_frames: int, parts: int) -> list[tuple[int, int]]:
     return plan
 
 
-def is_long_faceswap(request) -> bool:
-    return runs_in_parts(request) and int(request['frames']) > PART_FRAMES
+def is_long_faceswap(request, one_pass_frames: int = PART_FRAMES) -> bool:
+    """Does this request run in parts? A selection longer than one pass of its model (one_pass_frames), and a
+    repair, which keeps the parts of a video that was made in parts."""
+    if not runs_in_parts(request):
+        return False
+    return int(request['frames']) > one_pass_frames or bool(request.get('repair_from_part'))
 
 
 class Mp4PartWriter:
