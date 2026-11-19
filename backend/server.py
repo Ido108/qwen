@@ -1887,6 +1887,14 @@ def generate_video(body: VideoRequest):
 
 @app.post('/api/reference-video/generate',status_code=202)
 def generate_reference_video(body: ReferenceVideoRequest):
+    # A request from the form is always a whole video. A repair is made only by repair_job, and again by a retry of
+    # that job. A form restored from a repaired video sent the repair with another video, and the job failed at its
+    # start with "The original video does not match this repair" (2026-11-19).
+    body.repair_of=body.repair_from_part=None
+    return queue_reference_video(body)
+
+
+def queue_reference_video(body: ReferenceVideoRequest):
     try:
         from .reference_sampling import reference_sampling
         body.quality=reference_sampling(models.entry(body.model_id),body.quality,body.steps)['quality']
@@ -2190,7 +2198,7 @@ def repair_job(job_id: str, body: RepairRequest):
         raise HTTPException(400, f'This video has {parts} parts.')
     data = dict(previous['request'])
     data.update(seed=previous['seed'], randomize_seed=False, repair_of=job_id, repair_from_part=body.from_part)
-    return generate_reference_video(ReferenceVideoRequest(**data))
+    return queue_reference_video(ReferenceVideoRequest(**data))
 
 
 @app.post('/api/jobs/{job_id}/retry', status_code=202)
@@ -2204,7 +2212,7 @@ def retry_job(job_id: str):
     if kind=='multi-reference':
         return generate_multi_reference(MultiReferenceRequest(**data))
     if kind=='reference-video':
-        return generate_reference_video(ReferenceVideoRequest(**data))
+        return queue_reference_video(ReferenceVideoRequest(**data))
     if kind=='upscale':
         return generate_upscale(UpscaleRequest(**data))
     if kind=='image-upscale':
