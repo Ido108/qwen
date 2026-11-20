@@ -104,7 +104,11 @@ def checkout(update) -> None:
                 break
         else:
             raise EngineError('The animation tools could not be downloaded. Check the internet connection and retry.')
-    if head() != ENGINE_COMMIT:
+    # A clone with --no-checkout has HEAD on the default branch but no files yet, so HEAD can already be the pinned commit
+    empty = {path.name for path in ENGINE_DIR.iterdir()} == {'.git'}
+    if empty:
+        git('checkout', '--quiet', '--force', '--detach', ENGINE_COMMIT)
+    elif head() != ENGINE_COMMIT:
         changed = git('status', '--porcelain', '--untracked-files=no').stdout.strip()
         if changed:
             raise EngineError(f'The engine folder {ENGINE_DIR} has changed files. Move them away and retry.')
