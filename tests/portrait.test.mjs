@@ -45,7 +45,12 @@ test('every setting of every engine and lip sync model is a key the backend pass
 
 test('a new engine starts from its own defaults and keeps the shared ones',()=>{
   const imtalker=portraitDefaults('animate',{animation_engine:'imtalker'});
-  assert.equal(imtalker.composition,false);assert.equal(imtalker.imtalker_crop_context,1.6);assert.equal(imtalker.lipsync,true);
+  assert.equal(imtalker.composition,false);assert.equal(imtalker.imtalker_crop_context,1.6);assert.equal(imtalker.lipsync,false);
+  // Lip sync is off until it is checked; then the model settings are sent
+  for(const engine of ENGINES.map(e=>e.id)){const d=portraitDefaults('animate',{animation_engine:engine});assert.equal(d.lipsync,false,engine);
+    assert.equal(portraitOptions('animate',d).lipsync,false);assert.ok(!('sync_model' in portraitOptions('animate',d)),engine);
+    assert.equal(portraitOptions('animate',{...d,lipsync:true}).sync_model,'musetalk');}
+  assert.equal(portraitModel({kind:'animate',request:{options:{animation_engine:'imtalker'}}}),'IMTalker');
   const tps=portraitDefaults('animate',{animation_engine:'tpsmm'});
   assert.equal(tps.tps_checkpoint,'vox');assert.equal(tps.tps_mode,'relative');
   // Turning lip sync off sends no lip sync model settings

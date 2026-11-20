@@ -132,9 +132,9 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
     ]});
   }
   if(tool==='animate'||tool==='sync'){
-    const enabled=tool==='sync'||s.lipsync!==false,model=String(s.sync_model??'musetalk');
+    const enabled=tool==='sync'||s.lipsync===true,model=String(s.sync_model??'musetalk');
     result.push({title:'Lip sync',primary:true,description:tool==='animate'?'Optional second pass: match the animated mouth to the audio.':undefined,fields:[
-      ...(tool==='animate'?[check('lipsync','Lip sync after animation',true,'Head movement and expressions still come from the driving video.')]:[]),
+      ...(tool==='animate'?[check('lipsync','Lip sync after animation',false,'Head movement and expressions still come from the driving video.')]:[]),
       {...select('sync_model','Lip sync model','musetalk',SYNC_MODELS,SYNC_INFO[model]),hidden:!enabled},
       ...(model==='latentsync'?[number('sync_steps','Denoising steps',20,10,60,1,'20 is the default of the model. More steps take longer.'),number('sync_guidance','Audio guidance',1.5,1,3,.1,'Higher values follow the audio more strongly.')]
         :[select('sync_batch_size','Processing batch size',4,[[1,'1 frame: least memory'],[2,'2 frames'],[4,'4 frames (recommended)'],[8,'8 frames: more memory'],[16,'16 frames: most memory']])]).map(field=>({...field,hidden:!enabled})),
@@ -182,7 +182,7 @@ export const syncTitle=(id:string)=>String(SYNC_MODELS.find(([value])=>value===i
 /** The model line of a portrait result (run details, queue). */
 export function portraitModel(job:{kind?:string;request:Record<string,any>}){
   const o=job.request?.options||{};
-  if(job.kind==='animate')return engineTitle(o.animation_engine||'imtalker')+(o.lipsync!==false?` + ${syncTitle(o.sync_model||'musetalk')}`:'');
+  if(job.kind==='animate')return engineTitle(o.animation_engine||'imtalker')+(o.lipsync===true?` + ${syncTitle(o.sync_model||'musetalk')}`:'');
   if(job.kind==='lipsync')return syncTitle(o.sync_model||'musetalk');
   if(job.kind==='face-restore')return 'GFPGAN 1.4';
   if(job.kind==='extract-audio')return String(job.request?.audio_format||'wav').toUpperCase();
