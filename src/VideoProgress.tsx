@@ -5,6 +5,7 @@ import type {Api,ModelEntry} from './ModelSettings';
 import {ModelDownloadProgress} from './ModelDownloadProgress';
 import {formatDuration as time} from './duration';
 import {formatClipTime} from './referenceTiming';
+import {PORTRAIT_KINDS} from './portraitControls';
 
 type Step={label:string;stages:string[]};
 // Up to 2.9 GB of H3 weights in RAM did not change the step time on the RTX 5090 (10.13 s per step with 2.9 GB
@@ -28,6 +29,11 @@ function stagePlan(job:SavedJob):Step[]{
     add('Load model and references',['loading_model','encoding_references']);
     add(r.refine?'Generate and refine':'Generate',['generating','upscaling_latent']);
     add('Decode',['decoding','decoding_audio']);add('Save video',SAVE);
+    return plan;
+  }
+  if(PORTRAIT_KINDS.includes(job.kind||'')){
+    add('Install tools',['installing'],job.stage==='installing'||!!job.stage_seconds?.installing);add('Prepare',START);
+    add(job.kind==='animate'?'Animate':job.kind==='lipsync'?'Lip sync':job.kind==='face-restore'?'Restore faces':'Extract audio',['processing']);add('Save',SAVE);
     return plan;
   }
   const reference=job.kind==='reference-video';
@@ -83,6 +89,7 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
   if(job.stage==='decoding_source'&&job.input_frames_total)counter={done:job.input_frames_done||0,total:job.input_frames_total,unit:'frames read'};
   else if(job.stage==='generating'&&steps>0)counter={done:step,total:steps,unit:'steps'};
   else if(upscale&&['encoding','upscaling','decoding','saving'].includes(job.stage)&&steps>1)counter={done:step,total:steps,unit:'batches'};
+  else if(job.stage==='processing'&&steps>0&&PORTRAIT_KINDS.includes(job.kind||''))counter={done:step,total:steps,unit:'frames'};
   // Steps finished before this stage started (second pass, or LTX refinement after the first 8 steps).
   const base=job.stage!=='generating'?0:pass===2?steps/2:job.kind==='multi-reference'&&job.request?.refine&&step>8?8:0;
   const measured=counter&&['generating','upscaling'].includes(job.stage)?counter.done-base:0;
@@ -133,7 +140,7 @@ export function VideoProgress({job,clock}:{job:SavedJob;clock:number}){
   return <div className="vp-card" role="status" aria-live="polite">
     <div className="vp-head"><Loader2 className="spin" size={16}/><span className="vp-badge">Stage {index+1} of {plan.length}</span><strong>{current.label}</strong>{pass?<span className="vp-badge vp-pass">Pass {pass} of 2</span>:null}{chunk?<span className="vp-badge vp-pass">{chunk}</span>:null}</div>
     <p className="vp-message" title={message}>{message}</p>
-    {job.stage==='downloading_models'?<ModelDownloadProgress job={job}/>:<progress aria-label={`${current.label} progress`} max={counter?.total||1} value={counter?counter.done:undefined}/>}
+    {job.stage==='downloading_models'?<ModelDownloadProgress job={job}/>:<progress aria-label={`${current.label} progress`} max={counter?.total||1} value={counter?counter.done:job.stage==='processing'&&typeof job.engine_progress==='number'?job.engine_progress:undefined}/>}
     <div className="vp-times">
       {counter?<span className="vp-count">{counter.done} / {counter.total} {counter.unit} · {Math.floor(100*counter.done/counter.total)}%</span>:null}
       <span>{time(stageTime)} this stage</span><span>{time(total)} total</span>

@@ -32,6 +32,8 @@ from . import models, cloud, civitai, people, training, moise_remote, parts_vide
 from .resident_worker import ImageWorker
 
 from .common import AUDIO_UPLOADS_DIR, resolve_audio
+from .portrait_settings import (AUDIO_KINDS, PORTRAIT_KINDS, AnimateRequest, ExtractAudioRequest, FaceRestoreRequest,
+                                LipSyncRequest)
 from .ltx_settings import MultiReferenceRequest, required_ltx, is_ref2va, media_inputs as ltx_media_inputs
 from . import image_upscale
 from .image_upscale import ImageUpscaleRequest
@@ -53,7 +55,7 @@ image_warmup_suspended = True
 IDLE_MODEL_RELEASE_SECONDS = 10 * 60
 image_idle_since = time.monotonic()
 image_worker = ImageWorker()
-VIDEO_KINDS={'video','reference-video','multi-reference','upscale'}
+VIDEO_KINDS={'video','reference-video','multi-reference','upscale','animate','lipsync','face-restore'}
 # Image results: generated images and upscaled images. An image upscale runs in its own process, like a video job.
 IMAGE_KINDS={'image','image-upscale'}
 # Completed job IDs never change their output. Keep private images in this browser,
@@ -417,7 +419,7 @@ def run_job(job_id):
     try:
         request = json.loads((directory / 'request.json').read_text(encoding='utf-8'))
         is_video = request.get('kind') in VIDEO_KINDS
-        separate = is_video or request.get('kind') == 'image-upscale'
+        separate = is_video or request.get('kind') in ('image-upscale', *AUDIO_KINDS)
         if request.get('kind') in ('training', 'captioning'):
             run_training(job_id, request, directory)
             return
@@ -472,6 +474,7 @@ def run_job(job_id):
             parts_so_far(read_json(directory / 'status.json'))
         except Exception:
             logging.exception('Could not join the finished parts of %s', job_id)
+        with active_lock:
             recent_jobs.appendleft(job_id)
             save_queue_locked()
             start_next_locked()
@@ -522,6 +525,8 @@ def run_training(job_id, request, directory):
 
 def prepare_job_models(job_id,request):
     kind=request.get('kind','image')
+    if kind in PORTRAIT_KINDS:
+        return  # the portrait engine installs and downloads its own models (portrait_engine)
     if kind=='video':
         needed=models.required_video(VideoRequest(**request))
     elif kind=='multi-reference':
@@ -1980,6 +1985,107 @@ def generate_upscale(body: UpscaleRequest):
     return public_job(job)
 
 
+PORTRAIT_REQUESTS = {'animate': AnimateRequest, 'lipsync': LipSyncRequest, 'extract-audio': ExtractAudioRequest,
+                     'face-restore': FaceRestoreRequest}
+portrait_cache: dict[str, tuple[float, object]] = {}
+
+
+def queue_portrait(kind: str, body):
+    """The portrait tools always run on this GPU: the RunPod workers have no portrait engine."""
+    try:
+        if kind == 'animate':
+            resolve_image(body.source_image)
+            resolve_video(body.driving_video)
+        else:
+            resolve_video(body.source_video)
+        mode = getattr(body, 'audio_mode', '')
+        if mode == 'file':
+            resolve_audio(body.audio_file)
+        elif mode == 'video':
+            resolve_video(body.audio_video)
+        destination = Path(body.output_dir.strip() or VIDEOS_DIR).expanduser().resolve()
+        destination.mkdir(parents=True, exist_ok=True)
+        probe = destination / f'.write-test-{uuid.uuid4().hex}'
+        probe.write_bytes(b''); probe.unlink()
+        if shutil.disk_usage(destination).free < 2 * 1024**3:
+            raise ValueError('The output drive needs at least 2 GB of free space.')
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc))
+    with active_lock:
+        data = body.model_dump()
+        data.update(kind=kind, execution='local', output_dir=str(destination))
+        job_id = uuid.uuid4().hex
+        job = {'id': job_id, 'kind': kind, 'status': 'queued', 'message': 'Waiting in queue', 'stage': 'queued',
+               'created_at': time.time(), 'seed': 0, 'request': data, 'rewritten_prompt': '', 'step': 0, 'total_steps': 0}
+        enqueue_locked(job, data)
+    return public_job(job)
+
+
+@app.post('/api/animate/generate', status_code=202)
+def generate_animation(body: AnimateRequest):
+    return queue_portrait('animate', body)
+
+
+@app.post('/api/lipsync/generate', status_code=202)
+def generate_lipsync(body: LipSyncRequest):
+    return queue_portrait('lipsync', body)
+
+
+@app.post('/api/extract-audio/generate', status_code=202)
+def generate_extract_audio(body: ExtractAudioRequest):
+    return queue_portrait('extract-audio', body)
+
+
+@app.post('/api/face-restore/generate', status_code=202)
+def generate_face_restore(body: FaceRestoreRequest):
+    return queue_portrait('face-restore', body)
+
+
+def portrait_cached(key: str, seconds: float, load):
+    saved = portrait_cache.get(key)
+    if saved and time.monotonic() - saved[0] < seconds:
+        return saved[1]
+    value = load()
+    portrait_cache[key] = (time.monotonic(), value)
+    return value
+
+
+@app.get('/api/portrait/status')
+def portrait_status():
+    from . import portrait_engine
+    return portrait_cached('status', 20, portrait_engine.status)
+
+
+@app.get('/api/portrait/models')
+def portrait_models():
+    from . import portrait_engine
+    return portrait_cached('models', 60, portrait_engine.models)
+
+
+@app.get('/api/jobs/{job_id}/audio')
+def audio_result(job_id: str, download: bool = False):
+    job = read_job(job_id)
+    path = Path(job.get('output_path', ''))
+    if job.get('kind') not in AUDIO_KINDS or job['status'] != 'succeeded' or not path.is_file():
+        raise HTTPException(404, 'Saved audio not found.')
+    return FileResponse(path, media_type='audio/mpeg' if path.suffix == '.mp3' else 'audio/wav',
+                        filename=path.name if download else None)
+
+
+@app.post('/api/jobs/{job_id}/reuse-audio')
+def reuse_audio(job_id: str):
+    """A saved audio result becomes an audio input (Lip sync, Animate image) without changing the result."""
+    job = read_job(job_id)
+    path = Path(job.get('output_path', ''))
+    if job.get('kind') not in AUDIO_KINDS or job['status'] != 'succeeded' or not path.is_file():
+        raise HTTPException(404, 'Saved audio not found.')
+    audio_id = uuid.uuid4().hex + path.suffix.lower()
+    temporary = AUDIO_UPLOADS_DIR / (audio_id + '.part')
+    shutil.copy2(path, temporary)
+    temporary.replace(AUDIO_UPLOADS_DIR / audio_id)
+    return {'id': audio_id, 'name': path.name, 'url': f'/api/audio-uploads/{audio_id}'}
+
+
 def image_upscale_source(source_image: str, source_job: str) -> Path:
     if source_job:
         return image_upscale.job_image(source_job)
@@ -2217,6 +2323,8 @@ def retry_job(job_id: str):
         return generate_upscale(UpscaleRequest(**data))
     if kind=='image-upscale':
         return generate_image_upscale(ImageUpscaleRequest(**data))
+    if kind in PORTRAIT_REQUESTS:
+        return queue_portrait(kind, PORTRAIT_REQUESTS[kind](**data))
     if kind=='captioning':
         return training_captions(CaptionRequest(**{**data, 'images': [i['id'] for i in data['images']]}))
     if kind=='training':
@@ -2227,7 +2335,7 @@ def retry_job(job_id: str):
 def library_jobs(kind: str, search: str) -> list[dict]:
     query = search.casefold().strip()
     titles = {item['id']: item['title'] for item in models.catalog()}
-    jobs = [j for j in all_jobs() if (j.get('status') == 'succeeded' or has_parts_so_far(j)) and j.get('kind') not in ('training', 'captioning')
+    jobs = [j for j in all_jobs() if (j.get('status') == 'succeeded' or has_parts_so_far(j)) and j.get('kind') not in ('training', 'captioning', *AUDIO_KINDS)
             and (kind == 'all' or (kind=='video' and j.get('kind') in VIDEO_KINDS)
                  or j.get('kind', 'image') == kind or (kind == 'image' and j.get('kind') == 'image-upscale'))
             and (not query or query in (j.get('request', {}).get('prompt', '') + ' ' + j.get('request', {}).get('model_id', '')
@@ -2250,7 +2358,7 @@ class LibraryDelete(BaseModel):
     search: str = Field(default='', max_length=2000)
 
 
-MEDIA_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mov', '.wav'}
+MEDIA_SUFFIXES = {'.png', '.jpg', '.jpeg', '.webp', '.mp4', '.webm', '.mov', '.wav', '.mp3'}
 
 
 @app.post('/api/library/delete')

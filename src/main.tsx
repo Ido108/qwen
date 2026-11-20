@@ -22,6 +22,10 @@ import {VideoTab} from './VideoTab';
 import {MultiReferenceTab} from './MultiReferenceTab';
 import {ReferenceTab} from './ReferenceTab';
 import {UpscaleTab} from './UpscaleTab';
+import {AnimateTab} from './AnimateTab';
+import {LipSyncTab} from './LipSyncTab';
+import {ExtractAudioTab,type SendAudio} from './ExtractAudioTab';
+import type {AudioUpload} from './PortraitInputs';
 import {ImageSettings,toolPrompt,toolStrength,type ImageOptions,type JobPlan,type ToolState} from './ImageSettings';
 import {SwapLoras} from './SwapLoras';
 import {AddToPerson} from './AddToPerson';
@@ -67,7 +71,7 @@ type Params = ImageOptions & ToolState & {loras:LoraChoice[];vae_id:string;vae_c
 type Job = Timing & {download_completed_bytes?:number;download_total_bytes?:number;id:string; status:string; stage:TextKey; message:string; seed:number; step:number; total_steps:number; request:Params; rewritten_prompt:string; created_at:number; started_at?:number; stage_started_at?:number; finished_at?:number; elapsed_seconds?:number; image_url?:string; width?:number; height?:number; tokens?:number; has_transparency?:boolean};
 type Example = {id:string; title:string; title_en:string; prompt:string; prompt_extend:boolean; inputs:string[]; outputs:string[]; category:string};
 type Config = {token:string; models:Record<string,boolean>; output_dir:string; active_job:string|null; device:string};
-import {VIDEO_HASHES,videoEntry,videoHash,type VideoMode,type VideoSection} from './videoTabs';
+import {VIDEO_HASHES,sendSection,videoEntry,videoHash,type VideoMode,type VideoSection} from './videoTabs';
 const defaults:Params = {loras:[],tool_id:null,tool_options:{},lora_strength:null,vae_id:'auto',model_id:'uc-int8-convrot',text_encoder:'auto',prompt:'',images:[],enhance:false,custom_size:false,auto_resolution:2048,width:2688,height:1536,seed:0,randomize_seed:true,negative_prompt:'',output_dir:'',steps:null};
 // The same weights as INT8 ConvRot: native INT8 matmul, about 3x faster per step than Q8_0 GGUF on an RTX 5090. Saved drafts move once.
 const SAMPLING_KEYS=['steps','cfg','sampler','scheduler'] as const;
@@ -92,6 +96,10 @@ function App(){
   const [multiModelChoice,setMultiModelChoice]=useState<{id:string;key:number}|null>(null);
   const [multiRestore,setMultiRestore]=useState<{job:SavedJob;key:number}|null>(null);
   const [upscaleRestore,setUpscaleRestore]=useState<{job:SavedJob;key:number}|null>(null);
+  const [animateRestore,setAnimateRestore]=useState<{job:SavedJob;key:number}|null>(null);
+  const [lipsyncRestore,setLipsyncRestore]=useState<{job:SavedJob;key:number}|null>(null);
+  const [extractRestore,setExtractRestore]=useState<{job:SavedJob;key:number}|null>(null);
+  const [audioInput,setAudioInput]=useState<{audio:AudioUpload;target:'lipsync'|'animate';key:number}|null>(null);
   const [galleryView,setGalleryView]=useState<{job:SavedJob;key:number}|null>(null);
   const [videoInput,setVideoInput]=useState<VideoInput|null>(null);
   const [videoBusy,setVideoBusy]=useState(false);
@@ -258,7 +266,13 @@ function App(){
   const sendVideo:SendVideo=async(jobId,target,part='final')=>{
     const video:UploadedVideo=await api(`/api/jobs/${encodeURIComponent(jobId)}/reuse-video?part=${part}`,{method:'POST'});
     setVideoInput({video,target,key:Date.now()});
-    showVideo(target==='upscale'?'upscale':'reference');
+    showVideo(sendSection(target));
+    window.scrollTo({top:0,behavior:'instant'});
+  };
+  const sendAudio:SendAudio=async(jobId,target)=>{
+    const audio:AudioUpload=await api(`/api/jobs/${encodeURIComponent(jobId)}/reuse-audio`,{method:'POST'});
+    setAudioInput({audio,target,key:Date.now()});
+    showVideo(target);
     window.scrollTo({top:0,behavior:'instant'});
   };
   useImageDestination('edit',image=>{
@@ -282,7 +296,10 @@ function App(){
     else if(saved.kind==='video'){setVideoRestore({job:saved,key:Date.now()});setVideoModel(saved.request.model_id);showVideo('create');}
     else if(saved.kind==='multi-reference'){setMultiRestore({job:saved,key:Date.now()});showVideo('multi-reference');}
     else if(saved.kind==='reference-video'){setReferenceRestore({job:saved,key:Date.now()});showVideo('reference');}
-    else if(saved.kind==='upscale'){setUpscaleRestore({job:saved,key:Date.now()});showVideo('upscale');}
+    else if(saved.kind==='upscale'||saved.kind==='face-restore'){setUpscaleRestore({job:saved,key:Date.now()});showVideo('upscale');}
+    else if(saved.kind==='animate'){setAnimateRestore({job:saved,key:Date.now()});showVideo('animate');}
+    else if(saved.kind==='lipsync'){setLipsyncRestore({job:saved,key:Date.now()});showVideo('lipsync');}
+    else if(saved.kind==='extract-audio'){setExtractRestore({job:saved,key:Date.now()});showVideo('extract-audio');}
     else if(swapTools.some(t=>t.id===saved.request.tool_id)){
       // A swap opens in Swap with its two pictures, strength and extra instructions.
       const tool=swapTools.find(t=>t.id===saved.request.tool_id)!;const images=(saved.request.images||[]).map((id:string,index:number)=>({...inputImage(id),subjectLabel:saved.request.image_labels?.[index]}));const prompt=String(saved.request.prompt||'');
@@ -491,9 +508,12 @@ function App(){
       <button role="tab" aria-selected={videoSection==='multi-reference'} onClick={()=>showVideo('multi-reference')}>Reference images</button>
       <button role="tab" aria-selected={videoSection==='reference'} onClick={()=>showVideo('reference')}>Video to video</button>
       <button role="tab" aria-selected={videoSection==='orbit'} onClick={()=>showVideo('orbit')}>360 Orbit</button>
+      <button role="tab" aria-selected={videoSection==='animate'} onClick={()=>showVideo('animate')}>Animate image</button>
+      <button role="tab" aria-selected={videoSection==='lipsync'} onClick={()=>showVideo('lipsync')}>Lip sync</button>
+      <button role="tab" aria-selected={videoSection==='extract-audio'} onClick={()=>showVideo('extract-audio')}>Extract audio</button>
       <button role="tab" aria-selected={videoSection==='upscale'} onClick={()=>showVideo('upscale')}>Upscale</button>
     </nav>:null}
-    {tab==='video'?<div className="mobile-tool-picker"><label htmlFor="mobile-video-tool">Video tool</label><select id="mobile-video-tool" value={videoSection==='create'?`create:${videoMode}`:videoSection} onChange={e=>{const [section,mode]=e.target.value.split(':');showVideo(section as VideoSection,mode as VideoMode|undefined);}}><option value="create:image">Image to video</option><option value="create:text">Text to video</option><option value="multi-reference">Reference images</option><option value="reference">Video to video</option><option value="orbit">360 Orbit</option><option value="upscale">Upscale</option></select></div>:null}
+    {tab==='video'?<div className="mobile-tool-picker"><label htmlFor="mobile-video-tool">Video tool</label><select id="mobile-video-tool" value={videoSection==='create'?`create:${videoMode}`:videoSection} onChange={e=>{const [section,mode]=e.target.value.split(':');showVideo(section as VideoSection,mode as VideoMode|undefined);}}><option value="create:image">Image to video</option><option value="create:text">Text to video</option><option value="multi-reference">Reference images</option><option value="reference">Video to video</option><option value="orbit">360 Orbit</option><option value="animate">Animate image</option><option value="lipsync">Lip sync</option><option value="extract-audio">Extract audio</option><option value="upscale">Upscale</option></select></div>:null}
     <ModelDefaultsScope model={params.model_id} scope="image" bindings={imageDefaultBindings} draftKey="image-studio-draft-v1" restoreKey={imageRestoreKey}><main hidden={tab!=='image'} className={`image-main studio-main ${railOpen?'with-rail':imageJobs.length?'with-queue':'rail-closed'}`}>
       <div className="studio-grid">
       <div className="studio-controls">
@@ -582,8 +602,11 @@ function App(){
     </main></ModelDefaultsScope>
     <OrbitTab api={api} visible={tab==='video'&&videoSection==='orbit'} models={modelState} queue={queue.state} onQueued={queue.refresh} restoreRequest={orbitRestore} people={people} onPeople={loadPeople} results={history} onSendVideo={sendVideo}/>
     <VideoTab library={{people,onPeople:loadPeople,results:history}} addLora={pendingVideoLora?.target==='create'?pendingVideoLora:null} onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='create'} api={api} models={modelState} modelId={videoModel} onModel={setVideoModel} onBusy={setVideoBusy} queueActive={queue.count>0||queue.state.paused} onQueued={queue.refresh} restoreRequest={videoRestore} openSettings={()=>setShowSettings(true)} modeChoice={videoModeChoice} onMode={setVideoMode}/>
-    <ReferenceTab library={{people,onPeople:loadPeople,results:history}} addLora={pendingVideoLora?.target==='reference'?pendingVideoLora:null} onSendVideo={sendVideo} videoInput={videoInput?.target!=='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='reference'} api={api} token={token.current} models={modelState} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
+    <ReferenceTab library={{people,onPeople:loadPeople,results:history}} addLora={pendingVideoLora?.target==='reference'?pendingVideoLora:null} onSendVideo={sendVideo} videoInput={videoInput&&['faceswap','crossview','reference'].includes(videoInput.target)?videoInput:null} visible={tab==='video'&&videoSection==='reference'} api={api} token={token.current} models={modelState} restoreRequest={referenceRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
     <MultiReferenceTab modelChoice={multiModelChoice} addLora={pendingVideoLora?.target==='multi-reference'?pendingVideoLora:null} library={{people,onPeople:loadPeople,results:history}} onSendVideo={sendVideo} visible={tab==='video'&&videoSection==='multi-reference'} api={api} models={modelState} queue={queue.state} onQueued={queue.refresh} restoreRequest={multiRestore} onView={job=>setGalleryView({job,key:Date.now()})}/>
+    <AnimateTab api={api} token={token.current} visible={tab==='video'&&videoSection==='animate'} models={modelState} videoInput={videoInput&&['animate','animate-audio'].includes(videoInput.target)?videoInput:null} audioInput={audioInput?.target==='animate'?audioInput:null} onSendVideo={sendVideo} onQueued={queue.refresh} restoreRequest={animateRestore} library={{people,onPeople:loadPeople,results:history}}/>
+    <LipSyncTab api={api} token={token.current} visible={tab==='video'&&videoSection==='lipsync'} models={modelState} videoInput={videoInput&&['lipsync','lipsync-audio'].includes(videoInput.target)?videoInput:null} audioInput={audioInput?.target==='lipsync'?audioInput:null} onSendVideo={sendVideo} onQueued={queue.refresh} restoreRequest={lipsyncRestore}/>
+    <ExtractAudioTab api={api} token={token.current} visible={tab==='video'&&videoSection==='extract-audio'} videoInput={videoInput?.target==='extract-audio'?videoInput:null} onSendAudio={sendAudio} onQueued={queue.refresh} restoreRequest={extractRestore}/>
     <UpscaleTab onSendVideo={sendVideo} videoInput={videoInput?.target==='upscale'?videoInput:null} visible={tab==='video'&&videoSection==='upscale'} api={api} token={token.current} models={modelState} restoreRequest={upscaleRestore} onQueued={queue.refresh} openSettings={()=>setShowSettings(true)}/>
     <CivitaiPage api={api} visible={tab==='civitai'} models={modelState} onUse={applyInstalled}/>
     <TrainPage api={api} visible={tab==='train'} models={modelState} results={history} people={people} onPeople={loadPeople} onUse={id=>applyInstalled({id,kind:'image-lora'})}/>
@@ -603,6 +626,9 @@ function App(){
       {showHelp&&tab==='video'&&videoSection==='create'?<div className="help-content"><h2>Video help</h2><p>Describe the scene, movement, camera and sounds. FastH3 creates video from text. Use first and last frames to control the start and end of a video. Use Reference images to place a referenced person or object in a new scene.</p><p>Steps follow the selected model and generation mode. Video is generated at 24 frames per second. You can change the seed, size and output folder in Advanced settings.</p><p>Missing models download automatically when you add a job. Supporting model files are selected automatically.</p><a href="https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2" target="_blank" rel="noreferrer">FastH3 model details</a><a href="https://huggingface.co/MiniMaxAI/MiniMax-H3" target="_blank" rel="noreferrer">MiniMax H3 model details</a></div>:null}
       {showHelp&&tab==='video'&&videoSection==='reference'?<div className="help-content"><h2>Video to video help</h2><p>Replace subjects uses ordered person images. Camera view changes the viewpoint without replacing people. Open the optional subject replacement section in Camera view to run both steps in order.</p><p>Choose the model and duration in this tab. Missing model files download automatically when you add a job.</p></div>:null}
       {showHelp&&tab==='video'&&videoSection==='multi-reference'?<div className="help-content"><h2>Reference images to video</h2><p>Add up to four subjects and an optional background. Describe the action using Image 1, Image 2 and the remaining image labels. Optional voices correspond to the first two images. This creates a new video; use Video to video to edit an existing clip.</p><p>The LoRA is an add-on that lets LTX use multiple reference images. It downloads with the selected model and required files. LTX requires access from your Hugging Face account. Double width and height multiplies each dimension by 2 and adds 3 processing steps.</p></div>:null}
+      {showHelp&&tab==='video'&&videoSection==='animate'?<div className="help-content"><h2>Animate image help</h2><p>The picture moves with the head, face and expressions of the driving video. Choose the engine and its settings; Preview 3 s makes the first 3 seconds. Lip sync after animation matches the mouth to the audio of the driving video, an audio file or the audio of another video.</p></div>:null}
+      {showHelp&&tab==='video'&&videoSection==='lipsync'?<div className="help-content"><h2>Lip sync help</h2><p>The mouth in the video follows the selected audio. The video keeps its own movement. Use the audio of the video itself, an audio file, or the audio of another video. Send to on any video result adds it here.</p></div>:null}
+      {showHelp&&tab==='video'&&videoSection==='extract-audio'?<div className="help-content"><h2>Extract audio help</h2><p>Saves the audio track of a video as WAV or MP3, optionally from a start time and for a length. Send to adds the audio to Lip sync or Animate image.</p></div>:null}
       {showHelp&&tab==='video'&&videoSection==='upscale'?<div className="help-content"><h2>Upscale help</h2><p>Select a source video and model. Set the shorter side in pixels or multiply both dimensions by 2 or 4. The output dimensions appear below. Frames per batch and other model settings are in Advanced settings. Keep source audio is beside Add to queue.</p></div>:null}
       {showHelp&&tab==='image'?<div className="help-content"><h2>{t('help')}</h2><p>{t('helpText')}</p><blockquote dir="auto">{t('transparent')}</blockquote><button className="button primary" disabled={locked} onClick={()=>{change('prompt',t('transparent'));setShowHelp(false);promptRef.current?.focus();}}>{t('applyTransparent')}</button><a href="https://huggingface.co/spaces/Qwen/Qwen-Image-2.1" target="_blank" rel="noreferrer">Qwen-Image-2.1 · Hugging Face</a></div>:null}
       {showExamples?<div className="examples-dialog"><h2>{t('examples')}</h2><div className="examples-grid">{examples.map(example=><button key={example.id} className="example-card" onClick={()=>{setShowExamples(false);setActiveExample(example);}}><div className="example-thumbnail checker"><img loading="lazy" src={`/examples/${example.outputs[0]||example.inputs[0]}`} alt=""/></div><span>{example.title_en}<small>{example.inputs.length?`${example.inputs.length} ${t('sourceCount')}`:t('createMode')}</small></span><ChevronRight size={16}/></button>)}</div></div>:null}

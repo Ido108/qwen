@@ -1,0 +1,32 @@
+/* Animate image, Lip sync, Extract audio and the face restore fields of Upscale. Light theme of video-studio.css. */
+.portrait-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px 14px;align-items:start}
+.portrait-fields .field{margin:0}
+.portrait-fields .field small,.portrait-panel .field small{display:block;margin-top:3px;font-size:12px;line-height:1.45;color:var(--muted)}
+.portrait-check .checkbox-label{font-weight:500}
+.portrait-group-note{margin:0 0 8px;font-size:12.5px;line-height:1.5;color:var(--muted)}
+.portrait-advanced .details-body{display:flex;flex-direction:column;gap:14px}
+.portrait-advanced-group h3{margin:0 0 6px;font-size:13px;font-weight:600;color:#2b2438}
+.portrait-advanced .summary-hint{font-weight:400}
+.portrait-panel a{color:var(--accent)}
+.portrait-photo{display:flex;align-items:center;justify-content:center;min-height:180px;border:1px dashed var(--line);border-radius:8px;background:#f8f6fb;overflow:hidden}
+.portrait-photo img{max-width:100%;max-height:320px;object-fit:contain;display:block}
+.portrait-input-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:8px}
+.portrait-drop-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:100%;min-height:150px;padding:18px;color:#2b2438;cursor:pointer;text-align:center}
+.portrait-drop-button small{color:var(--muted)}
+.portrait-drop-button[aria-disabled="true"]{opacity:.6;cursor:default}
+.portrait-segmented{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.portrait-segmented label{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;color:#2b2438;font-size:13px;cursor:pointer}
+.portrait-segmented label.active{border-color:var(--accent);background:#f1edfd;color:#2b1c74}
+.portrait-segmented input{margin:0}
+.portrait-audio-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.portrait-audio-row audio{width:100%;max-width:420px}
+.portrait-audio-row small{color:var(--muted);font-size:12px}
+.portrait-audio-video{width:180px;max-height:110px;border-radius:6px;background:#111}
+.portrait-file-name{min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:#2b2438}
+.portrait-clip{margin-bottom:10px}
+.portrait-audio-result{display:flex;flex-direction:column;gap:12px;padding:16px 0}
+.portrait-audio-result audio{width:100%}
+.portrait-audio-list{list-style:none;margin:0;padding:6px 0 0;display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto}
+.portrait-audio-list button{width:100%;text-align:left;padding:6px 8px;border:1px solid #e4def0;border-radius:6px;background:#f8f6fb;color:#2b2438;font-size:12.5px;cursor:pointer}
+.portrait-audio-list button.active{border-color:var(--accent);background:#f1edfd}
+@media (max-width:640px){.portrait-fields{grid-template-columns:1fr}.portrait-audio-video{width:100%}}

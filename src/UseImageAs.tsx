@@ -13,6 +13,7 @@ const destinations={
   first:['Video · first frame','#keyframes'],
   last:['Video · last frame','#keyframes'],
   orbit:['360 Orbit','#orbit'],
+  animate:['Animate image · picture','#animate'],
   replacement:['Video to video · replacement person','#video-to-video'],
   training:['Training image','#train'],
 } as const;

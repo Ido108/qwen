@@ -129,6 +129,10 @@ def run():
     if request.get('kind') == 'image-upscale':
         from .image_upscale import run as run_image_upscale
         return run_image_upscale(request, job, directory, update)
+    from .portrait_settings import PORTRAIT_KINDS
+    if request.get('kind') in PORTRAIT_KINDS:
+        from .portrait_worker import run as run_portrait
+        return run_portrait(request, job, directory, update)
     import torch
     from PIL import Image
     from PIL.PngImagePlugin import PngInfo
@@ -261,6 +265,8 @@ def execute(folder):
                            'Close unused AI apps, choose a smaller size or shorter duration, and retry.')
             elif request.get('kind') == 'image-upscale':
                 message = 'Not enough free GPU memory while upscaling. Close unused AI apps, choose a smaller size, and retry.'
+            elif request.get('kind') in ('animate', 'lipsync', 'face-restore'):
+                message = 'Not enough free GPU memory for this video. Close unused AI apps, choose a shorter part of the video, and retry.'
             else:
                 message = 'Not enough free GPU memory. Close unused AI apps, choose a 1K size, and retry.'
         elif '1455' in message or 'paging file is too small' in message.lower():

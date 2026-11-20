@@ -8,6 +8,7 @@ import {resultLoras} from './resultLoras';
 import {ResultPrompt} from './ResultPrompt';
 import {SentPrompts,type SentPrompt} from './SentPrompts';
 import {resultSampling,scheduleLabel} from './resultSampling';
+import {PORTRAIT_KINDS,portraitModel} from './portraitControls';
 
 export type Timing={stage_seconds?:Record<string,number>;encoder_load_seconds?:number;diffusion_load_seconds?:number;encoding_seconds?:number;model_reused?:boolean;conditioning_reused?:boolean;input_count?:number;input_cache_hits?:number;input_read_seconds?:number;input_preparation_reused?:boolean;cfg?:number;true_cfg_scale?:number;applied_lora?:string|null;sampler?:string;scheduler?:string;sampling?:string};
 type Run=Timing&{id:string;kind?:string;status:string;request:{prompt?:string;negative_prompt?:string;model_id?:string;steps?:number|null;seed?:number;randomize_seed?:boolean;execution?:string;workflow?:string;replace_subjects_first?:boolean;refine?:boolean};actual_prompt?:string;expanded_prompt?:string;rewritten_prompt?:string;seed?:number;seed_used?:boolean;elapsed_seconds?:number;started_at?:number;finished_at?:number;created_at?:number;width?:number;height?:number;actual_steps?:number;total_steps?:number;total_chunks?:number;fps?:number;frames?:number;duration_seconds?:number;peak_vram_gb?:number;sampler?:string;guidance?:number};
@@ -19,7 +20,7 @@ function time(seconds:number){
   const whole=Math.round(seconds),hours=Math.floor(whole/3600),minutes=Math.floor(whole%3600/60),rest=whole%60;
   return hours?`${hours}h ${minutes}m ${rest}s`:`${minutes}m ${rest}s`;
 }
-const stageLabels:Record<string,string>={loading:'Preparing tools',loading_model:'Loading model',loading_encoder:'Loading text encoder',loading_video_vae:'Loading video and audio encoders',rewriting:'Prompt enhancement',encoding:'Processing inputs',encoding_text:'Encoding text',encoding_video:'Encoding video',encoding_images:'Encoding images',encoding_audio:'Encoding audio',encoding_references:'Encoding references',reading_references:'Preparing references',decoding_source:'Reading source video',generating:'Generation',upscaling:'Upscaling',upscaling_latent:'Resolution refinement',decoding:'Decoding output',saving:'Saving output',muxing_audio:'Adding source audio',downloading_models:'Model download'};
+const stageLabels:Record<string,string>={loading:'Preparing tools',loading_model:'Loading model',loading_encoder:'Loading text encoder',loading_video_vae:'Loading video and audio encoders',rewriting:'Prompt enhancement',encoding:'Processing inputs',encoding_text:'Encoding text',encoding_video:'Encoding video',encoding_images:'Encoding images',encoding_audio:'Encoding audio',encoding_references:'Encoding references',reading_references:'Preparing references',decoding_source:'Reading source video',generating:'Generation',upscaling:'Upscaling',upscaling_latent:'Resolution refinement',decoding:'Decoding output',saving:'Saving output',muxing_audio:'Adding source audio',downloading_models:'Model download',installing:'Installing tools',uploading:'Preparing inputs',processing:'Processing'};
 
 /** Every value belongs to the displayed result, never to the editable form. */
 /** When the result was made, the same everywhere (Gallery card, Gallery details, Result): 21 Oct, 16:05; the year
@@ -38,13 +39,14 @@ export function GenerationTiming({job,models,detailsOnly=false}:{job:Run;models?
   const live=job.status==='running'||job.status==='queued';
   if(!live&&!['succeeded','failed','cancelled'].includes(job.status))return null;
   const elapsed=valid(job.elapsed_seconds)?job.elapsed_seconds:valid(job.started_at)&&valid(job.finished_at)&&job.finished_at>=job.started_at?job.finished_at-job.started_at:null;
-  const model=models?.models.find(item=>item.id===job.request.model_id)?.title||job.request.model_id;
-  const seed=job.seed_used===false?null:valid(job.seed)?job.seed:job.request.randomize_seed===false&&valid(job.request.seed)?job.request.seed:null;
+  const portrait=PORTRAIT_KINDS.includes(job.kind||'');
+  const model=portrait?portraitModel(job):models?.models.find(item=>item.id===job.request.model_id)?.title||job.request.model_id;
+  const seed=portrait||job.seed_used===false?null:valid(job.seed)?job.seed:job.request.randomize_seed===false&&valid(job.request.seed)?job.request.seed:null;
   const imageUpscale=job.kind==='image-upscale';
-  const steps=job.kind==='upscale'?job.total_chunks:imageUpscale?undefined:[job.actual_steps,job.total_steps,job.request.steps].find(positive);
+  const steps=job.kind==='upscale'?job.total_chunks:imageUpscale||portrait?undefined:[job.actual_steps,job.total_steps,job.request.steps].find(positive);
   const cfg=resultCfg(job);
   const sampling=resultSampling(job);
-  const showSampling=job.kind!=='upscale'&&!imageUpscale&&job.kind!=='training'&&job.kind!=='captioning';
+  const showSampling=job.kind!=='upscale'&&!imageUpscale&&!portrait&&job.kind!=='training'&&job.kind!=='captioning';
   const loras=resultLoras(job);
   const prompt=job.request.prompt;
   const usedPrompt=job.actual_prompt||job.expanded_prompt||job.rewritten_prompt;
