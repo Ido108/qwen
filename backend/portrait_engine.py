@@ -41,8 +41,11 @@ class EngineError(RuntimeError):
 
 def engine_env() -> dict:
     """The worker sets the app's offline Hugging Face cache; the engine downloads its optional models itself."""
+    # The app launcher sets UV_PYTHON_PREFERENCE for its own interpreter.
+    # The engine's pinned uv selects its private interpreter with --managed-python.
     environment = {key: value for key, value in os.environ.items()
-                   if key not in {'HF_HUB_OFFLINE', 'TRANSFORMERS_OFFLINE', 'HF_HOME', 'PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV'}}
+                   if key not in {'HF_HUB_OFFLINE', 'TRANSFORMERS_OFFLINE', 'HF_HOME', 'PYTHONPATH', 'PYTHONHOME',
+                                  'VIRTUAL_ENV', 'UV_PYTHON_PREFERENCE'}}
     environment.update(MULTI_DATA_DIR=str(ENGINE_DATA), MULTI_MODELS_DIR=str(ENGINE_MODELS), PYTHONUTF8='1',
                        PYTHONDONTWRITEBYTECODE='1', NUMBA_CACHE_DIR=str(ENGINE_DIR / '.runtime-cache' / 'numba'),
                        MULTI_DEVICE=installed_backend())
@@ -192,7 +195,7 @@ def install(update, request=None) -> None:
         command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ENGINE_DIR / 'Install.ps1'), '-NoShortcuts']
     else:
         command = ['bash', str(ENGINE_DIR / 'Install.command')]
-    tail = []
+    installer_error = ''
     with INSTALL_LOG.open('a', encoding='utf-8') as log:
         log.write(f'\n=== {time.strftime("%Y-%m-%d %H:%M:%S")} engine {ENGINE_COMMIT}\n')
         process = subprocess.Popen(command, cwd=ENGINE_DIR, env=engine_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -204,16 +207,19 @@ def install(update, request=None) -> None:
             log.write(clean + '\n')
             log.flush()
             print(clean, flush=True)
-            tail = (tail + [clean])[-12:]
+            if clean.lower().startswith('error:') or (not installer_error and
+                    clean.lower().startswith(('installation failed:', 'runtimeerror:'))):
+                installer_error = clean
             if clean.startswith(('Downloading', 'Installing for')):
                 update(message='Installing the animation and lip sync tools: downloading…')
             elif clean.startswith('Testing '):
                 update(message='Installing the animation and lip sync tools: testing on this GPU…')
         code = process.wait()
+    if code:
+        raise EngineError('The animation tools did not install. ' + (installer_error or f'Exit code {code}. See {INSTALL_LOG}.'))
     ready, detail = quick_check()
-    if code or not ready:
-        raise EngineError('The animation tools did not install. ' + (next((line for line in reversed(tail) if 'failed' in line.lower()), detail) or
-                          f'See {INSTALL_LOG}.'))
+    if not ready:
+        raise EngineError('The animation tools did not install. ' + (detail or f'See {INSTALL_LOG}.'))
 
 
 def ensure(update, request=None) -> None:

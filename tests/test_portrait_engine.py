@@ -3,9 +3,10 @@ import tempfile
 import unittest
 import json
 import importlib.util
+import os
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from backend import portrait_engine
 
@@ -64,6 +65,33 @@ class EngineCheckoutTests(unittest.TestCase):
         with self.assertRaises(portrait_engine.EngineError):
             self.checkout(self.first)
         self.assertEqual((self.engine / 'Install.ps1').read_text(), 'my change\n')
+
+
+class EngineInstallTests(unittest.TestCase):
+    def test_engine_does_not_inherit_the_launchers_python_preference(self):
+        with patch.dict(os.environ, UV_PYTHON_PREFERENCE='only-managed', UV_LINK_MODE='copy'):
+            env = portrait_engine.engine_env()
+            self.assertNotIn('UV_PYTHON_PREFERENCE', env)
+            self.assertEqual(env['UV_LINK_MODE'], 'copy')
+            self.assertEqual(os.environ['UV_PYTHON_PREFERENCE'], 'only-managed')
+
+    def test_installer_failure_reports_the_tool_error_before_wrapper_output(self):
+        process = Mock(stdout=['error: incompatible Python options\n', *['more output\n'] * 15,
+                               'Installation failed: command exited with code 2\n'])
+        process.wait.return_value = 2
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with (patch.object(portrait_engine, 'ENGINE_MODELS', root / 'models'),
+                  patch.object(portrait_engine, 'ENGINE_DATA', root / 'data'),
+                  patch.object(portrait_engine, 'INSTALL_LOG', root / 'install.log'),
+                  patch.object(portrait_engine, 'checkout'), patch.object(portrait_engine, 'seed_models'),
+                  patch.object(portrait_engine.subprocess, 'Popen', return_value=process),
+                  patch.object(portrait_engine, 'quick_check') as check,
+                  patch('builtins.print')):
+                with self.assertRaisesRegex(portrait_engine.EngineError, 'error: incompatible Python options'):
+                    portrait_engine.install(lambda **_: None)
+                check.assert_not_called()
+                self.assertIn('command exited with code 2', (root / 'install.log').read_text())
 
 
 class PortraitInputTests(unittest.TestCase):
