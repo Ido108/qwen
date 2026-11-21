@@ -21,13 +21,15 @@ ANIMATION_OPTIONS = {
     'driving_crop_mode', 'crop_vy', 'redetect_interval', 'reference_samples', 'scene_handling', 'composition',
     'composition_blend', 'face_analysis', 'mesh_shape', 'face_stretch', 'lipsync'}
 SYNC_OPTIONS = {
-    'sync_model', 'sync_steps', 'sync_guidance', 'sync_seed', 'wav2lip_pad_bottom', 'wav2lip_face_box', 'sync_batch_size',
-    'sync_crop_shift', 'sync_crop_mode', 'sync_area', 'sync_blend', 'sync_margin', 'sync_feather'}
+    'sync_model', 'sync_steps', 'sync_guidance', 'sync_seed', 'wav2lip_pad_bottom', 'sync_batch_size'}
 CLIP_OPTIONS = {'start', 'duration', 'audio_start'}
 Option = bool | int | float | str | None
 
 
 def checked_options(options: dict, allowed: set[str]) -> dict:
+    if 'sync_model' in allowed:
+        retired = {'wav2lip_face_box', 'sync_crop_shift', 'sync_crop_mode', 'sync_area', 'sync_blend', 'sync_margin', 'sync_feather'}
+        options = {key: value for key, value in options.items() if key not in retired}
     unknown = sorted(set(options) - allowed)
     if unknown:
         raise ValueError(f'Unknown settings: {", ".join(unknown)}')

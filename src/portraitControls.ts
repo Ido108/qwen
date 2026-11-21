@@ -20,7 +20,7 @@ export const SYNC_MODELS:Choice[]=[
   ['wav2lip','Wav2Lip: original, 96 px'],
 ];
 export const SYNC_INFO:Record<string,string>={
-  musetalk:'Recommended for quick results and everyday use. One model pass per frame. Included in the first install.',
+  musetalk:'256 px face processing, one model pass per frame.',
   tbdub:'512 px dubbing for one face, at 25 fps.',
   tbdub_teacher:'512 px dubbing for one face, at 25 fps. Uses the 30-step teacher.',
   latentsync:'Temporal diffusion for more detailed lips. Slower; needs an NVIDIA GPU with at least 18 GB. Downloads 4.72 GB on first use.',
@@ -149,19 +149,9 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
       ...(model==='latentsync'?[number('sync_steps','Denoising steps',20,10,60,1,'20 is the default of the model. More steps take longer.'),number('sync_guidance','Audio guidance',1.5,1,3,.1,'Higher values follow the audio more strongly.')]
         :[select('sync_batch_size','Processing batch size',0,[[0,'Automatic: use available memory'],[1,'1 frame: least memory'],[2,'2 frames'],[4,'4 frames'],[8,'8 frames: more memory'],[16,'16 frames: most memory']])]).map(field=>({...field,hidden:!enabled})),
     ]});
-    result.push({title:'Lip sync advanced settings',hidden:!enabled,fields:[
+    result.push({title:'Lip sync advanced settings',hidden:!enabled||(model!=='latentsync'&&!model.startsWith('wav2lip')),fields:[
       ...(model==='latentsync'?[number('sync_seed','Seed',1247,0,2147483647,1,'Keep this fixed when you compare settings.')]:[]),
-      ...(model==='musetalk'?[
-        select('sync_crop_mode','Face crop','anatomical',[['anatomical','Nose and chin landmarks (recommended)'],['legacy','Previous eye-and-mouth estimate']]),
-        number('sync_crop_shift','Crop shift (256 pixel face)',0,-32,32,1,'Moves the model crop up or down.'),
-        select('sync_area','Replaced area','face',[['face','Lower face: lips, jaw and chin'],['lips','Lips only']],'Lips only keeps the jaw of the video.'),
-        {...number('sync_margin','Mouth mask margin',.24,0,.5,.01,'Space around the lips, relative to mouth width.'),hidden:(s.sync_area??'face')!=='lips'},
-      ]:model.startsWith('wav2lip')?[
-        select('wav2lip_face_box','Face box','detector',[['detector','Face detector of the Wav2Lip release (recommended)'],['landmarks','Box around the face landmarks']]),
-        number('wav2lip_pad_bottom','Chin padding (pixels)',10,0,80,1,'Includes the lower jaw in the model crop.'),
-      ]:[]),
-      number('sync_blend','Mouth blend',1,0,1,.05,'1 = generated mouth; 0 = unchanged pixels of the video.'),
-      number('sync_feather','Mask feather',.04,.01,.15,.01,'Blur radius relative to mouth width.'),
+      ...(model.startsWith('wav2lip')?[number('wav2lip_pad_bottom','Chin padding (pixels)',10,0,80,1,'Includes the lower jaw in the model crop.')]:[]),
     ]});
   }
   if(tool==='enhance')result.push({title:'Face restore',primary:true,fields:[

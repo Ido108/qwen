@@ -23,7 +23,7 @@ from .common import APP_DIR, DATA_DIR, LIBRARY_DIR, MODELS_DIR
 
 ENGINE_REPOSITORY = 'https://github.com/Ido108/Multifck.git'
 # The tested engine version. A newer commit is used only after it is tested with this app and pinned here.
-ENGINE_COMMIT = 'bd339988537f401d33db3644617b3b65add99e42'
+ENGINE_COMMIT = 'affecc705f917ec06513d574a9bc035e3c8ca161'
 RUNTIME_DIR = Path(os.environ.get('QWEN_RUNTIME_DIR') or DATA_DIR).resolve()
 ENGINE_DIR = RUNTIME_DIR / 'engines' / 'multifck'
 ENGINE_PYTHON = ENGINE_DIR / ('.runtime/Scripts/python.exe' if os.name == 'nt' else '.runtime/bin/python')
@@ -133,7 +133,7 @@ def copy_needed(relative: Path, request: dict) -> bool:
     if folder == 'face_mesh':
         return bool(animation and options.get('face_analysis') == 'mediapipe')
     if folder == 'imtalker' and name == 's3fd.pth':
-        return (lip in ('wav2lip', 'wav2lip_gan') and options.get('wav2lip_face_box', 'detector') == 'detector' or
+        return (lip in ('musetalk', 'wav2lip', 'wav2lip_gan') or
                 animation == 'imtalker' and options.get('imtalker_face_fit') == 'box')
     if folder == 'tpsmm':
         return animation == folder and name == options.get('tps_checkpoint', 'vox') + '.pth.tar'

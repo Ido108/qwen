@@ -32,7 +32,7 @@ function stagePlan(job:SavedJob):Step[]{
     return plan;
   }
   if(PORTRAIT_KINDS.includes(job.kind||'')){
-    add('Install tools',['installing'],job.stage==='installing'||!!job.stage_seconds?.installing);add('Prepare',START);
+    add('Install tools',['installing'],job.stage==='installing'||!!job.stage_seconds?.installing);add('Prepare',START.filter(stage=>stage!=='processing'));
     add(job.kind==='animate'?'Animate':job.kind==='lipsync'?'Lip sync':job.kind==='face-restore'?'Restore faces':'Extract audio',['processing']);add('Save',SAVE);
     return plan;
   }
