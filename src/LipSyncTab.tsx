@@ -4,13 +4,13 @@ import type {SavedJob} from './JobQueue';
 import {VideoOutput} from './VideoOutput';
 import type {SendVideo,VideoInput} from './SendVideoTo';
 import type {UploadedVideo} from './mediaUpload';
-import {portraitDefaults,portraitGroups,portraitOptions,syncTitle,type PortraitSettings} from './portraitControls';
+import {changeLipModel,portraitDefaults,portraitGroups,portraitOptions,syncTitle,type PortraitSettings} from './portraitControls';
 import {PortraitFields} from './PortraitFields';
 import {AudioPick,ClipFields,InstallNote,VideoPick,usePortraitJob,usePortraitStatus,type AudioChoice,type AudioUpload} from './PortraitInputs';
 import './video-studio.css';
 import './portrait.css';
 
-type Draft={video:string;settings:PortraitSettings;audio:AudioChoice;start:number;duration:number|null;audio_start:number;output_dir:string};
+type Draft={lipProfiles?:Record<string,PortraitSettings>;video:string;settings:PortraitSettings;audio:AudioChoice;start:number;duration:number|null;audio_start:number;output_dir:string};
 const KEY='qwen-lipsync-draft';
 const blank=():Draft=>({video:'',settings:portraitDefaults('sync',{sync_model:'musetalk'}),audio:{mode:'file',file:null,video:null},start:0,duration:null,audio_start:0,output_dir:''});
 function load():Draft{try{const saved=JSON.parse(localStorage.getItem(KEY)||'{}');const base=blank();return {...base,...saved,settings:portraitDefaults('sync',{...base.settings,...saved.settings}),audio:{...base.audio,...saved.audio}};}catch{return blank();}}
@@ -23,7 +23,9 @@ export function LipSyncTab({api,token,visible,models,videoInput,audioInput,onSen
   const run=usePortraitJob(api,'lipsync',onQueued);
   const status=usePortraitStatus(api,visible);
   const groups=portraitGroups('sync',draft.settings);
-  const set=(key:string,value:unknown)=>setDraft(d=>({...d,settings:portraitDefaults('sync',{...d.settings,[key]:value as never})}));
+  const set=(key:string,value:PortraitSettings[string])=>setDraft(d=>key==='sync_model'
+    ? {...d,...changeLipModel('sync',d.settings,d.lipProfiles||{},String(value))}
+    : {...d,settings:portraitDefaults('sync',{...d.settings,[key]:value})});
   useEffect(()=>{localStorage.setItem(KEY,JSON.stringify(draft));},[draft]);
   useEffect(()=>{if(!videoInput)return;const incoming=videoInput.video;
     if(videoInput.target==='lipsync-audio'){setDraft(d=>({...d,audio:{...d.audio,mode:'video',video:incoming}}));run.setNotice('The audio of this video is selected.');return;}
@@ -35,7 +37,7 @@ export function LipSyncTab({api,token,visible,models,videoInput,audioInput,onSen
     if(r.audio_mode==='video'&&r.audio_video)api(`/api/video-uploads/${r.audio_video}/metadata`).then((v:UploadedVideo)=>setDraft(d=>({...d,audio:{...d.audio,video:v}}))).catch(()=>{});
     if(restoreRequest.job.status==='succeeded')run.setResult(restoreRequest.job);run.setNotice('Settings restored.');},[restoreRequest]);
   const audioMissing=(draft.audio.mode==='file'&&!draft.audio.file)||(draft.audio.mode==='video'&&!draft.audio.video)||(draft.audio.mode==='own'&&video!==null&&!video.has_audio);
-  const ready=!!video&&!audioMissing;
+  const ready=!!video&&video.id===draft.video&&!audioMissing;
   async function add(){
     if(!ready)return;setSubmitting(true);
     const options={...portraitOptions('sync',draft.settings),start:draft.start,...(draft.duration?{duration:draft.duration}:{}),...(draft.audio.mode!=='own'?{audio_start:draft.audio_start}:{})};

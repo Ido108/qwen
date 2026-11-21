@@ -47,7 +47,7 @@ test('a new engine starts from its own defaults and keeps the shared ones',()=>{
   const imtalker=portraitDefaults('animate',{animation_engine:'imtalker'});
   assert.equal(imtalker.composition,false);assert.equal(imtalker.imtalker_crop_context,1.6);assert.equal(imtalker.lipsync,false);
   // Lip sync is off until it is checked; then the model settings are sent
-  for(const engine of ENGINES.map(e=>e.id)){const d=portraitDefaults('animate',{animation_engine:engine});assert.equal(d.lipsync,false,engine);
+  for(const engine of ENGINES.map(e=>e.id)){const d=portraitDefaults('animate',{animation_engine:engine});assert.equal(d.lipsync,false,engine);assert.equal(portraitOptions('animate',d).animation_engine,engine);assert.equal(d.composition,false,engine);
     assert.equal(portraitOptions('animate',d).lipsync,false);assert.ok(!('sync_model' in portraitOptions('animate',d)),engine);
     assert.equal(portraitOptions('animate',{...d,lipsync:true}).sync_model,'musetalk');}
   assert.equal(portraitModel({kind:'animate',request:{options:{animation_engine:'imtalker'}}}),'IMTalker');
@@ -59,7 +59,10 @@ test('a new engine starts from its own defaults and keeps the shared ones',()=>{
   // LatentSync shows its own steps and guidance, MuseTalk its batch size
   const latent=portraitOptions('sync',portraitDefaults('sync',{sync_model:'latentsync'}));
   assert.equal(latent.sync_steps,20);assert.ok(!('sync_batch_size' in latent));
-  assert.equal(portraitOptions('sync',portraitDefaults('sync',{sync_model:'musetalk'})).sync_batch_size,4);
+  assert.equal(portraitOptions('sync',portraitDefaults('sync',{sync_model:'musetalk'})).sync_batch_size,0);
+  for(const model of ['tbdub','tbdub_teacher']){
+    assert.deepEqual(portraitOptions('sync',portraitDefaults('sync',{sync_model:model})),{sync_model:model});
+  }
 });
 
 test('the result line names the engine and the lip sync model',()=>{

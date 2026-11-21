@@ -2079,11 +2079,27 @@ def reuse_audio(job_id: str):
     path = Path(job.get('output_path', ''))
     if job.get('kind') not in AUDIO_KINDS or job['status'] != 'succeeded' or not path.is_file():
         raise HTTPException(404, 'Saved audio not found.')
-    audio_id = uuid.uuid4().hex + path.suffix.lower()
-    temporary = AUDIO_UPLOADS_DIR / (audio_id + '.part')
-    shutil.copy2(path, temporary)
-    temporary.replace(AUDIO_UPLOADS_DIR / audio_id)
+    stat = path.stat()
+    identity = json.dumps([job_id, str(path.resolve()), stat.st_size, stat.st_mtime_ns]).encode()
+    audio_id = hashlib.sha256(identity).hexdigest()[:32] + path.suffix.lower()
+    destination = AUDIO_UPLOADS_DIR / audio_id
+    if not destination.is_file():
+        temporary = destination.with_suffix('.' + uuid.uuid4().hex + '.part')
+        try:
+            shutil.copy2(path, temporary)
+            temporary.replace(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
     return {'id': audio_id, 'name': path.name, 'url': f'/api/audio-uploads/{audio_id}'}
+
+
+@app.get('/api/jobs/{job_id}/framing')
+def portrait_framing(job_id: str):
+    job = read_job(job_id)
+    path = JOBS_DIR / job_id / 'framing.jpg'
+    if job.get('kind') != 'animate' or not path.is_file():
+        raise HTTPException(404, 'Crop preview not found.')
+    return FileResponse(path, media_type='image/jpeg')
 
 
 def image_upscale_source(source_image: str, source_job: str) -> Path:

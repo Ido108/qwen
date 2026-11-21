@@ -87,5 +87,5 @@ export function usePortraitStatus(api:Api,visible:boolean){
 
 export function InstallNote({status}:{status:{installed:boolean;ready:boolean}|null}){
   if(!status||status.ready)return null;
-  return <div className="notice">The first job installs the animation and lip sync tools (about 12 GB) and tests them on this GPU. This takes 10 to 20 minutes once. Progress appears in the queue.</div>;
+  return <div className="notice">{status.installed?'The next job checks and updates the installed portrait tools.':'The first job installs the portrait tools and checks this GPU. You can follow installation in the queue.'}</div>;
 }

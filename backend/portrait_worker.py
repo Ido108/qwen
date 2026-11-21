@@ -1,12 +1,12 @@
 """Animate image, Lip sync, Extract audio and Face restore jobs in the single-use worker (see portrait_engine)."""
 from __future__ import annotations
 
+import subprocess
 import time
 from pathlib import Path
 
 from .common import resolve_audio, resolve_image, resolve_video, write_json
 from . import portrait_engine
-from .portrait_settings import AUDIO_KINDS
 
 SUFFIX = {'animate': 'animated', 'lipsync': 'lipsync', 'face-restore': 'face-restored', 'extract-audio': 'audio'}
 
@@ -40,27 +40,56 @@ def fields(kind, request, engine, update):
             values['audio'] = audio
         return values
     clip = {key: request[key] for key in ('start', 'duration') if request.get(key) is not None}
-    if kind == 'extract-audio':
-        return {'action': 'extract', 'driving': driving, 'audio_format': request['audio_format'], **clip}
     return {'action': 'enhance', 'driving': driving, 'enhance_blend': request['enhance_blend'],
             'enhance_scale': request['enhance_scale'], **clip}
 
 
 def run(request, job, directory, update):
     kind = request['kind']
-    portrait_engine.ensure(update)
-    with portrait_engine.Engine(directory) as engine:
-        result = engine.run(fields(kind, request, engine, update), update)
-        output = engine.output(result)
-        update(stage='saving', message='Saving the result…', step=0, total_steps=0)
-        name = time.strftime('%Y-%m-%d_%H-%M-%S') + '_' + job['id'][:8] + '_' + SUFFIX[kind] + output.suffix
-        destination = portrait_engine.move_output(output, Path(request['output_dir']) / name)
-    details = {'engine_stats': result.get('stats') or {}, 'engine_version': portrait_engine.ENGINE_COMMIT[:12]}
-    if kind in AUDIO_KINDS:
+    name = time.strftime('%Y-%m-%d_%H-%M-%S') + '_' + job['id'][:8] + '_' + SUFFIX[kind]
+    if kind == 'extract-audio':
+        destination = Path(request['output_dir']) / (name + '.' + request['audio_format'])
+        extract_audio(request, directory, destination, update)
+        details = {'engine_stats': {'engine': 'ffmpeg'}}
         finish_audio(job, directory, destination, update, details)
     else:
+        portrait_engine.ensure(update, request)
+        with portrait_engine.Engine(directory) as engine:
+            result = engine.run(fields(kind, request, engine, update), update)
+            output = engine.output(result)
+            update(stage='saving', message='Saving the result…', step=0, total_steps=0)
+            destination = portrait_engine.move_output(output, Path(request['output_dir']) / (name + output.suffix))
+        details = {'engine_stats': result.get('stats') or {}, 'engine_version': portrait_engine.ENGINE_COMMIT[:12]}
         finish_video(job, directory, destination, update, details)
     write_json(destination.with_suffix('.json'), job)
+
+
+def extract_audio(request, directory, destination, update):
+    import av
+    import imageio_ffmpeg
+    from .reference_timing import probe_video_duration
+
+    source = resolve_video(request['source_video'])
+    with av.open(str(source)) as media:
+        if not media.streams.audio:
+            raise ValueError('The selected video has no audio track.')
+    start = request.get('start', 0)
+    available = probe_video_duration(source) - start
+    if available <= 0:
+        raise ValueError('Start time is beyond the end of the video.')
+    duration = min(request.get('duration') or available, available)
+    codec = ['-c:a', 'libmp3lame', '-b:a', '320k'] if destination.suffix == '.mp3' else ['-c:a', 'pcm_s16le']
+    temporary = directory / ('extracted' + destination.suffix)
+    update(stage='processing', message='Extracting audio with FFmpeg…')
+    try:
+        result = subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-nostdin', '-hide_banner', '-loglevel', 'error',
+                                 '-y', '-ss', str(start), '-i', str(source), '-t', str(duration), '-map', '0:a:0',
+                                 '-vn', *codec, str(temporary)], capture_output=True, creationflags=portrait_engine.NO_WINDOW)
+        if result.returncode:
+            raise ValueError('Audio extraction failed: ' + result.stderr.decode(errors='replace')[-500:])
+        portrait_engine.move_output(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def finish_audio(job, directory, destination, update, details):

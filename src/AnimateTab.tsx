@@ -8,16 +8,16 @@ import {useImageDestination} from './UseImageAs';
 import {VideoOutput} from './VideoOutput';
 import type {SendVideo,VideoInput} from './SendVideoTo';
 import type {UploadedVideo} from './mediaUpload';
-import {ENGINES,portraitDefaults,portraitGroups,portraitOptions,type PortraitSettings} from './portraitControls';
+import {ENGINES,changeLipModel,portraitDefaults,portraitGroups,portraitOptions,type PortraitSettings} from './portraitControls';
 import {PortraitFields} from './PortraitFields';
 import {AudioPick,ClipFields,InstallNote,VideoPick,usePortraitJob,usePortraitStatus,type AudioChoice,type AudioUpload} from './PortraitInputs';
 import './video-studio.css';
 import './portrait.css';
 
-type Draft={image:InputImage|null;video:string;settings:PortraitSettings;audio:AudioChoice;start:number;duration:number|null;audio_start:number;output_dir:string};
+type Draft={lipProfiles?:Record<string,PortraitSettings>;modelProfiles?:Record<string,PortraitSettings>;image:InputImage|null;video:string;settings:PortraitSettings;audio:AudioChoice;start:number;duration:number|null;audio_start:number;output_dir:string};
 const KEY='qwen-animate-draft';
 const blank=():Draft=>({image:null,video:'',settings:portraitDefaults('animate',{animation_engine:'imtalker'}),audio:{mode:'driving',file:null,video:null},start:0,duration:null,audio_start:0,output_dir:''});
-function load():Draft{try{const saved=JSON.parse(localStorage.getItem(KEY)||'{}');const base=blank();return {...base,...saved,settings:portraitDefaults('animate',{...base.settings,...saved.settings}),audio:{...base.audio,...saved.audio}};}catch{return blank();}}
+function load():Draft{try{const saved=JSON.parse(localStorage.getItem(KEY)||'{}');const base=blank();return {...base,...saved,settings:portraitDefaults('animate',saved.modelProfiles?saved.settings:{...saved.settings,composition:false,face_stretch:false}),modelProfiles:saved.modelProfiles||{},audio:{...base.audio,...saved.audio}};}catch{return blank();}}
 
 export function AnimateTab({api,token,visible,models,videoInput,audioInput,onSendVideo,onQueued,restoreRequest,library}:{
   api:Api;token:string;visible:boolean;models:ModelState|null;videoInput:VideoInput|null;audioInput:{audio:AudioUpload;key:number}|null;onSendVideo:SendVideo;onQueued:()=>void;
@@ -29,7 +29,16 @@ export function AnimateTab({api,token,visible,models,videoInput,audioInput,onSen
   const engine=String(draft.settings.animation_engine);
   const info=ENGINES.find(item=>item.id===engine);
   const groups=portraitGroups('animate',draft.settings);
-  const set=(key:string,value:unknown)=>setDraft(d=>({...d,settings:portraitDefaults('animate',{...d.settings,[key]:value as never})}));
+  const framing=(run.busy?run.job:run.result)?.framing_url;
+  const set=(key:string,value:PortraitSettings[string])=>setDraft(d=>{
+    if(key==='sync_model')return {...d,...changeLipModel('animate',d.settings,d.lipProfiles||{},String(value))};
+    if(key==='animation_engine'){
+      const modelProfiles={...d.modelProfiles,[String(d.settings.animation_engine)]:d.settings};
+      const audio=Object.fromEntries(Object.entries(d.settings).filter(([name])=>name==='lipsync'||name.startsWith('sync_')||name.startsWith('wav2lip_')));
+      return {...d,modelProfiles,settings:portraitDefaults('animate',{...modelProfiles[String(value)],...audio,animation_engine:value})};
+    }
+    return {...d,settings:portraitDefaults('animate',{...d.settings,[key]:value})};
+  });
   useImageDestination('animate',image=>{setDraft(d=>({...d,image}));run.setNotice('Picture added.');});
   useEffect(()=>{localStorage.setItem(KEY,JSON.stringify(draft));},[draft]);
   useEffect(()=>{if(!videoInput)return;const incoming=videoInput.video;
@@ -38,12 +47,12 @@ export function AnimateTab({api,token,visible,models,videoInput,audioInput,onSen
   useEffect(()=>{if(!audioInput)return;setDraft(d=>({...d,audio:{...d.audio,mode:'file',file:audioInput.audio}}));run.setNotice('Audio added.');},[audioInput]);
   useEffect(()=>{if(!draft.video||video?.id===draft.video)return;let alive=true;api(`/api/video-uploads/${draft.video}/metadata`).then((v:UploadedVideo)=>{if(alive)setVideo(v);}).catch(()=>{if(alive)setDraft(d=>({...d,video:''}));});return()=>{alive=false;};},[api,draft.video]);
   useEffect(()=>{if(!restoreRequest)return;const r=restoreRequest.job.request;setDraft(d=>({...d,image:r.source_image?{id:r.source_image,name:'Picture',url:`/api/uploads/${r.source_image}`}:null,video:r.driving_video||'',
-    settings:portraitDefaults('animate',{...blank().settings,...r.options}),start:r.options?.start??0,duration:r.options?.duration??null,audio_start:r.options?.audio_start??0,audio:{mode:r.audio_mode||'driving',file:r.audio_file?{id:r.audio_file,name:'Audio file',url:`/api/audio-uploads/${r.audio_file}`}:null,video:null}}));
+    settings:portraitDefaults('animate',r.options||{}),modelProfiles:{},start:r.options?.start??0,duration:r.options?.duration??null,audio_start:r.options?.audio_start??0,audio:{mode:r.audio_mode||'driving',file:r.audio_file?{id:r.audio_file,name:'Audio file',url:`/api/audio-uploads/${r.audio_file}`}:null,video:null}}));
     if(r.audio_mode==='video'&&r.audio_video)api(`/api/video-uploads/${r.audio_video}/metadata`).then((v:UploadedVideo)=>setDraft(d=>({...d,audio:{...d.audio,video:v}}))).catch(()=>{});
     if(restoreRequest.job.status==='succeeded')run.setResult(restoreRequest.job);run.setNotice('Settings restored.');},[restoreRequest]);
   async function upload(files:File[]){if(!files[0])return;setUploading(true);run.setError('');try{const body=new FormData();body.append('files',files[0]);const images=await api('/api/uploads',{method:'POST',body});setDraft(d=>({...d,image:images[0]}));}catch(e){run.setError((e as Error).message);}finally{setUploading(false);}}
   const audioMissing=(draft.audio.mode==='file'&&!draft.audio.file)||(draft.audio.mode==='video'&&!draft.audio.video);
-  const ready=!!draft.image&&!!video&&!audioMissing&&!uploading;
+  const ready=!!draft.image&&!!video&&video.id===draft.video&&!audioMissing&&!uploading;
   async function add(preview:boolean){
     if(!ready)return;setSubmitting(true);
     const options={...portraitOptions('animate',draft.settings),start:draft.start,...(draft.duration?{duration:draft.duration}:{}),...(draft.audio.mode!=='driving'?{audio_start:draft.audio_start}:{})};
@@ -62,10 +71,10 @@ export function AnimateTab({api,token,visible,models,videoInput,audioInput,onSen
       <VideoPick title="Driving video" hint="The motion and expressions come from this video" video={video} token={token} onVideo={v=>{setVideo(v);setDraft(d=>({...d,video:v?.id||''}));}}/>
       <section className="panel vs-panel portrait-panel"><div className="section-heading"><h2>Animation engine</h2></div>
         <div className="field"><label htmlFor="animate-engine">Engine</label><select id="animate-engine" value={engine} onChange={e=>set('animation_engine',e.target.value)}>{ENGINES.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select>
-          {info?<small>{info.detail} <a href={info.url} target="_blank" rel="noreferrer">Model page</a></small>:null}</div>
+          {info?<details><summary>Model details</summary><small>{info.detail} <a href={info.url} target="_blank" rel="noreferrer">Model page</a></small></details>:null}</div>
       </section>
       <PortraitFields groups={groups} settings={draft.settings} onChange={set} prefix="animate"/>
-      <AudioPick api={api} token={token} value={draft.audio} onChange={audio=>setDraft(d=>({...d,audio}))} ownMode="driving" ownLabel="Audio of the driving video"/>
+      <details className="disclosure"><summary>Audio track</summary><AudioPick api={api} token={token} value={draft.audio} onChange={audio=>setDraft(d=>({...d,audio}))} ownMode="driving" ownLabel="Audio of the driving video"/></details>
       <details className="disclosure"><summary>Part of the video and output folder</summary><div className="details-body">
         <ClipFields prefix="animate" start={draft.start} duration={draft.duration} onStart={start=>setDraft(d=>({...d,start}))} onDuration={duration=>setDraft(d=>({...d,duration}))} audioStart={draft.audio_start} onAudioStart={audio_start=>setDraft(d=>({...d,audio_start}))}/>
         <div className="field"><label htmlFor="animate-folder">Output folder</label><input id="animate-folder" placeholder="Videos folder of the app" value={draft.output_dir} onChange={e=>setDraft(d=>({...d,output_dir:e.target.value}))}/></div>
@@ -81,6 +90,9 @@ export function AnimateTab({api,token,visible,models,videoInput,audioInput,onSen
         <button className="button primary vs-submit" disabled={!ready||submitting} onClick={()=>add(false)}>{submitting?<span className="train-spinner" aria-hidden="true"/>:null}Add to queue</button></div>
     </div></div>
     <section className="panel vs-result"><VideoOutput job={run.job} result={run.result} busy={run.busy} clock={run.clock} models={models} onSendVideo={onSendVideo} frames/>
+      {framing?<details className="disclosure portrait-framing"><summary>Crop preview</summary>
+        <figure><img src={framing} alt="Source crop, driving video crop and their overlay"/><figcaption>Picture · Driving video · Overlay</figcaption></figure>
+      </details>:null}
       {run.history.length?<details className="disclosure vs-history"><summary>Recent animations <span className="summary-hint">{run.history.length}</span></summary><div className="vs-history-grid">{run.history.slice(0,12).map(item=><button key={item.id} onClick={()=>run.setResult(item)}><img src={item.poster_url} alt=""/><span>{ENGINES.find(e=>e.id===item.request.options?.animation_engine)?.title.split(':')[0]||''}</span></button>)}</div></details>:null}
     </section></div>
   </main>;

@@ -3,7 +3,7 @@ import type {Api} from './ModelSettings';
 import type {SavedJob} from './JobQueue';
 import type {VideoInput} from './SendVideoTo';
 import type {UploadedVideo} from './mediaUpload';
-import {ClipFields,InstallNote,VideoPick,usePortraitJob,usePortraitStatus} from './PortraitInputs';
+import {ClipFields,VideoPick,usePortraitJob} from './PortraitInputs';
 import {VideoProgress} from './VideoProgress';
 import {ShowInFolder} from './ShowInFolder';
 import './video-studio.css';
@@ -30,7 +30,6 @@ export function ExtractAudioTab({api,token,visible,videoInput,onSendAudio,onQueu
 }){
   const [draft,setDraft]=useState<Draft>(load),[video,setVideo]=useState<UploadedVideo|null>(null),[submitting,setSubmitting]=useState(false);
   const run=usePortraitJob(api,'extract-audio',onQueued);
-  const status=usePortraitStatus(api,visible);
   useEffect(()=>{localStorage.setItem(KEY,JSON.stringify(draft));},[draft]);
   useEffect(()=>{if(!videoInput)return;setVideo(videoInput.video);setDraft(d=>({...d,video:videoInput.video.id}));run.setNotice('Video added.');},[videoInput]);
   useEffect(()=>{if(!draft.video||video?.id===draft.video)return;let alive=true;api(`/api/video-uploads/${draft.video}/metadata`).then((v:UploadedVideo)=>{if(alive)setVideo(v);}).catch(()=>{if(alive)setDraft(d=>({...d,video:''}));});return()=>{alive=false;};},[api,draft.video]);
@@ -48,7 +47,6 @@ export function ExtractAudioTab({api,token,visible,videoInput,onSendAudio,onQueu
       </section>
     </div>
     <div className="vs-action">
-      <InstallNote status={status}/>
       {run.error?<div className="message error" role="alert"><span>{run.error}</span><button className="icon-button" onClick={()=>run.setError('')} aria-label="Dismiss error">×</button></div>:null}
       {run.notice?<div className="notice" role="status">{run.notice}</div>:null}
       <div className="vs-action-row"><span className="vs-summary">{!video?'Add a video':!video.has_audio?'This video has no audio':draft.audio_format.toUpperCase()}<small>No AI model</small></span>

@@ -1,4 +1,4 @@
-"""Image animation, lip sync, face restore and audio extraction run in the portrait engine (the Multifck app).
+"""Image animation, lip sync and face restoration run in the portrait engine (the Multifck app).
 
 It keeps its own pinned Python 3.10 environment, which its installer builds for the graphics card of this computer,
 so its versions of torch, ONNX Runtime and the face models never meet the app's own. A job starts the engine's local
@@ -8,6 +8,8 @@ the job, so no engine model stays in GPU memory between jobs.
 from __future__ import annotations
 
 import contextlib
+import errno
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,12 +17,13 @@ import shutil
 import socket
 import subprocess
 import time
+import uuid
 
 from .common import APP_DIR, DATA_DIR, LIBRARY_DIR, MODELS_DIR
 
 ENGINE_REPOSITORY = 'https://github.com/Ido108/Multifck.git'
 # The tested engine version. A newer commit is used only after it is tested with this app and pinned here.
-ENGINE_COMMIT = 'd5eef5d39ac530ca13d5e7436641a963636c6d3c'
+ENGINE_COMMIT = '6ea130f0a3acf05eb729b508e6ce299db4b06c14'
 RUNTIME_DIR = Path(os.environ.get('QWEN_RUNTIME_DIR') or DATA_DIR).resolve()
 ENGINE_DIR = RUNTIME_DIR / 'engines' / 'multifck'
 ENGINE_PYTHON = ENGINE_DIR / ('.runtime/Scripts/python.exe' if os.name == 'nt' else '.runtime/bin/python')
@@ -115,34 +118,76 @@ def checkout(update) -> None:
         git('checkout', '--quiet', '--detach', ENGINE_COMMIT)
 
 
-def seed_models() -> int:
+def copy_needed(relative: Path, request: dict) -> bool:
+    """On separate drives, copy only base weights and the selected variants."""
+    folder, name = relative.parts[0], relative.name
+    if folder in {'insightface', 'liveportrait', 'musetalk', 'rvc', 'gfpgan'} or relative.as_posix() == 'tpsmm/vox.pth.tar':
+        return True
+    options = request.get('options', {})
+    kind = request.get('kind')
+    animation = options.get('animation_engine', 'imtalker') if kind == 'animate' else None
+    lip = options.get('sync_model', 'musetalk') if kind == 'lipsync' or (animation and options.get('lipsync')) else None
+    if folder == 'face_mesh':
+        return bool(animation and options.get('face_analysis') == 'mediapipe')
+    if folder == 'imtalker' and name == 's3fd.pth':
+        return (lip in ('wav2lip', 'wav2lip_gan') and options.get('wav2lip_face_box', 'detector') == 'detector' or
+                animation == 'imtalker' and options.get('imtalker_face_fit') == 'box')
+    if folder == 'tpsmm':
+        return animation == folder and name == options.get('tps_checkpoint', 'vox') + '.pth.tar'
+    if folder == 'tbdub':
+        return lip in ('tbdub', 'tbdub_teacher') and (not name.startswith('tbdub_') or
+                name == ('tbdub_teacher.safetensors' if lip == 'tbdub_teacher' else 'tbdub_student.safetensors'))
+    if folder == 'wav2lip':
+        return name == f'{lip}.pth'
+    if folder == 'mrfa':
+        return animation == folder and name == options.get('mrfa_checkpoint', 'vox') + '.safetensors'
+    return folder in (animation, lip)
+
+
+def seed_models(request=None) -> int:
     """Hard links to the weights of a Multifck install next to this app, so the same files are not downloaded twice."""
     source = local_source()
     if source is None or not (source / 'models').is_dir():
         return 0
     linked = 0
     for path in (source / 'models').rglob('*'):
-        if not path.is_file() or path.suffix.lower() not in LINKABLE or path.name.endswith('.partial'):
+        config = path.name in {'config.json', 'preprocessor_config.json', 'model_index.json'}
+        if not path.is_file() or not (path.suffix.lower() in LINKABLE or config):
             continue
-        target = ENGINE_MODELS / path.relative_to(source / 'models')
+        relative = path.relative_to(source / 'models')
+        target = ENGINE_MODELS / relative
         if target.exists():
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
-            os.link(path, target)
+            if not config:
+                os.link(path, target)
+                linked += 1
+                continue
+        except FileExistsError:
+            continue
+        except OSError as error:
+            if error.errno != errno.EXDEV and getattr(error, 'winerror', None) != 17:
+                continue
+        if not copy_needed(relative, request or {}) and (not config or path.stat().st_dev != target.parent.stat().st_dev):
+            continue
+        temporary = target.with_name(target.name + '.' + uuid.uuid4().hex + '.partial')
+        try:
+            shutil.copyfile(path, temporary)
+            temporary.replace(target)
             linked += 1
-        except OSError:
-            return linked  # another drive: the installer downloads what is missing
+        finally:
+            temporary.unlink(missing_ok=True)
     return linked
 
 
-def install(update) -> None:
+def install(update, request=None) -> None:
     """First use, or a new pinned version: the engine's own installer, which detects the GPU and tests every model."""
     update(stage='installing', message='Installing the animation and lip sync tools…', step=0, total_steps=0)
     checkout(update)
     ENGINE_MODELS.mkdir(parents=True, exist_ok=True)
     ENGINE_DATA.mkdir(parents=True, exist_ok=True)
-    seed_models()
+    seed_models(request)
     if os.name == 'nt':
         command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ENGINE_DIR / 'Install.ps1'), '-NoShortcuts']
     else:
@@ -171,9 +216,11 @@ def install(update) -> None:
                           f'See {INSTALL_LOG}.'))
 
 
-def ensure(update) -> None:
+def ensure(update, request=None) -> None:
     if not quick_check()[0]:
-        install(update)
+        install(update, request)
+    else:
+        seed_models(request)
 
 
 def free_port() -> int:
@@ -249,17 +296,50 @@ class Engine:
         return response.json()
 
     def upload(self, kind: str, path: Path) -> str:
-        with Path(path).open('rb') as stream:
-            return self.check(self.client.post(f'/api/upload/{kind}', files={'file': (Path(path).name, stream)}, timeout=600))['id']
+        path = Path(path).resolve()
+        stat = path.stat()
+        identity = json.dumps([kind, str(path), stat.st_size, stat.st_mtime_ns]).encode()
+        directory = ENGINE_DATA / 'input-references'
+        directory.mkdir(exist_ok=True, parents=True)
+        entry = directory / (hashlib.sha256(identity).hexdigest() + '.json')
+        try:
+            identifier = json.loads(entry.read_text())['id']
+            if isinstance(identifier, str) and len(identifier) == 64 and all(c in '0123456789abcdef' for c in identifier):
+                upload = ENGINE_DATA / 'uploads' / identifier
+                if upload.with_suffix('.json').is_file() and upload.with_suffix(path.suffix.lower()).is_file():
+                    return identifier
+        except (OSError, ValueError, KeyError):
+            pass
+        with path.open('rb') as stream:
+            identifier = self.check(self.client.post(f'/api/upload/{kind}', files={'file': (path.name, stream)}, timeout=600))['id']
+        temporary = entry.with_suffix('.' + uuid.uuid4().hex + '.tmp')
+        try:
+            temporary.write_text(json.dumps({'id': identifier}))
+            temporary.replace(entry)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return identifier
 
     def run(self, fields: dict, update, cancelled=lambda: False) -> dict:
         created = self.check(self.client.post('/api/jobs', json=fields))
         identifier = created['id']
-        preview_at = 0.0
+        preview_stamp = None
+        framing_saved = False
         while True:
             job = self.check(self.client.get(f'/api/jobs/{identifier}'))
             state = job.get('status')
+            if not framing_saved and (job.get('analysis') or {}).get('alignment'):
+                saved = ENGINE_DATA / 'jobs' / identifier / 'alignment.jpg'
+                if saved.is_file():
+                    temporary = self.directory / 'framing.partial.jpg'
+                    shutil.copyfile(saved, temporary)
+                    temporary.replace(self.directory / 'framing.jpg')
+                    update(framing_url=f'/api/jobs/{self.directory.name}/framing')
+                    framing_saved = True
             if state == 'completed':
+                count = int((job.get('stats') or {}).get('frames') or 0)
+                if count:
+                    update(step=count, total_steps=count, engine_progress=1.)
                 return job
             if state in ('failed', 'cancelled'):
                 raise EngineError(job.get('error') or job.get('message') or 'The job did not finish.')
@@ -271,25 +351,29 @@ class Engine:
             values = {'stage': stage, 'message': job.get('message') or 'Working…',
                       'engine_progress': round(float(job.get('progress') or 0), 4), 'engine_stage': job.get('stage') or ''}
             total, current = int(job.get('total') or 0), int(job.get('current') or 0)
-            values.update(step=current if total else 0, total_steps=total)
+            frames = job.get('progress_unit') == 'frames'
+            values.update(step=current if frames else 0, total_steps=total if frames else 0)
             update(**values)
-            if time.monotonic() - preview_at > 1.5 and stage == 'processing':
-                preview_at = time.monotonic()
-                self.save_preview(identifier, update)
+            preview_stamp = self.save_preview(identifier, preview_stamp, update)
             time.sleep(.5)
 
-    def save_preview(self, identifier: str, update) -> None:
-        from io import BytesIO
+    def save_preview(self, identifier: str, previous, update):
         from PIL import Image
-        with contextlib.suppress(Exception):
-            response = self.client.get(f'/api/jobs/{identifier}/preview', timeout=5)
-            if response.status_code != 200 or not response.content:
-                return
+        source = ENGINE_DATA / 'jobs' / identifier / 'preview.jpg'
+        try:
+            stamp = source.stat().st_mtime_ns
+            if stamp == previous:
+                return previous
             target = self.directory / 'live-preview.webp'
             temporary = target.with_suffix('.webp.part')
-            Image.open(BytesIO(response.content)).convert('RGB').save(temporary, format='WEBP', quality=80)
+            with Image.open(source) as frame:
+                frame.thumbnail((960, 540))
+                frame.convert('RGB').save(temporary, format='WEBP', quality=80)
             temporary.replace(target)
             update(preview_url=f'/api/jobs/{self.directory.name}/live-preview', preview_updated_at=time.time())
+            return stamp
+        except OSError:
+            return previous
 
     def output(self, job: dict) -> Path:
         path = ENGINE_DATA / 'outputs' / job['output']
@@ -325,6 +409,14 @@ def remove_engine_output(path: Path) -> None:
 
 def move_output(source: Path, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        source.replace(destination)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV and getattr(exc, 'winerror', None) != 17:
+            raise
+    else:
+        remove_engine_output(source)
+        return destination
     temporary = destination.with_name(destination.stem + '.partial' + destination.suffix)
     try:
         shutil.copy2(source, temporary)

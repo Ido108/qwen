@@ -24,7 +24,7 @@ export function PortraitFields({groups,settings,onChange,prefix,skip=[]}:{groups
   const main=shown.filter(group=>group.primary),advanced=shown.filter(group=>!group.primary);
   return <>
     {main.map(group=><section key={group.title} className="panel vs-panel portrait-panel"><div className="section-heading"><h2>{group.title}</h2></div><PortraitGroupFields group={group} settings={settings} onChange={onChange} prefix={prefix}/></section>)}
-    {advanced.length?<details className="disclosure portrait-advanced"><summary>Advanced settings <span className="summary-hint">{advanced.map(group=>group.title).join(' · ')}</span></summary><div className="details-body">
+    {advanced.length?<details className="disclosure portrait-advanced"><summary>Advanced settings </summary><div className="details-body">
       {advanced.map(group=><div key={group.title} className="portrait-advanced-group"><h3>{group.title}</h3><PortraitGroupFields group={group} settings={settings} onChange={onChange} prefix={prefix}/></div>)}
     </div></details>:null}
   </>;

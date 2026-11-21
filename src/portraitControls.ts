@@ -13,19 +13,23 @@ const check=(key:string,label:string,value:boolean,hint=''):PortraitField=>({key
 
 export const SYNC_MODELS:Choice[]=[
   ['musetalk','MuseTalk 1.5: fast, 256 px'],
+  ['tbdub','TBDub Student: 2 steps'],
+  ['tbdub_teacher','TBDub Teacher: 30 steps'],
   ['latentsync','LatentSync 1.6: detailed, 512 px'],
   ['wav2lip_gan','Wav2Lip GAN: original, 96 px'],
   ['wav2lip','Wav2Lip: original, 96 px'],
 ];
 export const SYNC_INFO:Record<string,string>={
   musetalk:'Recommended for quick results and everyday use. One model pass per frame. Included in the first install.',
+  tbdub:'512 px dubbing for one face, at 25 fps.',
+  tbdub_teacher:'512 px dubbing for one face, at 25 fps. Uses the 30-step teacher.',
   latentsync:'Temporal diffusion for more detailed lips. Slower; needs an NVIDIA GPU with at least 18 GB. Downloads 4.72 GB on first use.',
   wav2lip_gan:'The original generator with visual-quality training. Its 96 pixel face output can look soft. Downloads 416 MB on first use.',
   wav2lip:'The original lip sync generator. Prioritizes speech alignment; its 96 pixel face output can look soft. Downloads 416 MB on first use.',
 };
 export const ENGINES:{id:string;title:string;detail:string;url:string}[]=[
   {id:'imtalker',title:'IMTalker: video-driven renderer',detail:'512 × 512 generation with identity-adapted motion. Transfers head pose, gaze and expression directly from the video. Downloads 1.98 GB on first use.',url:'https://github.com/bigai-nlco/IMTalker'},
-  {id:'liveportrait',title:'LivePortrait',detail:'21 learned 3D keypoints with appearance, warping, stitching and retargeting networks. 512 × 512 generated face, pasted back into the picture. Included in the first install.',url:'https://github.com/KlingAIResearch/LivePortrait'},
+  {id:'liveportrait',title:'LivePortrait',detail:'21 learned 3D keypoints with appearance, warping, stitching and retargeting networks. 512 × 512 animated portrait. Included in the first install.',url:'https://github.com/KlingAIResearch/LivePortrait'},
   {id:'performrecast',title:'PerformRecast: expression transfer',detail:'Transfers facial expressions and keeps the head pose of the picture. 512 px renderer. Downloads 854 MB on first use. Choose another engine when head motion must also transfer.',url:'https://github.com/youku-aigc/PerformRecast'},
   {id:'personalive',title:'PersonaLive: video-driven diffusion',detail:'A streaming diffusion model: the portrait follows the head pose and expression of each video frame. 512 × 512 at 25 fps, 4 steps. First use downloads 15.5 GB and installs a separate 6 GB environment. NVIDIA GPU with 12 GB.',url:'https://github.com/GVCLab/PersonaLive'},
   {id:'tpsmm',title:'Thin-Plate Spline Motion Model (TPSMM)',detail:'50 learned keypoints, 10 TPS transforms, dense motion and inpainting. 256 × 256 (VoxCeleb) or 384 px (TED, upper body). Included in the first install.',url:'https://github.com/yoyo-nb/Thin-Plate-Spline-Motion-Model'},
@@ -34,7 +38,7 @@ export const ENGINES:{id:string;title:string;detail:string;url:string}[]=[
 ];
 
 const BLEND:Choice[]=[['smooth','Match edges and blend (recommended)'],['original','Original edge blend']];
-const ALIGN=(face='Face crops and background blend'):Choice[]=>[['source','Match video to source image'],['face',face],['resize','Original full-frame resize']];
+const ALIGN=(face='Separate face crops'):Choice[]=>[['source','Match video to source image'],['face',face],['resize','Original full-frame resize']];
 
 /** The groups of fields for a tool, with the same conditions as the engine's own app. */
 export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGroup[]{
@@ -49,18 +53,18 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
       {...check('tps_adapt_scale','Adapt movement scale',true,'Scale relative motion by the source and reference keypoint areas.'),hidden:(s.tps_mode??'relative')!=='relative'},
       check('tps_preserve_detail','Reproject source detail (experimental)',false,'Off keeps the trained Vox output. Reprojection can sharpen texture but weaken mouth shapes.'),
       number('motion','Motion multiplier',1,0,1.8,.05,'1 = original motion amplitude.'),
-      select('tps_alignment','Prepare the driving video','source',[['source','Match video to source image'],['face','Separate face crops and background blend'],['resize','Original notebook: resize full frames']],'Match crops a square around the face of the picture and fits the video into it, fixed for each scene.'),
+      select('tps_alignment','Prepare the driving video','source',[['source','Match video to source image'],['face','Separate face crops'],['resize','Original notebook: resize full frames']],'Match crops a square around the face of the picture and fits the video into it, fixed for each scene.'),
       select('tps_sampling','Model input resizing','cached',[['cached','Anti-aliased resize, cached filters (recommended)'],['original','Original notebook resize'],['fast','OpenCV area resize']],'OpenCV uses a different filter and can change motion.'),
       {...number('source_crop_scale','Source crop scale',2.3,1.5,4,.05,'Higher values include more area around the face of the picture.'),hidden:(s.tps_alignment??'source')==='resize'},
       {...number('driving_crop_scale','Driving crop scale',2.3,1.5,4,.05,'Use matching crop proportions for picture and video.'),hidden:(s.tps_alignment??'source')!=='face'},
       {...number('crop_vy','Vertical crop offset',-.125,-.5,.5,.025,'Negative values move the crop upward.'),hidden:(s.tps_alignment??'source')==='resize'},
-      {...check('composition','Keep full image, body and background',true,'Blend the generated crop into the picture. Large head movements can show a seam.'),hidden:(s.tps_alignment??'source')!=='face'},
+      {...check('composition','Keep the original background',false,'Places the animated crop on the still picture.'),hidden:(s.tps_alignment??'source')!=='face'},
     ]});
     else if(engine==='performrecast')result.push({title:'PerformRecast settings',description:'Expression transfer only. The head pose and position of the picture stay.',fields:[
       select('perform_mode','Expression transfer','relative',[['relative','Relative: changes from the reference'],['replacement','Replacement: expression of the video']],'Relative keeps the resting expression of the picture.'),
       select('perform_expression','Expression strength',1,[[.5,'Reduced: 0.5'],[.75,'Gentle: 0.75'],[1,'Original amplitude: 1.0'],[1.25,'Stronger: 1.25']]),
-      check('composition','Keep full image, body and background',true,'Blend the generated 512 px face into the picture.'),
-      {...select('composition_blend','Background blending','smooth',BLEND),hidden:s.composition===false},
+      check('composition','Keep the original background',false,'Places the animated crop on the still picture.'),
+      {...select('composition_blend','Background blending','smooth',BLEND),hidden:s.composition!==true},
       number('source_crop_scale','Source crop scale',2.3,1.5,4,.05,'Higher values include more area around the face of the picture.'),
       number('driving_crop_scale','Driving crop scale',2.3,1.5,4,.05,'Use matching crop proportions for picture and video.'),
       number('crop_vy','Vertical crop offset',-.125,-.5,.5,.025,'Negative values move the crop upward.'),
@@ -74,7 +78,7 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
       {...number('source_crop_scale','Source crop scale',2.3,1.5,4,.05),hidden:(s.mrfa_alignment??'source')!=='face'},
       {...number('driving_crop_scale','Driving crop scale',2.3,1.5,4,.05),hidden:s.mrfa_alignment!=='face'},
       {...number('crop_vy','Vertical crop offset',-.125,-.5,.5,.025),hidden:(s.mrfa_alignment??'source')!=='face'},
-      {...check('composition','Keep full image, body and background',true),hidden:(s.mrfa_alignment??'source')!=='face'},
+      {...check('composition','Keep the original background',false,'Places the animated crop on the still picture.'),hidden:(s.mrfa_alignment??'source')!=='face'},
       {...select('composition_blend','Background blending','smooth',BLEND),hidden:(s.mrfa_alignment??'source')!=='face'},
     ]});
     else if(engine==='fsrt')result.push({title:'FSRT settings',description:'Relative pose with the expression transferred directly.',fields:[
@@ -85,20 +89,20 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
       {...number('source_crop_scale','Source crop scale',2.3,1.5,4,.05),hidden:(s.fsrt_alignment??'source')!=='face'},
       {...number('driving_crop_scale','Driving crop scale',2.3,1.5,4,.05),hidden:s.fsrt_alignment!=='face'},
       {...number('crop_vy','Vertical crop offset',-.125,-.5,.5,.025),hidden:(s.fsrt_alignment??'source')!=='face'},
-      {...check('composition','Keep full image, body and background',true),hidden:(s.fsrt_alignment??'source')!=='face'},
+      {...check('composition','Keep the original background',false,'Places the animated crop on the still picture.'),hidden:(s.fsrt_alignment??'source')!=='face'},
       {...select('composition_blend','Background blending','smooth',BLEND),hidden:(s.fsrt_alignment??'source')!=='face'},
     ]});
     else if(engine==='personalive')result.push({title:'PersonaLive settings',description:'Fixed values of the released pipeline: 512 px, 25 fps, 4 steps, seed 42.',fields:[
       select('personalive_crop_context','Face size in the frame',2,[[2,'Standard: head and shoulders (recommended)'],[1.6,'Closer: face fills about 60%'],[2.4,'Wider: more shoulders and background']],'Picture and video are cropped to a square with the face at this size, fixed for each scene.'),
       select('scene_handling','Scene changes','auto',[['auto','Automatic: frame each scene separately'],['single','One continuous scene']]),
-      check('composition','Keep full image, body and background',false,'Off: the output is the square the model makes. On: the square is blended back into the full picture.'),
+      check('composition','Keep the original background',false,'Places the animated crop on the still picture.'),
       select('composition_blend','Blend with body and background','smooth',BLEND),
     ]});
     else if(engine==='imtalker')result.push({title:'IMTalker settings',description:'512 px renderer. Identity detail and head proportions can change; compare a preview.',fields:[
       select('imtalker_crop_context','Face size in the frame',1.6,[[1.6,'Standard: face fills about 60% (recommended)'],[1.4,'Closer: face fills about 70%'],[1.8,'Wider: more hair and shoulders']],'The crop of the video stays fixed for each scene, so head movement stays.'),
       select('imtalker_face_fit','Video face fit','original',[['original','Standard: same face box size in picture and video'],['box','Face box of the IMTalker release'],['place','Exact position and size: eyes and mouth in the same place, no stretch'],['stretch','Stretch: eyes and mouth in the same place'],['shape','Stretch and shape: eyes, mouth, nose and face outline in the same place']],'The video is never rotated.'),
       select('scene_handling','Scene changes','auto',[['auto','Automatic: frame each scene separately'],['single','One continuous scene']]),
-      check('composition','Keep full image, body and background',false,'Off: the output is the square the model makes. On: the square is blended back into the full picture.'),
+      check('composition','Keep the original background',false,'Places the animated crop on the still picture.'),
       select('composition_blend','Blend with body and background','smooth',BLEND),
     ]});
     else result.push({title:'LivePortrait settings',fields:[
@@ -107,15 +111,21 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
       number('motion','Driving multiplier',1,0,1.8,.05,'Scales the keypoint motion after stitching.'),
       check('stitching','Stitching',true),
       check('normalize_lip','Normalize source lips',true,'Close an open mouth of the picture before relative animation.'),
-      check('composition','Paste back into the picture',true,'Off: save the generated 512 × 512 face crop.'),
+      check('composition','Keep the original background',false,'Places the animated crop on the still picture.'),
       number('source_crop_scale','Source crop scale',2.3,1.5,4,.05),
       number('driving_crop_scale','Driving crop scale',2.3,1.5,4,.05),
       number('crop_vy','Vertical crop offset',-.125,-.5,.5,.025),
     ]});
-    result[0].primary=true;
+    const quick:Record<string,string>={tpsmm:'tps_checkpoint',mrfa:'mrfa_checkpoint',fsrt:'fsrt_relative',imtalker:'imtalker_crop_context',personalive:'personalive_crop_context',performrecast:'perform_expression',liveportrait:'mode'};
+    const model=result[0];
+    const advanced=model.fields.filter(field=>field.key!==quick[engine]);
+    model.fields=model.fields.filter(field=>field.key===quick[engine]);
+    model.primary=true;
+    model.description=undefined;
+    result.push({title:'Model and framing options',fields:advanced});
     if(!['imtalker','personalive'].includes(engine))result.push({title:'Face matching',description:'How the reference face is found and aligned.',fields:[
       select('face_analysis','Face analysis','original',[['original','Existing analysis: 203 landmarks'],['mediapipe','Google Face Mesh: 478 landmarks and expressions']],s.face_analysis==='mediapipe'?'First use installs about 100 MB.':'No extra download.'),
-      {...check('face_stretch','Stretch the video face to the proportions of the picture',true,'On: eyes and mouth of the video land on those of the picture. Off: one scale for width and height.'),hidden:hideMatch},
+      {...check('face_stretch','Stretch the video face to the proportions of the picture',false,'On: eyes and mouth of the video land on those of the picture. Off: one scale for width and height.'),hidden:hideMatch},
       {...select('mesh_shape','Bend the video face to the shape of the picture',0,[[0,'Off (recommended)'],[.35,'Conservative: also match nose and outline'],[.7,'Stronger: compare a preview'],[1,'Full: nose and outline matched']],'The bend stays fixed on the screen and also reaches the neck and shoulders.'),hidden:hideMatch},
     ]});
     if(!['imtalker','personalive'].includes(engine))result.push({title:'Reference frame and tracking',fields:[
@@ -137,7 +147,7 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
       ...(tool==='animate'?[check('lipsync','Lip sync after animation',false,'Head movement and expressions still come from the driving video.')]:[]),
       {...select('sync_model','Lip sync model','musetalk',SYNC_MODELS,SYNC_INFO[model]),hidden:!enabled},
       ...(model==='latentsync'?[number('sync_steps','Denoising steps',20,10,60,1,'20 is the default of the model. More steps take longer.'),number('sync_guidance','Audio guidance',1.5,1,3,.1,'Higher values follow the audio more strongly.')]
-        :[select('sync_batch_size','Processing batch size',4,[[1,'1 frame: least memory'],[2,'2 frames'],[4,'4 frames (recommended)'],[8,'8 frames: more memory'],[16,'16 frames: most memory']])]).map(field=>({...field,hidden:!enabled})),
+        :[select('sync_batch_size','Processing batch size',0,[[0,'Automatic: use available memory'],[1,'1 frame: least memory'],[2,'2 frames'],[4,'4 frames'],[8,'8 frames: more memory'],[16,'16 frames: most memory']])]).map(field=>({...field,hidden:!enabled})),
     ]});
     result.push({title:'Lip sync advanced settings',hidden:!enabled,fields:[
       ...(model==='latentsync'?[number('sync_seed','Seed',1247,0,2147483647,1,'Keep this fixed when you compare settings.')]:[]),
@@ -159,19 +169,47 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
     select('enhance_scale','Output size',1,[[1,'Same size as the video'],[2,'2× (background enlarged)']],'GFPGAN restores faces at 512 × 512.'),
   ]});
   if(tool==='extract')result.push({title:'Export',primary:true,fields:[select('audio_format','Audio format','wav',[['wav','WAV'],['mp3','MP3 (320 kbps)']])]});
+  if(tool==='animate'){
+    for(const group of result)for(const field of group.fields){
+      if(field.key==='composition_blend')field.hidden=field.hidden||s.composition!==true;
+    }
+  }
+  if(tool==='animate'||tool==='sync'){
+    const sync=result.find(group=>group.title==='Lip sync')!;
+    const extra=result.find(group=>group.title==='Lip sync advanced settings')!;
+    extra.fields.unshift(...sync.fields.filter(field=>!['lipsync','sync_model'].includes(field.key)));
+    sync.fields=sync.fields.filter(field=>['lipsync','sync_model'].includes(field.key));
+  }
+  if((tool==='sync'||tool==='animate')&&String(s.sync_model??'').startsWith('tbdub')){
+    for(const group of result)if(group.title.toLowerCase().startsWith('lip')){
+      group.fields=group.fields.filter(field=>field.key==='lipsync'||field.key==='sync_model');
+    }
+  }
   return result;
 }
 
 /** All defaults of a tool for the given choices, so a new choice (for example another engine) starts from its defaults. */
 export function portraitDefaults(tool:PortraitTool,current:PortraitSettings):PortraitSettings{
-  const out:PortraitSettings={...current};
+  const out:PortraitSettings=tool==='animate'?{animation_engine:'imtalker',...current}:{...current};
   for(let pass=0;pass<3;pass++)for(const group of portraitGroups(tool,out))for(const field of group.fields)if(!(field.key in out))out[field.key]=field.value;
   return out;
 }
 
+export function changeLipModel(tool:PortraitTool,settings:PortraitSettings,profiles:Record<string,PortraitSettings>,model:string){
+  const next={...settings},previous:PortraitSettings={};
+  for(const key of Object.keys(next)){
+    if(key!=='sync_model'&&(key.startsWith('sync_')||key.startsWith('wav2lip_'))){
+      previous[key]=next[key];
+      delete next[key];
+    }
+  }
+  return {lipProfiles:{...profiles,[String(settings.sync_model||'musetalk')]:previous},
+    settings:portraitDefaults(tool,{...next,...profiles[model],sync_model:model})};
+}
+
 /** The values a job sends: every visible field of every visible group. Hidden fields keep the engine's own default. */
 export function portraitOptions(tool:PortraitTool,settings:PortraitSettings):PortraitSettings{
-  const out:PortraitSettings={};
+  const out:PortraitSettings=tool==='animate'?{animation_engine:settings.animation_engine??'imtalker'}:{};
   for(const group of portraitGroups(tool,settings))if(!group.hidden)for(const field of group.fields)if(!field.hidden&&settings[field.key]!==undefined)out[field.key]=settings[field.key];
   return out;
 }
