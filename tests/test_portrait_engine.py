@@ -95,6 +95,26 @@ class EngineInstallTests(unittest.TestCase):
 
 
 class PortraitInputTests(unittest.TestCase):
+    def test_animation_only_seeds_shared_tracking_and_the_selected_renderer(self):
+        files = ['liveportrait/landmark.onnx', 'insightface/models/buffalo_l/det_10g.onnx',
+                 'imtalker/renderer.ckpt', 'liveportrait/base_models/motion_extractor.pth',
+                 'musetalk/unet.safetensors', 'musetalk/vae/config.json', 'tpsmm/vox.pth.tar',
+                 'rvc/hubert_base.pt', 'gfpgan/GFPGANv1.4.pth']
+        request = {'kind': 'animate', 'options': {'animation_engine': 'imtalker', 'lipsync': False, 'sync_model': 'musetalk'}}
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'source'
+            models = Path(temporary) / 'destination'
+            for name in files:
+                path = source / 'models' / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'model')
+            with patch.object(portrait_engine, 'local_source', return_value=source), patch.object(portrait_engine, 'ENGINE_MODELS', models):
+                self.assertEqual(portrait_engine.seed_models(request), 3)
+                self.assertEqual(portrait_engine.seed_models(request), 0)
+                self.assertEqual({p.relative_to(models).as_posix() for p in models.rglob('*') if p.is_file()}, set(files[:3]))
+                request['options']['lipsync'] = True
+                self.assertEqual(portrait_engine.seed_models(request), 2)
+
     def test_separate_drive_copies_selected_checkpoints_and_shared_dependencies(self):
         request = {'kind': 'animate', 'options': {'animation_engine': 'mrfa', 'mrfa_checkpoint': 'celebvhq',
                                                  'lipsync': True, 'sync_model': 'tbdub_teacher'}}

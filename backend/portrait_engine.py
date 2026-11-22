@@ -23,7 +23,7 @@ from .common import APP_DIR, DATA_DIR, LIBRARY_DIR, MODELS_DIR
 
 ENGINE_REPOSITORY = 'https://github.com/Ido108/Multifck.git'
 # The tested engine version. A newer commit is used only after it is tested with this app and pinned here.
-ENGINE_COMMIT = 'f9539fbeeaf0a3731b29826550bac11f98645d22'
+ENGINE_COMMIT = 'ba1dd6425065908021fe45dcda717d142c003b28'
 RUNTIME_DIR = Path(os.environ.get('QWEN_RUNTIME_DIR') or DATA_DIR).resolve()
 ENGINE_DIR = RUNTIME_DIR / 'engines' / 'multifck'
 ENGINE_PYTHON = ENGINE_DIR / ('.runtime/Scripts/python.exe' if os.name == 'nt' else '.runtime/bin/python')
@@ -81,10 +81,10 @@ def local_source() -> Path | None:
 
 
 def quick_check() -> tuple[bool, str]:
-    """The engine's own start check: right version, Python, dependencies, base models, and a build for this GPU."""
+    """Check the shared runtime. Individual jobs prepare their own weights."""
     if not ENGINE_PYTHON.is_file() or head() != ENGINE_COMMIT:
         return False, 'not installed'
-    result = subprocess.run([str(ENGINE_PYTHON), 'scripts/verify_install.py', '--quick'], cwd=ENGINE_DIR, env=engine_env(),
+    result = subprocess.run([str(ENGINE_PYTHON), 'scripts/verify_install.py', '--quick', '--runtime-only'], cwd=ENGINE_DIR, env=engine_env(),
                             capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
     return result.returncode == 0, (result.stderr or result.stdout).strip()[-400:]
 
@@ -122,16 +122,24 @@ def checkout(update) -> None:
 
 
 def copy_needed(relative: Path, request: dict) -> bool:
-    """On separate drives, copy only base weights and the selected variants."""
+    """Weights used by this task, including shared tracking and analysis networks."""
     folder, name = relative.parts[0], relative.name
-    if folder in {'insightface', 'liveportrait', 'musetalk', 'rvc', 'gfpgan'} or relative.as_posix() == 'tpsmm/vox.pth.tar':
-        return True
     options = request.get('options', {})
     kind = request.get('kind')
     animation = options.get('animation_engine', 'imtalker') if kind == 'animate' else None
     lip = options.get('sync_model', 'musetalk') if kind == 'lipsync' or (animation and options.get('lipsync')) else None
+    tracking = bool(animation or kind == 'face-restore')
+    if folder == 'insightface':
+        return tracking or lip == 'latentsync'
+    if folder == 'liveportrait':
+        return (animation == 'liveportrait' or (tracking and name == 'landmark.onnx') or
+                (animation not in (None, 'imtalker', 'personalive') and name == 'motion_extractor.pth'))
+    if folder == 'musetalk':
+        return lip == 'musetalk' or (lip == 'latentsync' and relative.parts[1:2] == ('vae',))
+    if folder == 'gfpgan':
+        return kind == 'face-restore'
     if folder == 'face_mesh':
-        return bool(animation and options.get('face_analysis') == 'mediapipe')
+        return animation not in (None, 'imtalker', 'personalive') and options.get('face_analysis') == 'mediapipe'
     if folder == 'imtalker' and name == 's3fd.pth':
         return (lip in ('musetalk', 'wav2lip', 'wav2lip_gan') or
                 animation == 'imtalker' and options.get('imtalker_face_fit') == 'box')
@@ -158,6 +166,8 @@ def seed_models(request=None) -> int:
         if not path.is_file() or not (path.suffix.lower() in LINKABLE or config):
             continue
         relative = path.relative_to(source / 'models')
+        if not copy_needed(relative, request or {}):
+            continue
         target = ENGINE_MODELS / relative
         if target.exists():
             continue
@@ -172,8 +182,6 @@ def seed_models(request=None) -> int:
         except OSError as error:
             if error.errno != errno.EXDEV and getattr(error, 'winerror', None) != 17:
                 continue
-        if not copy_needed(relative, request or {}) and (not config or path.stat().st_dev != target.parent.stat().st_dev):
-            continue
         temporary = target.with_name(target.name + '.' + uuid.uuid4().hex + '.partial')
         try:
             shutil.copyfile(path, temporary)
@@ -184,17 +192,16 @@ def seed_models(request=None) -> int:
     return linked
 
 
-def install(update, request=None) -> None:
-    """First use, or a new pinned version: the engine's own installer, which detects the GPU and tests every model."""
-    update(stage='installing', message='Installing the animation and lip sync tools…', step=0, total_steps=0)
+def install(update) -> None:
+    """Install the engine's shared dependencies for this GPU without rendering sample jobs."""
+    update(stage='installing', message='Preparing the portrait runtime…', step=0, total_steps=0)
     checkout(update)
     ENGINE_MODELS.mkdir(parents=True, exist_ok=True)
     ENGINE_DATA.mkdir(parents=True, exist_ok=True)
-    seed_models(request)
     if os.name == 'nt':
-        command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ENGINE_DIR / 'Install.ps1'), '-NoShortcuts']
+        command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ENGINE_DIR / 'Install.ps1'), '-NoShortcuts', '-RuntimeOnly']
     else:
-        command = ['bash', str(ENGINE_DIR / 'Install.command')]
+        command = ['bash', str(ENGINE_DIR / 'Install.command'), '--runtime-only', '--no-shortcuts']
     installer_error = ''
     with INSTALL_LOG.open('a', encoding='utf-8') as log:
         log.write(f'\n=== {time.strftime("%Y-%m-%d %H:%M:%S")} engine {ENGINE_COMMIT}\n')
@@ -211,9 +218,7 @@ def install(update, request=None) -> None:
                     clean.lower().startswith(('installation failed:', 'runtimeerror:'))):
                 installer_error = clean
             if clean.startswith(('Downloading', 'Installing for')):
-                update(message='Installing the animation and lip sync tools: downloading…')
-            elif clean.startswith('Testing '):
-                update(message='Installing the animation and lip sync tools: testing on this GPU…')
+                update(message=clean)
         code = process.wait()
     if code:
         raise EngineError('The animation tools did not install. ' + (installer_error or f'Exit code {code}. See {INSTALL_LOG}.'))
@@ -224,9 +229,16 @@ def install(update, request=None) -> None:
 
 def ensure(update, request=None) -> None:
     if not quick_check()[0]:
-        install(update, request)
-    else:
-        seed_models(request)
+        install(update)
+    seed_models(request)
+    expected = json.loads((ENGINE_DIR / 'scripts/model-checksums.json').read_text())
+    required = [name for name in expected if copy_needed(Path(name), request or {})]
+    if required:
+        update(message='Checking model files for this job…')
+        # Optional engines manage their own checkpoints. These files are the shared
+        # dependencies previously installed unconditionally by the standalone setup.
+        subprocess.run([str(ENGINE_PYTHON), 'scripts/download_models.py', '--only', *required],
+                       cwd=ENGINE_DIR, env=engine_env(), creationflags=NO_WINDOW, check=True)
 
 
 def free_port() -> int:

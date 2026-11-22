@@ -17,7 +17,15 @@ import './portrait.css';
 type Draft={lipProfiles?:Record<string,PortraitSettings>;modelProfiles?:Record<string,PortraitSettings>;image:InputImage|null;video:string;settings:PortraitSettings;audio:AudioChoice;start:number;duration:number|null;audio_start:number;output_dir:string};
 const KEY='qwen-animate-draft';
 const blank=():Draft=>({image:null,video:'',settings:portraitDefaults('animate',{animation_engine:'imtalker'}),audio:{mode:'driving',file:null,video:null},start:0,duration:null,audio_start:0,output_dir:''});
-function load():Draft{try{const saved=JSON.parse(localStorage.getItem(KEY)||'{}');const base=blank();return {...base,...saved,settings:portraitDefaults('animate',saved.modelProfiles?saved.settings:{...saved.settings,composition:false,face_stretch:false}),modelProfiles:saved.modelProfiles||{},audio:{...base.audio,...saved.audio}};}catch{return blank();}}
+function load():Draft{
+  try{
+    const saved=JSON.parse(localStorage.getItem(KEY)||'{}');
+    const base=blank();
+    const settings=saved.modelProfiles?saved.settings:{...saved.settings,composition:false,face_stretch:false};
+    return {...base,...saved,settings:portraitDefaults('animate',{...settings,lipsync:false}),
+      modelProfiles:saved.modelProfiles||{},audio:{...base.audio,...saved.audio}};
+  }catch{return blank();}
+}
 
 export function AnimateTab({api,token,visible,models,videoInput,audioInput,onSendVideo,onQueued,restoreRequest,library}:{
   api:Api;token:string;visible:boolean;models:ModelState|null;videoInput:VideoInput|null;audioInput:{audio:AudioUpload;key:number}|null;onSendVideo:SendVideo;onQueued:()=>void;
