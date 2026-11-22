@@ -149,7 +149,7 @@ export function portraitGroups(tool:PortraitTool,s:PortraitSettings):PortraitGro
       ...(model==='latentsync'?[number('sync_steps','Denoising steps',20,10,60,1,'20 is the default of the model. More steps take longer.'),number('sync_guidance','Audio guidance',1.5,1,3,.1,'Higher values follow the audio more strongly.')]
         :[select('sync_batch_size','Processing batch size',0,[[0,'Automatic: use available memory'],[1,'1 frame: least memory'],[2,'2 frames'],[4,'4 frames'],[8,'8 frames: more memory'],[16,'16 frames: most memory']])]).map(field=>({...field,hidden:!enabled})),
     ]});
-    result.push({title:'Lip sync advanced settings',hidden:!enabled||(model!=='latentsync'&&!model.startsWith('wav2lip')),fields:[
+    result.push({title:'Lip sync advanced settings',hidden:!enabled||model.startsWith('tbdub'),fields:[
       ...(model==='latentsync'?[number('sync_seed','Seed',1247,0,2147483647,1,'Keep this fixed when you compare settings.')]:[]),
       ...(model.startsWith('wav2lip')?[number('wav2lip_pad_bottom','Chin padding (pixels)',10,0,80,1,'Includes the lower jaw in the model crop.')]:[]),
     ]});

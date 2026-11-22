@@ -23,7 +23,7 @@ from .common import APP_DIR, DATA_DIR, LIBRARY_DIR, MODELS_DIR
 
 ENGINE_REPOSITORY = 'https://github.com/Ido108/Multifck.git'
 # The tested engine version. A newer commit is used only after it is tested with this app and pinned here.
-ENGINE_COMMIT = 'affecc705f917ec06513d574a9bc035e3c8ca161'
+ENGINE_COMMIT = 'f9539fbeeaf0a3731b29826550bac11f98645d22'
 RUNTIME_DIR = Path(os.environ.get('QWEN_RUNTIME_DIR') or DATA_DIR).resolve()
 ENGINE_DIR = RUNTIME_DIR / 'engines' / 'multifck'
 ENGINE_PYTHON = ENGINE_DIR / ('.runtime/Scripts/python.exe' if os.name == 'nt' else '.runtime/bin/python')

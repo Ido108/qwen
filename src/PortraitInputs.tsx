@@ -67,7 +67,31 @@ export function usePortraitJob(api:Api,kind:string,onQueued:()=>void){
   const queued=useRef(onQueued);queued.current=onQueued;
   useQueuedVideo(api,kind,pollId,current=>{setJob(current);setPollId(current.id);});
   useEffect(()=>{let alive=true;api(`/api/history?kind=${kind}`).then((items:SavedJob[])=>{if(alive){setHistory(items);setResult(r=>r||items[0]||null);}}).catch(()=>{});return()=>{alive=false;};},[api,kind]);
-  useEffect(()=>{if(!pollId)return;let alive=true,timer:number;async function poll(){try{const current:SavedJob=await api(`/api/jobs/${pollId}`);if(!alive)return;setJob(current);if(['succeeded','failed','cancelled'].includes(current.status)){setPollId(null);queued.current();if(current.status==='succeeded'){setResult(current);setHistory(items=>[current,...items.filter(item=>item.id!==current.id)]);setError('');setNotice('');}else if(current.status==='failed')setError(current.message);else setNotice('Job stopped.');return;}}catch{}if(alive)timer=window.setTimeout(poll,1200);}poll();return()=>{alive=false;clearTimeout(timer);};},[api,pollId]);
+  useEffect(()=>{
+    if(!pollId)return;
+    let alive=true,timer:number;
+    async function poll(){
+      try{
+        const current:SavedJob=await api(`/api/jobs/${pollId}`);
+        if(!alive)return;
+        setJob(current);
+        if(['succeeded','failed','cancelled'].includes(current.status)){
+          setPollId(null);
+          queued.current();
+          setNotice(current.status==='cancelled'?'Job stopped.':'');
+          setError(current.status==='failed'?current.message:'');
+          if(current.status==='succeeded'){
+            setResult(current);
+            setHistory(items=>[current,...items.filter(item=>item.id!==current.id)]);
+          }
+          return;
+        }
+      }catch{}
+      if(alive)timer=window.setTimeout(poll,1200);
+    }
+    poll();
+    return()=>{alive=false;clearTimeout(timer);};
+  },[api,pollId]);
   useEffect(()=>{if(!pollId)return;const timer=window.setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[pollId]);
   async function submit(path:string,body:unknown){
     setError('');setNotice('');
